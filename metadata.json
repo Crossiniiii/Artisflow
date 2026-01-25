@@ -1,0 +1,6 @@
+
+{
+  "name": "ArtisFlow: Art Gallery Inventory System",
+  "description": "A high-end, professional management system for art galleries, featuring multi-branch transfers, role-based access control for inventory and sales agents, and immutable audit trails.",
+  "requestFramePermissions": []
+}

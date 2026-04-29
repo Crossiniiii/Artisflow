@@ -1,0 +1,87 @@
+﻿src/App.tsx(214,11): error TS18048: 'defaults.accessibleTabs' is possibly 'undefined'.
+src/App.tsx(217,11): error TS18048: 'defaults.accessibleTabs' is possibly 'undefined'.
+src/App.tsx(461,17): error TS2322: Type '{ artworks: Artwork[]; sales: SaleRecord[]; logs: ActivityLog[]; events: ExhibitionEvent[]; audits: InventoryAudit[]; onConfirmAudit: () => Promise<...>; userRole: UserRole; permissions: UserPermissions; }' is not assignable to type 'IntrinsicAttributes & AnalyticsPageProps'.
+  Property 'audits' does not exist on type 'IntrinsicAttributes & AnalyticsPageProps'.
+src/App.tsx(531,17): error TS2322: Type '(newArtworks: Partial<Artwork>[], filename: string, importDate: string, failedItems?: ImportFailedItem[]) => Promise<void>' is not assignable to type '(artworks: Partial<Artwork>[], filename?: string | undefined) => void'.
+  Target signature provides too few arguments. Expected 3 or more, but got 2.
+src/App.tsx(551,56): error TS2345: Argument of type '"inventory" | "sales" | "branches" | "events" | "returned" | "framer" | "auctions" | "reservations" | "monitoring"' is not assignable to parameter of type 'SetStateAction<"inventory" | "branches" | "events" | "returned" | "framer" | "auctions" | "reservations" | "monitoring">'.
+  Type '"sales"' is not assignable to type 'SetStateAction<"inventory" | "branches" | "events" | "returned" | "framer" | "auctions" | "reservations" | "monitoring">'.
+src/App.tsx(593,17): error TS2322: Type '(id: string) => void' is not assignable to type '(artwork: Artwork) => void'.
+  Types of parameters 'id' and 'artwork' are incompatible.
+    Type 'Artwork' is not assignable to type 'string'.
+src/App.tsx(670,17): error TS2322: Type '(newArtworks: Partial<Artwork>[], filename: string, importDate: string, failedItems?: ImportFailedItem[]) => Promise<void>' is not assignable to type '(artworks: Partial<Artwork>[], filename?: string | undefined) => void'.
+  Target signature provides too few arguments. Expected 3 or more, but got 2.
+src/App.tsx(704,17): error TS2322: Type '(id: string, reason: string, referenceNumber?: string, proofImage?: string, remarks?: string, type?: "Artist Reclaim" | "For Retouch") => Promise<boolean | undefined>' is not assignable to type '(id: string, reason: string, refNumber?: string | undefined, proofImage?: string | string[] | undefined, remarks?: string | undefined, type?: ReturnType | undefined) => boolean | ... 1 more ... | Promise<...>'.
+  Types of parameters 'proofImage' and 'proofImage' are incompatible.
+    Type 'string | string[] | undefined' is not assignable to type 'string | undefined'.
+      Type 'string[]' is not assignable to type 'string'.
+src/App.tsx(718,17): error TS2322: Type '(id: string, itdr: string, rsa: string, orcr: string) => Promise<void>' is not assignable to type '(id: string, itdr?: string | undefined, rsa?: string | undefined, orcr?: string | undefined) => void'.
+  Types of parameters 'itdr' and 'itdr' are incompatible.
+    Type 'string | undefined' is not assignable to type 'string'.
+      Type 'undefined' is not assignable to type 'string'.
+src/App.tsx(744,16): error TS2741: Property 'accounts' is missing in type '{ artworks: Artwork[]; sales: SaleRecord[]; events: ExhibitionEvent[]; onSelectArt: (id: string) => void; onManageEvents: () => void; onNavigateFromStat: (tab: string, filter?: any) => void; }' but required in type 'DashboardProps'.
+src/components/CertificateModal.tsx(99,13): error TS2561: Object literal may only specify known properties, but 'backgroundAlpha' does not exist in type 'Properties<string | number, string & {}>'. Did you mean to write 'backgroundClip'?
+src/components/NotificationsModal.tsx(23,13): error TS2339: Property 'agent' does not exist on type 'AppNotification'.
+src/components/NotificationsModal.tsx(23,33): error TS2339: Property 'agent' does not exist on type 'AppNotification'.
+src/components/NotificationsModal.tsx(24,13): error TS2339: Property 'userName' does not exist on type 'AppNotification'.
+src/components/NotificationsModal.tsx(24,36): error TS2339: Property 'userName' does not exist on type 'AppNotification'.
+src/components/NotificationsModal.tsx(59,34): error TS2339: Property 'agent' does not exist on type 'AppNotification'.
+src/components/NotificationsModal.tsx(59,65): error TS2339: Property 'userName' does not exist on type 'AppNotification'.
+src/components/SalesView.tsx(61,45): error TS2339: Property 'soldAtBranch' does not exist on type '{ title: string; artist: string; code: string; imageUrl: string; price: number; currentBranch?: string | undefined; medium?: string | undefined; dimensions?: string | undefined; year?: string | undefined; }'.
+src/hooks/useDataSync.ts(187,40): error TS2339: Property 'deletedAt' does not exist on type '{ imageUrl: string | undefined; id: string; code: string; title: string; artist: string; medium: string; dimensions: string; year: string; price: number; status: ArtworkStatus; ... 13 more ...; soldAtBranch?: string | undefined; }'.
+src/hooks/useDataSync.ts(188,37): error TS2345: Argument of type '(prev: Artwork[]) => { imageUrl: string | undefined; id: string; code: string; title: string; artist: string; medium: string; dimensions: string; year: string; price: number; status: ArtworkStatus; ... 13 more ...; soldAtBranch?: string | undefined; }[]' is not assignable to parameter of type 'SetStateAction<Artwork[]>'.
+  Type '(prev: Artwork[]) => { imageUrl: string | undefined; id: string; code: string; title: string; artist: string; medium: string; dimensions: string; year: string; price: number; status: ArtworkStatus; ... 13 more ...; soldAtBranch?: string | undefined; }[]' is not assignable to type '(prevState: Artwork[]) => Artwork[]'.
+    Type '{ imageUrl: string | undefined; id: string; code: string; title: string; artist: string; medium: string; dimensions: string; year: string; price: number; status: ArtworkStatus; ... 13 more ...; soldAtBranch?: string | undefined; }[]' is not assignable to type 'Artwork[]'.
+      Type '{ imageUrl: string | undefined; id: string; code: string; title: string; artist: string; medium: string; dimensions: string; year: string; price: number; status: ArtworkStatus; ... 13 more ...; soldAtBranch?: string; }' is not assignable to type 'Artwork'.
+        Types of property 'imageUrl' are incompatible.
+          Type 'string | undefined' is not assignable to type 'string'.
+            Type 'undefined' is not assignable to type 'string'.
+src/hooks/useDataSync.ts(189,56): error TS2345: Argument of type '(prev: Artwork[]) => { imageUrl: string | undefined; id: string; code: string; title: string; artist: string; medium: string; dimensions: string; year: string; price: number; status: ArtworkStatus; ... 13 more ...; soldAtBranch?: string | undefined; }[]' is not assignable to parameter of type 'SetStateAction<Artwork[]>'.
+  Type '(prev: Artwork[]) => { imageUrl: string | undefined; id: string; code: string; title: string; artist: string; medium: string; dimensions: string; year: string; price: number; status: ArtworkStatus; ... 13 more ...; soldAtBranch?: string | undefined; }[]' is not assignable to type '(prevState: Artwork[]) => Artwork[]'.
+    Type '{ imageUrl: string | undefined; id: string; code: string; title: string; artist: string; medium: string; dimensions: string; year: string; price: number; status: ArtworkStatus; ... 13 more ...; soldAtBranch?: string | undefined; }[]' is not assignable to type 'Artwork[]'.
+      Type '{ imageUrl: string | undefined; id: string; code: string; title: string; artist: string; medium: string; dimensions: string; year: string; price: number; status: ArtworkStatus; ... 13 more ...; soldAtBranch?: string; }' is not assignable to type 'Artwork'.
+        Types of property 'imageUrl' are incompatible.
+          Type 'string | undefined' is not assignable to type 'string'.
+            Type 'undefined' is not assignable to type 'string'.
+src/hooks/useDataSync.ts(196,39): error TS2339: Property 'deletedAt' does not exist on type '{ imageUrl: string | undefined; id: string; code: string; title: string; artist: string; medium: string; dimensions: string; year: string; price: number; status: ArtworkStatus; ... 13 more ...; soldAtBranch?: string | undefined; }'.
+src/hooks/useDataSync.ts(198,56): error TS2345: Argument of type '(prev: Artwork[]) => { imageUrl: string | undefined; id: string; code: string; title: string; artist: string; medium: string; dimensions: string; year: string; price: number; status: ArtworkStatus; ... 13 more ...; soldAtBranch?: string | undefined; }[]' is not assignable to parameter of type 'SetStateAction<Artwork[]>'.
+  Type '(prev: Artwork[]) => { imageUrl: string | undefined; id: string; code: string; title: string; artist: string; medium: string; dimensions: string; year: string; price: number; status: ArtworkStatus; ... 13 more ...; soldAtBranch?: string | undefined; }[]' is not assignable to type '(prevState: Artwork[]) => Artwork[]'.
+    Type '{ imageUrl: string | undefined; id: string; code: string; title: string; artist: string; medium: string; dimensions: string; year: string; price: number; status: ArtworkStatus; ... 13 more ...; soldAtBranch?: string | undefined; }[]' is not assignable to type 'Artwork[]'.
+      Type '{ imageUrl: string | undefined; id: string; code: string; title: string; artist: string; medium: string; dimensions: string; year: string; price: number; status: ArtworkStatus; ... 13 more ...; soldAtBranch?: string; }' is not assignable to type 'Artwork'.
+        Types of property 'imageUrl' are incompatible.
+          Type 'string | undefined' is not assignable to type 'string'.
+            Type 'undefined' is not assignable to type 'string'.
+src/hooks/useDataSync.ts(200,37): error TS2345: Argument of type '(prev: Artwork[]) => { imageUrl: string | undefined; id: string; code: string; title: string; artist: string; medium: string; dimensions: string; year: string; price: number; status: ArtworkStatus; ... 13 more ...; soldAtBranch?: string | undefined; }[]' is not assignable to parameter of type 'SetStateAction<Artwork[]>'.
+  Type '(prev: Artwork[]) => { imageUrl: string | undefined; id: string; code: string; title: string; artist: string; medium: string; dimensions: string; year: string; price: number; status: ArtworkStatus; ... 13 more ...; soldAtBranch?: string | undefined; }[]' is not assignable to type '(prevState: Artwork[]) => Artwork[]'.
+    Type '{ imageUrl: string | undefined; id: string; code: string; title: string; artist: string; medium: string; dimensions: string; year: string; price: number; status: ArtworkStatus; ... 13 more ...; soldAtBranch?: string | undefined; }[]' is not assignable to type 'Artwork[]'.
+      Type '{ imageUrl: string | undefined; id: string; code: string; title: string; artist: string; medium: string; dimensions: string; year: string; price: number; status: ArtworkStatus; ... 13 more ...; soldAtBranch?: string; }' is not assignable to type 'Artwork'.
+        Types of property 'imageUrl' are incompatible.
+          Type 'string | undefined' is not assignable to type 'string'.
+            Type 'undefined' is not assignable to type 'string'.
+src/hooks/useDataSync.ts(205,56): error TS2345: Argument of type '(prev: Artwork[]) => { imageUrl: string | undefined; id: string; code: string; title: string; artist: string; medium: string; dimensions: string; year: string; price: number; status: ArtworkStatus; ... 13 more ...; soldAtBranch?: string | undefined; }[]' is not assignable to parameter of type 'SetStateAction<Artwork[]>'.
+  Type '(prev: Artwork[]) => { imageUrl: string | undefined; id: string; code: string; title: string; artist: string; medium: string; dimensions: string; year: string; price: number; status: ArtworkStatus; ... 13 more ...; soldAtBranch?: string | undefined; }[]' is not assignable to type '(prevState: Artwork[]) => Artwork[]'.
+    Type '{ imageUrl: string | undefined; id: string; code: string; title: string; artist: string; medium: string; dimensions: string; year: string; price: number; status: ArtworkStatus; ... 13 more ...; soldAtBranch?: string | undefined; }[]' is not assignable to type 'Artwork[]'.
+      Type '{ imageUrl: string | undefined; id: string; code: string; title: string; artist: string; medium: string; dimensions: string; year: string; price: number; status: ArtworkStatus; ... 13 more ...; soldAtBranch?: string; }' is not assignable to type 'Artwork'.
+        Types of property 'imageUrl' are incompatible.
+          Type 'string | undefined' is not assignable to type 'string'.
+            Type 'undefined' is not assignable to type 'string'.
+src/pages/BranchManagement.tsx(2536,33): error TS2367: This comparison appears to be unintentional because the types '"delete" | "auction"' and '"framer"' have no overlap.
+src/pages/BranchManagement.tsx(2538,35): error TS2367: This comparison appears to be unintentional because the types '"delete" | "auction"' and '"return"' have no overlap.
+src/pages/BranchManagement.tsx(2566,35): error TS2367: This comparison appears to be unintentional because the types '"auction"' and '"framer"' have no overlap.
+src/pages/BranchManagement.tsx(2567,37): error TS2367: This comparison appears to be unintentional because the types '"auction"' and '"return"' have no overlap.
+src/pages/BranchManagement.tsx(2593,33): error TS2367: This comparison appears to be unintentional because the types '"auction" | "transfer"' and '"framer"' have no overlap.
+src/pages/BranchManagement.tsx(2595,35): error TS2367: This comparison appears to be unintentional because the types '"auction" | "transfer"' and '"return"' have no overlap.
+src/pages/BranchManagement.tsx(2901,11): error TS2322: Type 'ExhibitionEvent[] | undefined' is not assignable to type 'ExhibitionEvent[]'.
+  Type 'undefined' is not assignable to type 'ExhibitionEvent[]'.
+src/pages/BranchManagement.tsx(2933,11): error TS2322: Type 'string[]' is not assignable to type 'string'.
+src/pages/Dashboard.tsx(945,104): error TS7053: Element implicitly has an 'any' type because expression of type 'EventStatus' can't be used to index type '{ Live: string; Upcoming: string; Recent: string; }'.
+  Property '[EventStatus.CLOSED]' does not exist on type '{ Live: string; Upcoming: string; Recent: string; }'.
+src/pages/GalleriaPage.tsx(91,15): error TS2322: Type '{ artworks: Artwork[]; branches: string[]; branchAddresses: Record<string, string>; branchCategories: Record<string, string> | undefined; sales: SaleRecord[]; ... 6 more ...; canEdit: false; }' is not assignable to type 'IntrinsicAttributes & BranchManagementProps'.
+  Property 'onViewArt' does not exist on type 'IntrinsicAttributes & BranchManagementProps'.
+src/pages/GalleriaPage.tsx(106,15): error TS2322: Type '{ events: ExhibitionEvent[]; artworks: Artwork[]; branches: string[]; onAddEvent: () => void; onDeleteEvent: () => void; onUpdateEvent: () => void; onViewArtwork: (id: string) => void; onBulkSale: () => void; onBulkReserve: () => void; canEdit: false; }' is not assignable to type 'IntrinsicAttributes & EventManagementProps'.
+  Property 'onViewArtwork' does not exist on type 'IntrinsicAttributes & EventManagementProps'. Did you mean 'onViewArt'?
+src/pages/GalleryManagementPage.tsx(365,13): error TS2322: Type '((ids: string[], reason: string, returnType: ReturnType, referenceNumber?: string | undefined, proofImage?: string | undefined, remarks?: string | undefined) => void) | undefined' is not assignable to type '((ids: string[], reason: string, returnType: any, referenceNumber?: string | undefined, proofImage?: string | string[] | undefined, remarks?: string | undefined) => void) | undefined'.
+  Type '(ids: string[], reason: string, returnType: ReturnType, referenceNumber?: string | undefined, proofImage?: string | undefined, remarks?: string | undefined) => void' is not assignable to type '(ids: string[], reason: string, returnType: any, referenceNumber?: string | undefined, proofImage?: string | string[] | undefined, remarks?: string | undefined) => void'.
+    Types of parameters 'proofImage' and 'proofImage' are incompatible.
+      Type 'string | string[] | undefined' is not assignable to type 'string | undefined'.
+        Type 'string[]' is not assignable to type 'string'.

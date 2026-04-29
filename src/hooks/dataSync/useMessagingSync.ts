@@ -1,0 +1,143 @@
+import { Dispatch, SetStateAction, useEffect } from 'react';
+import { supabase } from '../../supabase';
+import { AppNotification, ChatMessage, Conversation, UserAccount } from '../../types';
+import { IS_DEMO_MODE } from '../../constants';
+import { mapFromSnakeCase } from '../../utils/supabaseUtils';
+import {
+  NOTIFICATION_BOOT_DELAY_MS,
+  OPERATIONS_ROW_LIMITS,
+  removeRealtimeRecord,
+  updateRealtimeRecord,
+  upsertRealtimeRecord
+} from './shared';
+
+interface UseMessagingSyncParams {
+  currentUser: UserAccount | null;
+  shouldSyncMessaging: boolean;
+  conversations: Conversation[];
+  setNotifications: Dispatch<SetStateAction<AppNotification[]>>;
+  setConversations: Dispatch<SetStateAction<Conversation[]>>;
+  setMessages: Dispatch<SetStateAction<ChatMessage[]>>;
+}
+
+export const useMessagingSync = ({
+  currentUser,
+  shouldSyncMessaging,
+  conversations,
+  setNotifications,
+  setConversations,
+  setMessages
+}: UseMessagingSyncParams) => {
+  useEffect(() => {
+    if (IS_DEMO_MODE || !currentUser?.id) return;
+
+    const syncNotifications = async () => {
+      const notifRes = await supabase
+        .from('notifications')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(OPERATIONS_ROW_LIMITS.notifications);
+      if (notifRes.data) setNotifications(mapFromSnakeCase(notifRes.data) as AppNotification[]);
+    };
+
+    const timer = window.setTimeout(() => {
+      void syncNotifications();
+    }, NOTIFICATION_BOOT_DELAY_MS);
+
+    const handleNotificationRealtime = (payload: any) => {
+      if (payload.eventType === 'DELETE') {
+        setNotifications(prev => removeRealtimeRecord(prev, payload.old.id));
+        return;
+      }
+
+      const mappedNotification = mapFromSnakeCase(payload.new) as AppNotification;
+      if (payload.eventType === 'INSERT') {
+        setNotifications(prev => upsertRealtimeRecord(prev, mappedNotification, OPERATIONS_ROW_LIMITS.notifications));
+        return;
+      }
+
+      if (payload.eventType === 'UPDATE') {
+        setNotifications(prev => updateRealtimeRecord(prev, mappedNotification));
+      }
+    };
+
+    const notificationChannel = supabase.channel('notifications-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'notifications' }, handleNotificationRealtime)
+      .subscribe();
+    return () => {
+      window.clearTimeout(timer);
+      supabase.removeChannel(notificationChannel);
+    };
+  }, [currentUser?.id, setNotifications]);
+
+  useEffect(() => {
+    if (IS_DEMO_MODE || !currentUser?.id || !shouldSyncMessaging) {
+      return;
+    }
+
+    const syncMessaging = async () => {
+      const convRes = await supabase
+        .from('conversations')
+        .select('*')
+        .contains('participant_ids', [currentUser.id])
+        .order('updated_at', { ascending: false });
+      if (convRes.data) setConversations(mapFromSnakeCase(convRes.data) as Conversation[]);
+    };
+
+    const handleConversationRealtime = (payload: any) => {
+      if (payload.eventType === 'DELETE') {
+        setConversations(prev => removeRealtimeRecord(prev, payload.old.id));
+        return;
+      }
+
+      const mappedConversation = mapFromSnakeCase(payload.new) as Conversation;
+      const participantIds = Array.isArray(mappedConversation.participantIds) ? mappedConversation.participantIds : [];
+      if (!participantIds.includes(currentUser.id)) {
+        setConversations(prev => removeRealtimeRecord(prev, mappedConversation.id));
+        return;
+      }
+
+      if (payload.eventType === 'INSERT') {
+        setConversations(prev => upsertRealtimeRecord(prev, mappedConversation));
+        return;
+      }
+
+      if (payload.eventType === 'UPDATE') {
+        setConversations(prev => updateRealtimeRecord(prev, mappedConversation));
+      }
+    };
+
+    void syncMessaging();
+    const msgChannel = supabase.channel('messaging-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'conversations' }, handleConversationRealtime)
+      .subscribe();
+    return () => { supabase.removeChannel(msgChannel); };
+  }, [currentUser?.id, shouldSyncMessaging, setConversations]);
+
+  useEffect(() => {
+    if (IS_DEMO_MODE || !currentUser?.id || !shouldSyncMessaging || conversations.length === 0) {
+      if (!shouldSyncMessaging || conversations.length === 0) setMessages([]);
+      return;
+    }
+
+    const syncMessages = async () => {
+      const convIds = conversations.map(c => c.id);
+      const { data } = await supabase.from('messages').select('*').in('conversation_id', convIds).order('created_at', { ascending: true });
+      if (data) setMessages(mapFromSnakeCase(data) as ChatMessage[]);
+    };
+
+    void syncMessages();
+    const chatChannel = supabase.channel('chat-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, (payload) => {
+        const newMessage = mapFromSnakeCase([payload.new])[0] as ChatMessage;
+        if (payload.eventType === 'INSERT') {
+          setMessages(prev => prev.some(m => m.id === newMessage.id) ? prev : [...prev, newMessage]);
+        } else if (payload.eventType === 'UPDATE') {
+          setMessages(prev => prev.map(m => m.id === newMessage.id ? newMessage : m));
+        } else if (payload.eventType === 'DELETE') {
+          setMessages(prev => prev.filter(m => m.id !== payload.old.id));
+        }
+      }).subscribe();
+    return () => { supabase.removeChannel(chatChannel); };
+  }, [currentUser?.id, shouldSyncMessaging, conversations, setMessages]);
+};

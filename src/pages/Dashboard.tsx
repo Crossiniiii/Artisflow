@@ -17,7 +17,7 @@ interface DashboardProps {
   accounts: UserAccount[];
   onSelectArt: (id: string) => void;
   onManageEvents: () => void;
-  onNavigateFromStat?: (target: 'inventory' | 'sales' | 'operations' | 'reservations') => void;
+  onNavigateFromStat?: (target: 'sales' | 'operations' | 'reservations') => void;
   currentUser?: UserAccount | null;
 }
 
@@ -95,8 +95,19 @@ const Dashboard: React.FC<DashboardProps> = ({ artworks, sales, events, isLoadin
     return soldArtworks.reduce((sum, art) => {
       const sale = salesMap.get(art.id);
       if (!sale) return sum + (art.price || 0); // Assume fully paid if no sale record
-      const totalInstallments = (sale.installments || []).reduce((s, i) => s + i.amount, 0);
-      return sum + (sale.downpayment || 0) + totalInstallments;
+      
+      // If not a downpayment sale and approved, it's a full payment
+      if (sale.status === 'Approved' && !sale.isDownpayment) {
+        return sum + (art.price || 0);
+      }
+      
+      // Only include approved downpayments if the sale is approved
+      const basePaid = sale.status === 'Approved' ? (sale.downpayment || 0) : 0;
+      
+      // Only include verified installments
+      const totalInstallments = (sale.installments || []).filter(i => !i.isPending).reduce((s, i) => s + i.amount, 0);
+      
+      return sum + basePaid + totalInstallments;
     }, 0);
   }, [soldArtworks, completedSales]);
 
@@ -716,12 +727,12 @@ const Dashboard: React.FC<DashboardProps> = ({ artworks, sales, events, isLoadin
                 {activeStat === 'inventory' && (
                   <button
                     onClick={() => {
-                      onNavigateFromStat?.('inventory');
+                      onNavigateFromStat?.('operations');
                       setActiveStat(null);
                     }}
                     className="px-4 py-2 rounded-md text-xs font-bold text-neutral-700 bg-neutral-50 border border-neutral-200 hover:bg-neutral-100 transition-all transform hover:-translate-y-0.5"
                   >
-                    Open Inventory View
+                    Open Gallery Operations
                   </button>
                 )}
                 <button

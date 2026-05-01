@@ -18,7 +18,10 @@ import {
   OPERATIONS_ROW_LIMITS,
   removeRealtimeRecord,
   updateRealtimeRecord,
-  upsertRealtimeRecord
+  upsertRealtimeRecord,
+  getGlobalSyncChannel,
+  subscribeGlobalSyncChannel,
+  unsubscribeGlobalSyncChannel
 } from './shared';
 
 interface UseBranchAndOperationsSyncParams {
@@ -184,10 +187,11 @@ export const useBranchAndOperationsSync = ({
     };
 
     void syncBranches();
-    const branchChannel = supabase.channel('branches-realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'branches' }, handleBranchRealtime)
-      .subscribe();
-    return () => { supabase.removeChannel(branchChannel); };
+    const globalChannel = getGlobalSyncChannel();
+    globalChannel.on('postgres_changes', { event: '*', schema: 'public', table: 'branches' }, handleBranchRealtime);
+    
+    subscribeGlobalSyncChannel();
+    return () => { unsubscribeGlobalSyncChannel(); };
   }, [currentUser?.id, setBranchAddresses, setBranchCategories, setBranchLogos, setBranches, setExclusiveBranches]);
 
   useEffect(() => {
@@ -268,7 +272,8 @@ export const useBranchAndOperationsSync = ({
     };
 
     void syncOperations();
-    const opsChannel = supabase.channel('operations-realtime')
+    const globalChannel = getGlobalSyncChannel();
+    globalChannel
       .on('postgres_changes', { event: '*', schema: 'public', table: 'activity_logs' }, payload =>
         handleListRealtime(payload, setLogs, OPERATIONS_ROW_LIMITS.logs, normalizeActivityLog as any))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'audits' }, payload =>
@@ -280,8 +285,9 @@ export const useBranchAndOperationsSync = ({
       .on('postgres_changes', { event: '*', schema: 'public', table: 'framer_records' }, payload =>
         handleListRealtime(payload, setFramerRecords, OPERATIONS_ROW_LIMITS.framers))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'transfers' }, payload =>
-        handleListRealtime(payload, setTransfers, OPERATIONS_ROW_LIMITS.transfers))
-      .subscribe();
-    return () => { supabase.removeChannel(opsChannel); };
+        handleListRealtime(payload, setTransfers, OPERATIONS_ROW_LIMITS.transfers));
+
+    subscribeGlobalSyncChannel();
+    return () => { unsubscribeGlobalSyncChannel(); };
   }, [currentUser?.id, shouldSyncOperationalData, setAudits, setFramerRecords, setImportLogs, setLogs, setReturnRecords, setTransfers]);
 };

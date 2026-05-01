@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Loader2, AlertCircle, Database, CheckCircle2 } from 'lucide-react';
+import { Loader2, AlertCircle, Database, CheckCircle2, RefreshCw, WifiOff } from 'lucide-react';
 
 interface InitialSyncLoadingScreenProps {
   isLoadingArtworks: boolean;
@@ -19,14 +19,33 @@ const InitialSyncLoadingScreen: React.FC<InitialSyncLoadingScreenProps> = ({
   isProgressive = false
 }) => {
   const [showLongWaitMessage, setShowLongWaitMessage] = useState(false);
+  const [showDatabaseDown, setShowDatabaseDown] = useState(false);
+
+  const allStillLoading = isLoadingArtworks && isLoadingUsers && isLoadingEvents && isLoadingSales;
 
   useEffect(() => {
-    const timer = setTimeout(() => {
+    const longWaitTimer = setTimeout(() => {
       setShowLongWaitMessage(true);
-    }, 5000); // Show "taking longer than expected" after 5s
+    }, 5000);
 
-    return () => clearTimeout(timer);
+    const dbDownTimer = setTimeout(() => {
+      if (allStillLoading) {
+        setShowDatabaseDown(true);
+      }
+    }, 15000); // After 15s with zero progress, show database down message
+
+    return () => {
+      clearTimeout(longWaitTimer);
+      clearTimeout(dbDownTimer);
+    };
   }, []);
+
+  // Reset the database down state if any module finishes loading
+  useEffect(() => {
+    if (!allStillLoading) {
+      setShowDatabaseDown(false);
+    }
+  }, [allStillLoading]);
 
   if (syncError) {
     return (
@@ -41,6 +60,38 @@ const InitialSyncLoadingScreen: React.FC<InitialSyncLoadingScreenProps> = ({
             onClick={() => window.location.reload()}
             className="px-6 py-2 bg-neutral-900 text-white rounded-lg font-medium hover:bg-neutral-800 transition-colors"
           >
+            Retry Connection
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (showDatabaseDown) {
+    return (
+      <div className="fixed inset-0 bg-neutral-50 flex items-center justify-center p-4 z-[9999]">
+        <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-8 border border-neutral-100 text-center">
+          <div className="w-16 h-16 bg-amber-50 rounded-full flex items-center justify-center mx-auto mb-6 text-amber-500">
+            <WifiOff size={32} />
+          </div>
+          <h2 className="text-xl font-bold text-neutral-900 mb-2">Database Unreachable</h2>
+          <p className="text-neutral-600 mb-2">
+            The database server is not responding. This usually means your Supabase project was <strong>paused due to inactivity</strong>.
+          </p>
+          <div className="bg-amber-50 border border-amber-100 rounded-lg p-3 mb-6 text-left">
+            <p className="text-xs text-amber-800 font-medium mb-1">How to fix:</p>
+            <ol className="text-xs text-amber-700 list-decimal pl-4 space-y-1">
+              <li>Go to your <a href="https://supabase.com/dashboard" target="_blank" rel="noopener noreferrer" className="underline font-medium">Supabase Dashboard</a></li>
+              <li>Navigate to <strong>Settings → General</strong></li>
+              <li>Under "Project availability", click <strong>Restart project</strong></li>
+              <li>Wait 5 minutes, then click Retry below</li>
+            </ol>
+          </div>
+          <button 
+            onClick={() => window.location.reload()}
+            className="px-6 py-3 bg-neutral-900 text-white rounded-lg font-medium hover:bg-neutral-800 transition-colors inline-flex items-center gap-2"
+          >
+            <RefreshCw size={16} />
             Retry Connection
           </button>
         </div>
@@ -107,3 +158,5 @@ const InitialSyncLoadingScreen: React.FC<InitialSyncLoadingScreenProps> = ({
 };
 
 export default InitialSyncLoadingScreen;
+
+

@@ -11,14 +11,12 @@ import { getDefaultPermissions, IS_DEMO_MODE } from './constants';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
 const Dashboard = lazy(() => import('./pages/Dashboard'));
-const Inventory = lazy(() => import('./pages/Inventory'));
 const MasterView = lazy(() => import('./pages/MasterView'));
 const AccountManagement = lazy(() => import('./pages/AccountManagement'));
 const AnalyticsPage = lazy(() => import('./pages/AnalyticsPage'));
 const ImportHistoryPage = lazy(() => import('./pages/ImportHistoryPage'));
 const TimeMachinePage = lazy(() => import('./pages/TimeMachinePage'));
 const GalleryManagementPage = lazy(() => import('./pages/GalleryManagementPage'));
-const GalleriaPage = lazy(() => import('./pages/GalleriaPage'));
 const SalesRecordPage = lazy(() => import('./pages/SalesRecordPage'));
 const AuditLogsPage = lazy(() => import('./pages/AuditLogsPage'));
 const ArtworkTransfer = lazy(() => import('./pages/ArtworkTransfer'));
@@ -58,7 +56,6 @@ const App: React.FC = () => {
   const {
     activeTab, setActiveTab,
     showProfile, setShowProfile,
-    inventoryInitialStatus, setInventoryInitialStatus,
     isMobileMenuOpen, setIsMobileMenuOpen,
     historyStack, setHistoryStack,
     selectedArtworkId, setSelectedArtworkId,
@@ -288,8 +285,7 @@ const App: React.FC = () => {
   // Enforce tab access
   useEffect(() => {
     // master-view is a detail view, not a sidebar tab, so permission is handled within the view itself
-    // inventory and galleria are now accessible to all
-    if (activeTab === 'master-view' || activeTab === 'inventory' || activeTab === 'galleria') return;
+    if (activeTab === 'master-view') return;
 
     if (currentPermissions?.accessibleTabs && !currentPermissions.accessibleTabs.includes(activeTab)) {
       const allowed = currentPermissions.accessibleTabs;
@@ -322,9 +318,6 @@ const App: React.FC = () => {
 
   const handleNavigateFromStat = (tab: string, filter?: any) => {
     setActiveTab(tab as any);
-    if (filter) {
-      setInventoryInitialStatus(filter);
-    }
   };
 
   const handleReservationComplete = () => {
@@ -604,20 +597,6 @@ const App: React.FC = () => {
               />
             </Suspense>
           );
-        case 'galleria':
-          return (
-            <Suspense fallback={<div>Loading...</div>}>
-              <GalleriaPage
-                events={events}
-                artworks={artworks}
-                branches={branches}
-                branchAddresses={branchAddresses}
-                branchCategories={branchCategories}
-                sales={sales}
-                onView={handleViewArtwork}
-              />
-            </Suspense>
-          );
         case 'import-history':
           const canAccessImport = currentPermissions.accessibleTabs
             ? currentPermissions.accessibleTabs.includes('import-history')
@@ -708,34 +687,6 @@ const App: React.FC = () => {
               />
             </Suspense>
           );
-        case 'inventory':
-          return (
-            <Suspense fallback={<div>Loading...</div>}>
-              <Inventory
-                artworks={artworks}
-                branches={branches}
-                branchCategories={branchCategories}
-                onView={handleViewArtwork}
-                permissions={currentPermissions}
-                onAdd={handleAddArtwork}
-                onBulkAdd={handleBulkAddArtworks}
-                onAddBranch={handleAddBranch}
-                onEdit={handleUpdateArtwork}
-                onBulkSale={handleBulkSale}
-                onBulkDelete={handleBulkDelete}
-                onBulkReserve={handleBulkReserve}
-                events={events}
-                preventDuplicates={preventDuplicateImports}
-                importedFilenames={(importLogs || []).map(l => l.filename)}
-                sales={sales}
-                onBulkUpdate={handleBulkUpdateArtworks}
-                onBulkTransferRequest={handleCreateTransferRequest}
-                onAddToAuction={handleAddToAuction}
-                initialStatusFilter={inventoryInitialStatus}
-                onNavigateFromStat={handleNavigateFromStat}
-              />
-            </Suspense>
-          );
         case 'events':
           // Redirect to operations
           setActiveTab('operations');
@@ -750,6 +701,7 @@ const App: React.FC = () => {
                 logs={logs.filter(l => String(l.artworkId) === String(selectedArt.id))}
                 sale={sales.find(s => String(s.artworkId) === String(selectedArt.id) && !s.isCancelled)}
                 userRole={userRole}
+                userBranch={currentUser?.branch}
                 userPermissions={currentPermissions}
                 events={events}
                 onReturn={handleReturnArtwork}
@@ -772,6 +724,10 @@ const App: React.FC = () => {
                 onEditPayment={handleEditPayment}
                 onApprovePaymentEdit={handleApprovePaymentEdit}
                 onDeclinePaymentEdit={handleDeclinePaymentEdit}
+                transferRequests={transferRequests}
+                onAcceptTransfer={handleAcceptTransfer}
+                onHoldTransfer={handleHoldTransfer}
+                onDeclineTransfer={handleDeclineTransfer}
                 framerRecords={framerRecords}
                 returnRecords={returnRecords}
                 onNavigateTo={(tab, view) => {
@@ -788,8 +744,7 @@ const App: React.FC = () => {
                     if (prev.tab === 'operations' && prev.operationsView) {
                       setOperationsView(prev.operationsView);
                     }
-                  } else {
-                    handleNavigateFromStat('inventory');
+                    setActiveTab('dashboard');
                   }
                 }}
               />

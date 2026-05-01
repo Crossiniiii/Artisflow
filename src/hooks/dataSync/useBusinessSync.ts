@@ -4,7 +4,7 @@ import { ExhibitionEvent, SaleRecord, UserAccount } from '../../types';
 import { IS_DEMO_MODE } from '../../constants';
 import { mapFromSnakeCase } from '../../utils/supabaseUtils';
 import { isSupabaseBadQueryError, isSupabaseMissingRelationError } from './shared';
-import { removeRealtimeRecord, updateRealtimeRecord, upsertRealtimeRecord } from './shared';
+import { removeRealtimeRecord, updateRealtimeRecord, upsertRealtimeRecord, getGlobalSyncChannel, subscribeGlobalSyncChannel, unsubscribeGlobalSyncChannel } from './shared';
 
 interface UseBusinessSyncParams {
   currentUser: UserAccount | null;
@@ -127,10 +127,12 @@ export const useBusinessSync = ({
     };
 
     void syncBusinessData();
-    const businessChannel = supabase.channel('business-realtime')
+    const globalChannel = getGlobalSyncChannel();
+    globalChannel
       .on('postgres_changes', { event: '*', schema: 'public', table: 'sales' }, handleSalesRealtime)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'events' }, handleEventsRealtime)
-      .subscribe();
-    return () => { supabase.removeChannel(businessChannel); };
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'events' }, handleEventsRealtime);
+      
+    subscribeGlobalSyncChannel();
+    return () => { unsubscribeGlobalSyncChannel(); };
   }, [currentUser?.id, setEvents, setIsLoadingEvents, setIsLoadingSales, setSales, shouldLoadFullBusinessData]);
 };

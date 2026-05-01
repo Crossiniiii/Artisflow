@@ -12,12 +12,13 @@ import {
   UserPermissions,
   ReturnType,
   FramerRecord,
-  ReturnRecord
+  ReturnRecord,
+  TransferRequest
 } from '../types';
 import { ICONS } from '../constants';
 import CertificateModal from '../components/CertificateModal';
 import { ActionResultModal } from '../components/modals/ActionResultModal';
-import { XCircle, Bookmark, Edit, Paperclip, ChevronDown, Trash2, RotateCcw, AlertTriangle, AlertCircle, Upload, Tag, Archive, Wrench, Gavel, FileSpreadsheet, Download, FileText, Package, Image as ImageIcon, Clock, Calendar, Home, ArrowRight, Plus } from 'lucide-react';
+import { XCircle, CheckCircle, Bookmark, Edit, Paperclip, ChevronDown, Trash2, RotateCcw, AlertTriangle, AlertCircle, Upload, Tag, Archive, Wrench, Gavel, FileSpreadsheet, Download, FileText, Package, Image as ImageIcon, Clock, Calendar, Home, ArrowRight, Plus, Shield } from 'lucide-react';
 import LoadingOverlay from '../components/LoadingOverlay';
 import { OptimizedImage } from '../components/OptimizedImage';
 import { compressImage } from '../utils/imageUtils';
@@ -31,6 +32,7 @@ interface MasterViewProps {
   logs: ActivityLog[];
   sale?: SaleRecord;
   userRole: UserRole;
+  userBranch?: string;
   userPermissions?: UserPermissions;
   onTransfer: (id: string, destination: Branch, attachments?: { itdrUrl?: string | string[] }) => void;
   onSale: (
@@ -44,7 +46,8 @@ interface MasterViewProps {
     itdr?: string[],
     rsa?: string[],
     orcr?: string[],
-    downpayment?: number
+    downpayment?: number,
+    isDownpayment?: boolean
   ) => void;
   onCancelSale: (id: string) => void;
   onDeliver: (id: string, itdr?: string | string[], rsa?: string | string[], orcr?: string | string[]) => void;
@@ -64,16 +67,30 @@ interface MasterViewProps {
   onNavigateTo?: (tab: string, view?: string) => void;
   framerRecords?: FramerRecord[];
   returnRecords?: ReturnRecord[];
-  onAddInstallment?: (saleId: string, amount: number, date: string, reference?: string) => void;
-  onEditPayment?: (saleId: string, paymentId: string, updates: { amount: number; date?: string; reference?: string }) => void;
+  onAddInstallment?: (saleId: string, amount: number, date: string, reference?: string, attachments?: string[]) => void;
+  onEditPayment?: (saleId: string, paymentId: string, updates: { amount: number; date?: string; reference?: string; attachmentUrls?: string[] }) => void;
   onApprovePaymentEdit?: (saleId: string, paymentId: string) => void;
   onDeclinePaymentEdit?: (saleId: string, paymentId: string) => void;
+  transferRequests?: TransferRequest[];
+  onAcceptTransfer?: (request: TransferRequest) => void;
+  onDeclineTransfer?: (request: TransferRequest) => void;
+  onHoldTransfer?: (request: TransferRequest) => void;
 }
 
 const MasterView: React.FC<MasterViewProps> = ({
-  artwork, branches, logs, sale, userRole, userPermissions, onTransfer, onSale, onCancelSale, onDeliver, onReturn, onReturnToGallery, onSendToFramer, onReturnFromFramer, onEdit, onBack, events = [], onReserve, onReservationComplete, onCancelReservation, onDelete, onAddToAuction, onNavigateTo,
-  framerRecords = [], returnRecords = [], onAddInstallment, onEditPayment, onApprovePaymentEdit, onDeclinePaymentEdit
+  artwork, branches, logs, sale, userRole, userBranch, userPermissions, onTransfer, onSale, onCancelSale, onDeliver, onReturn, onReturnToGallery, onSendToFramer, onReturnFromFramer, onEdit, onBack, events = [], onReserve, onReservationComplete, onCancelReservation, onDelete, onAddToAuction, onNavigateTo,
+  framerRecords = [], returnRecords = [], onAddInstallment, onEditPayment, onApprovePaymentEdit, onDeclinePaymentEdit,
+  transferRequests = [], onAcceptTransfer, onDeclineTransfer, onHoldTransfer
 }) => {
+  const pendingTransferRequest = useMemo(() => {
+    return transferRequests.find(r => String(r.artworkId) === String(artwork.id) && r.status === 'Pending');
+  }, [transferRequests, artwork.id]);
+
+  const canApproveTransfer = useMemo(() => {
+    if (!pendingTransferRequest) return false;
+    if (userRole === UserRole.ADMIN) return true;
+    return userBranch === pendingTransferRequest.toBranch;
+  }, [pendingTransferRequest, userRole, userBranch]);
   const [modalMode, setModalMode] = useState<'transfer' | 'sale' | 'reserve' | 'certificate' | 'edit' | 'attach-unified' | 'return' | 'framer' | 'framer-return' | 'retouch-return' | 'auction' | 'delivery-attach' | 'none' | 'installment' | 'edit-payment'>('none');
   const [editingPayment, setEditingPayment] = useState<{ id: string; amount: string; date: string; reference: string; type: 'downpayment' | 'installment' } | null>(null);
   const [optimisticArtwork, setOptimisticArtwork] = useState<Artwork | null>(null);
@@ -132,6 +149,7 @@ const MasterView: React.FC<MasterViewProps> = ({
   const [clientEmail, setClientEmail] = useState('');
   const [clientContact, setClientContact] = useState('');
   const [saleDownpayment, setSaleDownpayment] = useState('');
+  const [isDownpayment, setIsDownpayment] = useState(false);
   const [saleEventId, setSaleEventId] = useState('');
   const [saleDelivered, setSaleDelivered] = useState(false);
   const [saleAttachment, setSaleAttachment] = useState<string>('');
@@ -156,6 +174,7 @@ const MasterView: React.FC<MasterViewProps> = ({
   const [installmentAmount, setInstallmentAmount] = useState('');
   const [installmentDate, setInstallmentDate] = useState(new Date().toISOString().slice(0, 10));
   const [installmentReference, setInstallmentReference] = useState('');
+  const [installmentAttachments, setInstallmentAttachments] = useState<string[]>([]);
 
   // Reservation States
   const [reserveType, setReserveType] = useState<'Person' | 'Event' | 'Auction'>('Person');
@@ -226,7 +245,7 @@ const MasterView: React.FC<MasterViewProps> = ({
     setFramerAttachment([]);
   };
   const [itdrUrl, setItdrUrl] = useState<string[]>(parseAttachmentString(artwork.itdrImageUrl));
-  const [timelineView, setTimelineView] = useState<'activity' | 'transfers'>('activity');
+  const [timelineView, setTimelineView] = useState<'activity' | 'transfers' | 'payments'>('activity');
   const [showItdrPreview, setShowItdrPreview] = useState(false);
   const [showRsaPreview, setShowRsaPreview] = useState(false);
   const [showOrCrPreview, setShowOrCrPreview] = useState(false);
@@ -562,152 +581,225 @@ const MasterView: React.FC<MasterViewProps> = ({
                 {artwork.sizeFrame && (
                   <div><p className="text-xs font-bold text-neutral-400 uppercase tracking-wider mb-1">Size with Frame</p><p className="text-neutral-700 font-medium break-words">{artwork.sizeFrame}</p></div>
                 )}
-                <div>
-                  <p className="text-xs font-bold text-neutral-400 uppercase tracking-wider mb-1">Valuation</p>
-                  <p className="text-neutral-900 font-bold">₱{(artwork.price || 0).toLocaleString()}</p>
+                <div><p className="text-xs font-bold text-neutral-400 uppercase tracking-wider mb-1">Location</p><p className="text-neutral-700 font-medium">{displayBranch}</p></div>
+
+                {/* Financial Section */}
+                <div className="col-span-2 pt-6 mt-2 border-t border-neutral-100 space-y-6">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div>
+                      <p className="text-[10px] font-black text-neutral-400 uppercase tracking-widest mb-1">Base Valuation</p>
+                      <p className="text-2xl font-black text-neutral-900 leading-none">₱{(artwork.price || 0).toLocaleString()}</p>
+                    </div>
+                    {(() => {
+                      const balance = (artwork.price || 0) -
+                        (sale?.downpayment || 0) -
+                        (sale?.installments || []).filter(i => !i.isPending).reduce((sum, inst) => sum + inst.amount, 0);
+                       
+                       const isFullyPaid = balance <= 0 && !!sale;
+                       const showBalance = sale && !sale.isCancelled && (sale.isDownpayment || sale.status === 'Approved');
+
+                       if (!sale || sale.isCancelled || displayStatus === ArtworkStatus.AVAILABLE || !showBalance) return null;
+
+                      return (
+                        <div className={`px-4 py-3 rounded-xl border ${isFullyPaid ? 'bg-emerald-50 border-emerald-100' : 'bg-red-50 border-red-100'} flex flex-col items-end shrink-0`}>
+                          <p className={`text-[10px] font-black uppercase tracking-widest mb-1 ${isFullyPaid ? 'text-emerald-600' : 'text-red-600'}`}>
+                            {isFullyPaid ? 'Status: Fully Paid' : 'Outstanding Balance'}
+                          </p>
+                          <p className={`text-xl font-black leading-none ${isFullyPaid ? 'text-emerald-700' : 'text-red-700'}`}>
+                            ₱{balance.toLocaleString()}
+                          </p>
+                        </div>
+                      );
+                    })()}
+                  </div>
+
                   {sale?.downpayment && !sale.isCancelled && displayStatus !== ArtworkStatus.AVAILABLE && (
-                    <div className="mt-3 space-y-2 p-3 bg-red-50/50 rounded-sm border border-red-100">
-                      <div className="flex justify-between items-center group/dp">
-                        <p className="text-[10px] font-black text-red-600 uppercase tracking-widest">Downpayment</p>
-                        <div className="flex items-center gap-2">
-                          {sale.pendingDownpaymentEdit && (
-                            <span className="text-[9px] bg-orange-100 text-orange-600 px-1.5 py-0.5 rounded-sm font-bold animate-pulse">Pending Approval</span>
-                          )}
-                          <p className="text-sm font-black text-red-700">₱{(sale.downpayment || 0).toLocaleString()}</p>
-                          {onEditPayment && (
-                            <button
-                              onClick={() => {
-                                setEditingPayment({
-                                  id: 'downpayment',
-                                  amount: (sale.downpayment || 0).toString(),
-                                  date: sale.saleDate,
-                                  reference: 'Downpayment',
-                                  type: 'downpayment'
-                                });
-                                setModalMode('edit-payment');
-                              }}
-                              className="p-1 hover:bg-red-100 rounded-md text-red-400 hover:text-red-600 transition-all opacity-0 group-hover/dp:opacity-100"
-                            >
-                              <Edit size={12} />
-                            </button>
-                          )}
-                        </div>
+                    <div className="bg-white rounded-2xl border border-neutral-100 shadow-sm overflow-hidden">
+                      <div className="p-4 bg-neutral-50/50 border-b border-neutral-100 flex items-center justify-between">
+                        <h4 className="text-xs font-black text-neutral-900 uppercase tracking-widest">Payment Ledger</h4>
+                        <span className="text-[10px] font-bold text-neutral-400">{sale.installments?.length || 0} Installments recorded</span>
                       </div>
-
-                      {userRole === UserRole.ADMIN && sale.pendingDownpaymentEdit && (
-                        <div className="mt-2 p-2 bg-orange-50 rounded-sm border border-orange-100 flex items-center justify-between">
-                          <div>
-                            <p className="text-[9px] font-bold text-orange-400 uppercase tracking-tighter">Proposed Change</p>
-                            <p className="text-xs font-black text-orange-700">₱{sale.pendingDownpaymentEdit.amount.toLocaleString()}</p>
+                      
+                      <div className="divide-y divide-neutral-50">
+                        {/* Downpayment Row */}
+                        <div className="p-4 flex items-center justify-between group/dp hover:bg-neutral-50 transition-colors">
+                          <div className="flex items-center gap-4">
+                            <div className="w-10 h-10 rounded-full bg-indigo-50 flex items-center justify-center text-indigo-600 shrink-0">
+                              <Tag size={16} />
+                            </div>
+                            <div>
+                              <p className="text-[10px] font-black text-indigo-600 uppercase tracking-widest">Initial Downpayment</p>
+                              <p className="text-xs font-bold text-neutral-400">{new Date(sale.saleDate).toLocaleDateString()}</p>
+                            </div>
                           </div>
-                          <div className="flex gap-1">
-                            <button onClick={() => onApprovePaymentEdit?.(sale.id, 'downpayment')} className="px-2 py-1 bg-emerald-500 text-white text-[9px] font-bold rounded-sm">Approve</button>
-                            <button onClick={() => onDeclinePaymentEdit?.(sale.id, 'downpayment')} className="px-2 py-1 bg-red-500 text-white text-[9px] font-bold rounded-sm">Decline</button>
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Installments History */}
-                      {sale.installments && sale.installments.length > 0 && (
-                        <div className="pt-2 mt-2 border-t border-red-100 space-y-2">
-                          <p className="text-[10px] font-black text-neutral-400 uppercase tracking-widest mb-1">Payment History</p>
-                          {sale.installments.map((inst, i) => (
-                            <div key={inst.id} className="space-y-1">
-                              <div className={`flex justify-between items-center text-[11px] group/inst p-2 rounded-sm ${inst.isPending ? 'bg-red-50 border border-red-100' : ''}`}>
-                                <div className="flex items-center gap-2">
-                                  <span className={`${inst.isPending ? 'text-red-600' : 'text-neutral-500'} font-bold`}>{new Date(inst.date).toLocaleDateString()}</span>
-                                  {inst.pendingEdit && (
-                                    <span className="text-[8px] bg-orange-100 text-orange-600 px-1 py-0.5 rounded-sm font-bold">Pending Edit</span>
-                                  )}
-                                  {inst.isPending && (
-                                    <span className="text-[8px] bg-red-100 text-red-600 px-1 py-0.5 rounded-sm font-bold animate-pulse">Pending Overpayment Approval</span>
-                                  )}
-                                </div>
-                                <div className="flex items-center gap-2">
-                                  <span className={`${inst.isPending ? 'text-red-700' : 'text-neutral-900'} font-black`}>₱{inst.amount.toLocaleString()}</span>
-                                  {onEditPayment && !inst.isPending && (
-                                    <button
-                                      onClick={() => {
-                                        setEditingPayment({
-                                          id: inst.id,
-                                          amount: inst.amount.toString(),
-                                          date: inst.date.split('T')[0],
-                                          reference: inst.reference || '',
-                                          type: 'installment'
-                                        });
-                                        setModalMode('edit-payment');
-                                      }}
-                                      className="p-1 hover:bg-red-100 rounded-md text-red-400 hover:text-red-600 transition-all opacity-0 group-hover/inst:opacity-100"
-                                    >
-                                      <Edit size={12} />
-                                    </button>
-                                  )}
-                                </div>
-                              </div>
-                              {inst.isPending && (
-                                <div className="flex items-center gap-2 px-2 py-1 bg-red-100/50 rounded-b-sm border-x border-b border-red-100">
-                                  <AlertCircle size={10} className="text-red-600 flex-shrink-0" />
-                                  <p className="text-[9px] font-black text-red-700 leading-tight uppercase">
-                                    needs approval from the admin, payment is higher than the original price.
-                                  </p>
-                                </div>
-                              )}
-                              {userRole === UserRole.ADMIN && inst.pendingEdit && (
-                                <div className="p-2 bg-orange-50 rounded-sm border border-orange-100 flex items-center justify-between">
-                                  <div>
-                                    <p className="text-[8px] font-bold text-orange-400 uppercase tracking-tighter">Proposed Change</p>
-                                    <p className="text-[11px] font-black text-orange-700">₱{inst.pendingEdit.amount.toLocaleString()}</p>
-                                    <p className="text-[9px] text-orange-600 font-medium">{new Date(inst.pendingEdit.date).toLocaleDateString()} - {inst.pendingEdit.reference}</p>
-                                  </div>
-                                  <div className="flex gap-1">
-                                    <button onClick={() => onApprovePaymentEdit?.(sale.id, inst.id)} className="px-1.5 py-0.5 bg-emerald-500 text-white text-[8px] font-bold rounded-sm">Approve</button>
-                                    <button onClick={() => onDeclinePaymentEdit?.(sale.id, inst.id)} className="px-1.5 py-0.5 bg-red-500 text-white text-[8px] font-bold rounded-sm">Decline</button>
-                                  </div>
-                                </div>
-                              )}
-                              {userRole === UserRole.ADMIN && inst.isPending && (
-                                <div className="p-2 bg-red-50 rounded-sm border border-red-100 flex items-center justify-between mt-1">
-                                  <div>
-                                    <p className="text-[8px] font-black text-red-400 uppercase tracking-tighter">New Overpayment Request</p>
-                                    <p className="text-[11px] font-black text-red-700">₱{inst.amount.toLocaleString()}</p>
-                                  </div>
-                                  <div className="flex gap-1">
-                                    <button onClick={() => onApprovePaymentEdit?.(sale.id, inst.id)} className="px-2 py-1 bg-emerald-500 text-white text-[9px] font-bold rounded-sm">Approve</button>
-                                    <button onClick={() => onDeclinePaymentEdit?.(sale.id, inst.id)} className="px-2 py-1 bg-red-500 text-white text-[9px] font-bold rounded-sm">Decline</button>
-                                  </div>
-                                </div>
+                          <div className="flex items-center gap-4">
+                            <div className="text-right">
+                              <p className="text-base font-black text-neutral-900">₱{(sale.downpayment || 0).toLocaleString()}</p>
+                              {sale.pendingDownpaymentEdit && (
+                                <span className="text-[9px] text-orange-500 font-black uppercase">Approval Pending</span>
                               )}
                             </div>
-                          ))}
-                        </div>
-                      )}
-
-                      {(() => {
-                        const balance = (artwork.price || 0) -
-                          (sale.downpayment || 0) -
-                          (sale.installments || []).filter(i => !i.isPending).reduce((sum, inst) => sum + inst.amount, 0);
-                        const isFullyPaid = balance <= 0;
-
-                        return (
-                          <div className={`pt-2 mt-2 border-t ${isFullyPaid ? 'border-emerald-200' : 'border-red-200'}`}>
-                            <p className={`text-[10px] font-black uppercase tracking-widest mb-1 ${isFullyPaid ? 'text-emerald-600' : 'text-red-600'}`}>
-                              {isFullyPaid ? 'Artwork Fully Paid' : 'Outstanding Balance'}
-                            </p>
-                            <p className={`text-lg font-black ${isFullyPaid ? 'text-emerald-700' : 'text-red-700'}`}>
-                              ₱{balance.toLocaleString()}
-                            </p>
-                            {isFullyPaid && (
-                              <div className="mt-2 py-1 bg-emerald-500 text-white text-[9px] font-black uppercase tracking-widest text-center rounded-sm shadow-sm">
-                                Payment Complete
-                              </div>
+                            {onEditPayment && (
+                              <button
+                                onClick={() => {
+                                  setEditingPayment({
+                                    id: 'downpayment',
+                                    amount: (sale.downpayment || 0).toString(),
+                                    date: sale.saleDate,
+                                    reference: 'Downpayment',
+                                    type: 'downpayment'
+                                  });
+                                  setModalMode('edit-payment');
+                                }}
+                                className="p-2 hover:bg-neutral-200 rounded-lg text-neutral-400 hover:text-neutral-900 transition-all opacity-0 group-hover/dp:opacity-100"
+                              >
+                                <Edit size={14} />
+                              </button>
                             )}
                           </div>
-                        );
-                      })()}
+                        </div>
+
+                        {/* Downpayment Admin Actions */}
+                        {userRole === UserRole.ADMIN && sale.pendingDownpaymentEdit && (
+                          <div className="bg-orange-50/50 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                            <div className="flex items-center gap-3">
+                              <AlertCircle size={16} className="text-orange-500" />
+                              <div>
+                                <p className="text-[10px] font-black text-orange-600 uppercase tracking-widest leading-none mb-1">Proposed Edit</p>
+                                <p className="text-sm font-black text-orange-900 leading-none">₱{sale.pendingDownpaymentEdit.amount.toLocaleString()}</p>
+                              </div>
+                            </div>
+                            <div className="flex gap-2">
+                              <button onClick={() => onApprovePaymentEdit?.(sale.id, 'downpayment')} className="flex-1 sm:flex-none px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-black uppercase tracking-widest rounded-xl transition-all shadow-sm">Approve</button>
+                              <button onClick={() => onDeclinePaymentEdit?.(sale.id, 'downpayment')} className="flex-1 sm:flex-none px-4 py-2 bg-white hover:bg-red-50 text-red-600 border border-red-100 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all">Decline</button>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Installments List */}
+                        {sale.installments?.map((inst) => (
+                          <React.Fragment key={inst.id}>
+                            <div className={`p-4 flex items-center justify-between group/inst hover:bg-neutral-50 transition-colors ${inst.isPending ? 'bg-red-50/30' : ''}`}>
+                              <div className="flex items-center gap-4">
+                                <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${inst.isPending ? 'bg-red-100 text-red-600' : 'bg-neutral-100 text-neutral-500'}`}>
+                                  <Calendar size={16} />
+                                </div>
+                                <div>
+                                  <p className={`text-[10px] font-black uppercase tracking-widest ${inst.isPending ? 'text-red-600' : 'text-neutral-500'}`}>
+                                    {inst.isPending ? 'Pending Installment' : 'Payment Received'}
+                                  </p>
+                                  <p className="text-xs font-bold text-neutral-400">{new Date(inst.date).toLocaleDateString()}</p>
+                                  {inst.attachmentUrls && inst.attachmentUrls.length > 0 && (
+                                    <div className="flex gap-1.5 mt-2">
+                                      {inst.attachmentUrls.map((url, i) => (
+                                        <a key={i} href={url} target="_blank" rel="noopener noreferrer" className="w-8 h-8 rounded-md border border-neutral-200 overflow-hidden hover:scale-110 transition-transform bg-white shadow-sm shrink-0">
+                                          <img src={url} className="w-full h-full object-cover" alt="" />
+                                        </a>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-4">
+                                <div className="text-right">
+                                  <p className={`text-base font-black ${inst.isPending ? 'text-indigo-700' : 'text-neutral-900'}`}>
+                                    ₱{inst.amount.toLocaleString()}
+                                  </p>
+                                  {inst.pendingEdit && (
+                                    <span className="text-[9px] text-orange-500 font-black uppercase">Edit Pending</span>
+                                  )}
+                                </div>
+                                {onEditPayment && !inst.isPending && (
+                                  <button
+                                    onClick={() => {
+                                      setEditingPayment({
+                                        id: inst.id,
+                                        amount: inst.amount.toString(),
+                                        date: inst.date.split('T')[0],
+                                        reference: inst.reference || '',
+                                        type: 'installment'
+                                      });
+                                      setModalMode('edit-payment');
+                                    }}
+                                    className="p-2 hover:bg-neutral-200 rounded-lg text-neutral-400 hover:text-neutral-900 transition-all opacity-0 group-hover/inst:opacity-100"
+                                  >
+                                    <Edit size={14} />
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Approval Alert */}
+                            {inst.isPending && (
+                              <div className="bg-indigo-50 p-4 border-l-4 border-indigo-500 flex items-center gap-4">
+                                <Shield size={20} className="text-indigo-500 shrink-0" />
+                                <div>
+                                  <p className="text-[10px] font-black text-indigo-600 uppercase tracking-widest mb-1">Administrative Approval Required</p>
+                                  <p className="text-xs font-bold text-indigo-800 leading-tight">
+                                    Payment of ₱{inst.amount.toLocaleString()} has been recorded and is currently awaiting admin confirmation.
+                                  </p>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Installment Admin Actions */}
+                             {userRole === UserRole.ADMIN && (inst.pendingEdit || inst.isPending) && (() => {
+                               const approvedTotal = (sale?.downpayment || 0) + 
+                                 (sale?.installments || []).filter(i => !i.isPending).reduce((sum, i) => sum + i.amount, 0);
+                               const isOver = inst.isPending && (approvedTotal + inst.amount) > (artwork.price || 0) + 0.01;
+                               const theme = isOver ? { bg: 'bg-red-50/50', border: 'border-red-100', text: 'text-red-600', accent: 'bg-red-100 text-red-600', darkText: 'text-red-900' } 
+                                            : inst.isPending ? { bg: 'bg-indigo-50/50', border: 'border-indigo-100', text: 'text-indigo-600', accent: 'bg-indigo-100 text-indigo-600', darkText: 'text-indigo-900' }
+                                            : { bg: 'bg-orange-50/50', border: 'border-orange-100', text: 'text-orange-600', accent: 'bg-orange-100 text-orange-600', darkText: 'text-orange-900' };
+
+                               return (
+                                 <div className={`p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-t ${theme.bg} ${theme.border}`}>
+                                   <div className="flex items-center gap-3">
+                                     <div className={`p-2 rounded-lg ${theme.accent}`}>
+                                       {inst.isPending ? <Shield size={16} /> : <Edit size={16} />}
+                                     </div>
+                                     <div>
+                                       <p className={`text-[10px] font-black uppercase tracking-widest leading-none mb-1 ${theme.text}`}>
+                                         {isOver ? 'Overpayment Detected' : inst.isPending ? 'Approval Required' : 'Proposed Modification'}
+                                       </p>
+                                       <p className={`text-base font-black leading-none ${theme.darkText}`}>
+                                         ₱{(inst.pendingEdit?.amount || inst.amount).toLocaleString()}
+                                       </p>
+                                     </div>
+                                   </div>
+                                <div className="flex gap-2">
+                                  <button 
+                                    onClick={() => onApprovePaymentEdit?.(sale.id, inst.id)} 
+                                    className={`flex-1 sm:flex-none px-6 py-2.5 text-white text-[10px] font-black uppercase tracking-widest rounded-xl transition-all shadow-sm ${inst.isPending ? 'bg-red-600 hover:bg-red-700' : 'bg-emerald-600 hover:bg-emerald-700'}`}
+                                  >
+                                    {(() => {
+                                      if (!inst.isPending) return 'Approve Edit';
+                                      const approvedTotal = (sale?.downpayment || 0) + 
+                                        (sale?.installments || []).filter(i => !i.isPending).reduce((sum, i) => sum + i.amount, 0);
+                                      const totalIncludingThis = approvedTotal + inst.amount;
+                                      const isOver = totalIncludingThis > (artwork.price || 0) + 0.01;
+                                      return isOver ? 'Approve Overpayment' : 'Approve Payment';
+                                    })()}
+                                  </button>
+                                  <button onClick={() => onDeclinePaymentEdit?.(sale.id, inst.id)} className="flex-1 sm:flex-none px-6 py-2.5 bg-white hover:bg-neutral-50 text-neutral-600 border border-neutral-200 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all">
+                                    Decline
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          })()}
+                          </React.Fragment>
+                        ))}
+                      </div>
+
+                      {/* Footer Message */}
+                      {sale.installments?.length === 0 && !sale.pendingDownpaymentEdit && (
+                        <div className="p-8 text-center bg-neutral-50/50">
+                          <p className="text-xs font-bold text-neutral-400 italic">No additional installments recorded for this sale.</p>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
-                <div><p className="text-xs font-bold text-neutral-400 uppercase tracking-wider mb-1">Location</p><p className="text-neutral-700 font-medium">{displayBranch}</p></div>
               </div>
 
               {/* Extra Details from Import */}
@@ -758,6 +850,7 @@ const MasterView: React.FC<MasterViewProps> = ({
                       <option value="Reservation">Reservations</option>
                       <option value="Transfer">Transfers</option>
                       <option value="Edit">Edits</option>
+                      <option value="Payment">Payments</option>
                     </select>
                     <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 pointer-events-none" />
                   </div>
@@ -777,6 +870,15 @@ const MasterView: React.FC<MasterViewProps> = ({
                   >
                     History Transfer
                   </button>
+                  {sale && (
+                    <button
+                      onClick={() => setTimelineView('payments')}
+                      className={`flex-1 sm:flex-none px-4 py-2 text-[11px] font-black uppercase tracking-widest rounded-sm transition-all transform duration-200 ${timelineView === 'payments' ? 'bg-white text-neutral-900 shadow-md scale-105' : 'text-neutral-400 hover:text-neutral-600'
+                        }`}
+                    >
+                      Payments
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
@@ -791,15 +893,22 @@ const MasterView: React.FC<MasterViewProps> = ({
                     }}
                     className="relative pl-8 pb-6 last:pb-0 border-l-2 border-neutral-100 group hover:bg-neutral-50 cursor-pointer rounded-r-md transition-all duration-200 pr-4"
                   >
-                    <div className={`absolute -left-[9px] top-0 w-4 h-4 rounded-sm border-2 border-white shadow-sm transition-transform group-hover:scale-110 ${(log.action.includes('Sale') || log.action.includes('Sold')) ? 'bg-red-600' :
-                      log.action.includes('Delivered') ? 'bg-indigo-500' :
-                        log.action.includes('Transfer') ? 'bg-emerald-500' :
-                          log.action.includes('Reserved') ? 'bg-amber-500' :
-                            log.action.includes('Cancelled') ? 'bg-neutral-500' : 'bg-blue-500'
-                      }`}></div>
+                    <div className={`absolute -left-[9px] top-0 w-4 h-4 rounded-sm border-2 border-white shadow-sm transition-transform group-hover:scale-110 ${
+                      (log.action.includes('Sale') || log.action.includes('Sold') || log.action.includes('Declined')) ? 'bg-red-600' :
+                      (log.action.includes('Delivered') || log.action.includes('Accepted') || log.action.includes('Approved')) ? 'bg-emerald-500' :
+                      log.action.includes('Transfer') ? 'bg-indigo-500' :
+                      log.action.includes('Reserved') ? 'bg-amber-500' :
+                      log.action.includes('Submitted') ? 'bg-amber-400' :
+                      log.action.includes('Cancelled') ? 'bg-neutral-500' : 'bg-blue-500'
+                    }`}></div>
                     <div>
                       <div className="flex items-center justify-between mb-1">
-                        <p className={`text-sm font-bold transition-colors ${(log.action.includes('Sale') || log.action.includes('Sold')) ? 'text-red-600 group-hover:text-red-700' : 'text-neutral-900 group-hover:text-neutral-600'}`}>{log.action}</p>
+                        <p className={`text-sm font-bold transition-colors ${
+                          (log.action.includes('Sale') || log.action.includes('Sold') || log.action.includes('Declined')) ? 'text-red-600 group-hover:text-red-700' : 
+                          (log.action.includes('Delivered') || log.action.includes('Accepted') || log.action.includes('Approved')) ? 'text-emerald-600 group-hover:text-emerald-700' :
+                          log.action.includes('Submitted') ? 'text-amber-600 group-hover:text-amber-700' :
+                          'text-neutral-900 group-hover:text-neutral-600'
+                        }`}>{log.action}</p>
                         <time className="text-[10px] text-neutral-400 font-medium">{new Date(log.timestamp).toLocaleString()}</time>
                       </div>
                       <p className="text-xs text-neutral-500 leading-relaxed line-clamp-2">{log.details || 'System event recorded'}</p>
@@ -840,12 +949,128 @@ const MasterView: React.FC<MasterViewProps> = ({
                 </div>
               </div>
             )}
+            {timelineView === 'payments' && sale && (
+              <div className="space-y-6">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="p-4 bg-emerald-50 border border-emerald-100 rounded-xl">
+                    <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest mb-1">Total Paid</p>
+                    <p className="text-xl font-black text-emerald-700">
+                      ₱{((sale.downpayment || 0) + (sale.installments || []).filter(i => !i.isPending).reduce((sum, i) => sum + i.amount, 0)).toLocaleString()}
+                    </p>
+                  </div>
+                  <div className="p-4 bg-indigo-50 border border-indigo-100 rounded-xl">
+                    <p className="text-[10px] font-black text-indigo-600 uppercase tracking-widest mb-1">Remaining Balance</p>
+                    <p className="text-xl font-black text-indigo-700">
+                      ₱{Math.max(0, (artwork.price || 0) - (sale.downpayment || 0) - (sale.installments || []).filter(i => !i.isPending).reduce((sum, i) => sum + i.amount, 0)).toLocaleString()}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="bg-white rounded-xl border border-neutral-100 overflow-hidden">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="bg-neutral-50/50 border-b border-neutral-100">
+                        <th className="px-4 py-2 text-[8px] font-black text-neutral-400 uppercase tracking-widest">Date</th>
+                        <th className="px-4 py-2 text-[8px] font-black text-neutral-400 uppercase tracking-widest">Type</th>
+                        <th className="px-4 py-2 text-[8px] font-black text-neutral-400 uppercase tracking-widest text-right">Amount</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-neutral-50">
+                      <tr className="hover:bg-neutral-50/30 transition-colors">
+                        <td className="px-4 py-3 text-[11px] font-bold text-neutral-600">{new Date(sale.saleDate).toLocaleDateString()}</td>
+                        <td className="px-4 py-3">
+                          <span className="px-2 py-0.5 rounded bg-indigo-100 text-indigo-700 text-[8px] font-black uppercase tracking-tight">Downpayment</span>
+                        </td>
+                        <td className="px-4 py-3 text-right text-xs font-black text-neutral-900">₱{sale.downpayment?.toLocaleString()}</td>
+                      </tr>
+                      {(sale.installments || []).filter(i => !i.isPending).sort((a, b) => new Date(b.createdAt || '').getTime() - new Date(a.createdAt || '').getTime()).map((inst) => (
+                        <tr key={inst.id} className="hover:bg-neutral-50/30 transition-colors">
+                          <td className="px-4 py-3 text-[11px] font-bold text-neutral-600">{new Date(inst.createdAt || '').toLocaleDateString()}</td>
+                          <td className="px-4 py-3">
+                            <span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-700 text-[8px] font-black uppercase tracking-tight">Installment</span>
+                          </td>
+                          <td className="px-4 py-3 text-right text-xs font-black text-neutral-900">₱{inst.amount.toLocaleString()}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
         <div className="space-y-8">
           <div className="bg-white p-4 sm:p-6 rounded-md border border-neutral-200 shadow-sm sticky top-8 max-h-[calc(100vh-2rem)] overflow-y-auto custom-scrollbar">
             <h3 className="text-lg font-bold text-neutral-900 mb-6">Operations Panel</h3>
+
+            {/* Pending Transfer Approval */}
+            {canApproveTransfer && pendingTransferRequest && (
+              <div className="mb-6 bg-indigo-50 border border-indigo-100 rounded-xl p-4 space-y-3 animate-in fade-in slide-in-from-top-2 duration-300">
+                <div className="flex items-center gap-2 text-indigo-600">
+                  <Shield size={18} />
+                  <h4 className="text-[10px] font-black uppercase tracking-widest">Transfer Approval Required</h4>
+                </div>
+                <div className="space-y-3">
+                  <div className="space-y-1">
+                    <p className="text-[10px] font-bold text-indigo-400 uppercase tracking-tight">Request Details</p>
+                    <p className="text-xs font-medium text-indigo-900 leading-tight">
+                      Request to transfer to <span className="font-black underline">{pendingTransferRequest.toBranch}</span> by {pendingTransferRequest.requestedBy}.
+                    </p>
+                  </div>
+                  
+                  {pendingTransferRequest.notes && (
+                    <div className="bg-white/50 p-2 rounded-lg border border-indigo-100/50">
+                       <p className="text-[9px] font-black text-indigo-400 uppercase tracking-widest mb-1">Notes</p>
+                       <p className="text-xs italic text-indigo-800 leading-relaxed font-medium">"{pendingTransferRequest.notes}"</p>
+                    </div>
+                  )}
+                  
+                  {pendingTransferRequest.itdrUrl && (
+                    <div className="space-y-2">
+                       <p className="text-[9px] font-black text-indigo-400 uppercase tracking-widest">Verification Documents</p>
+                       <div className="flex flex-wrap gap-2">
+                        {(Array.isArray(pendingTransferRequest.itdrUrl) ? pendingTransferRequest.itdrUrl : [pendingTransferRequest.itdrUrl]).map((url, i) => (
+                          <a 
+                            key={i} 
+                            href={url} 
+                            target="_blank" 
+                            rel="noopener noreferrer" 
+                            className="inline-flex items-center gap-2 px-3 py-1.5 bg-white border border-indigo-200 rounded-md text-[10px] font-bold text-indigo-600 hover:bg-indigo-50 hover:border-indigo-300 transition-all shadow-sm"
+                          >
+                             <Paperclip size={12} className="text-indigo-400" /> 
+                             IT/DR {Array.isArray(pendingTransferRequest.itdrUrl) && pendingTransferRequest.itdrUrl.length > 1 ? i + 1 : ''}
+                          </a>
+                        ))}
+                       </div>
+                    </div>
+                  )}
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => wrapAction(() => onAcceptTransfer?.(pendingTransferRequest), 'Accepting Transfer...')}
+                    className="flex-1 py-2 bg-[#0f172a] text-white text-[10px] font-black uppercase tracking-widest rounded-sm transition-all shadow-[0_4px_12px_rgba(15,23,42,0.15)] active:scale-95 flex items-center justify-center gap-2"
+                  >
+                    <CheckCircle size={12} />
+                    Accept
+                  </button>
+                  <button
+                    onClick={() => wrapAction(() => onHoldTransfer?.(pendingTransferRequest), 'Holding Transfer...')}
+                    className="flex-1 py-2 bg-neutral-100 text-neutral-600 border border-neutral-200 text-[10px] font-black uppercase tracking-widest rounded-sm transition-all active:scale-95 flex items-center justify-center gap-2"
+                  >
+                    <Clock size={12} />
+                    Hold
+                  </button>
+                  <button
+                    onClick={() => wrapAction(() => onDeclineTransfer?.(pendingTransferRequest), 'Declining Transfer...')}
+                    className="flex-1 py-2 bg-white text-red-600 border border-red-100 text-[10px] font-black uppercase tracking-widest rounded-sm transition-all hover:bg-red-50 active:scale-95 flex items-center justify-center gap-2"
+                  >
+                    <XCircle size={12} />
+                    Decline
+                  </button>
+                </div>
+              </div>
+            )}
 
             {/* Declined Sale Notice */}
             {sale?.status === 'Declined' && sale.requestedAttachments && sale.requestedAttachments.length > 0 && (
@@ -898,7 +1123,7 @@ const MasterView: React.FC<MasterViewProps> = ({
                 <ActionButton
                   label="Transfer to Branch"
                   icon={ICONS.Transfers}
-                  disabled={isStatusTransitioning || !(displayStatus === ArtworkStatus.AVAILABLE || displayStatus === ArtworkStatus.EXCLUSIVE_VIEW_ONLY)}
+                  disabled={isStatusTransitioning || !!pendingTransferRequest || !(displayStatus === ArtworkStatus.AVAILABLE || displayStatus === ArtworkStatus.EXCLUSIVE_VIEW_ONLY)}
                   onClick={() => setModalMode('transfer')}
                 />
               )}
@@ -2724,47 +2949,102 @@ const MasterView: React.FC<MasterViewProps> = ({
                 </div>
               </div>
 
+              {/* Attachment Section */}
+              <div className="space-y-3 pt-2">
+                <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest flex items-center justify-between">
+                  <span>Payment Proof / Attachment <span className="text-red-500">*</span></span>
+                  <span className="text-neutral-300 normal-case font-medium">{installmentAttachments.length} Attached</span>
+                </label>
+
+                <div className="grid grid-cols-2 gap-3">
+                  {installmentAttachments.map((url, idx) => (
+                    <div key={idx} className="relative group aspect-video rounded-md overflow-hidden border border-neutral-200 shadow-sm bg-neutral-50">
+                      <img src={url} className="w-full h-full object-cover" alt={`Proof ${idx + 1}`} />
+                      <div className="absolute inset-0 bg-neutral-900/60 opacity-0 group-hover:opacity-100 transition-all flex items-center justify-center backdrop-blur-[1px]">
+                        <button
+                          onClick={() => setInstallmentAttachments(prev => prev.filter((_, i) => i !== idx))}
+                          className="p-2 bg-white text-red-600 rounded-full shadow-lg hover:scale-110 transition-transform"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+
+                  <label className="relative flex flex-col items-center justify-center aspect-video bg-neutral-50 border-2 border-dashed border-neutral-200 rounded-md cursor-pointer hover:bg-white hover:border-neutral-300 hover:shadow-md transition-all group">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      className="hidden"
+                      onChange={async (e) => {
+                        const files = Array.from(e.target.files || []);
+                        if (files.length === 0) return;
+
+                        try {
+                          const compressed = await Promise.all(
+                            files.map(file => compressImage(file, 1200, 1200, 0.7))
+                          );
+                          setInstallmentAttachments(prev => [...prev, ...compressed]);
+                        } catch (err) {
+                          console.error('Batch upload failed:', err);
+                        } finally {
+                          e.target.value = '';
+                        }
+                      }}
+                    />
+                    <div className="flex flex-col items-center">
+                      <Plus size={20} className="text-neutral-400 group-hover:text-neutral-700 transition-colors mb-1" />
+                      <span className="text-[10px] font-bold text-neutral-400 group-hover:text-neutral-900 uppercase tracking-tight">Add Proof</span>
+                    </div>
+                  </label>
+                </div>
+              </div>
+
               {parseFloat(installmentAmount) > ((artwork.price || 0) - (sale.downpayment || 0) - (sale.installments || []).reduce((sum, inst) => sum + inst.amount, 0)) + 0.01 && (
                 <div className="p-3 bg-red-50 border border-red-100 rounded-sm flex items-start gap-2">
                   <AlertCircle size={16} className="text-red-500 mt-0.5 flex-shrink-0" />
                   <p className="text-xs font-bold text-red-600">
-                    needs approval from the admin, payment is higher than the original price.
+                    payment is higher than the outstanding balance. admin approval is mandatory.
                   </p>
                 </div>
               )}
+              
+              <div className="p-3 bg-indigo-50 border border-indigo-100 rounded-sm flex items-start gap-2">
+                <Shield size={16} className="text-indigo-500 mt-0.5 flex-shrink-0" />
+                <p className="text-xs font-bold text-indigo-600 uppercase">
+                  All installments require admin confirmation. This will be sent to the Payment Approval tab.
+                </p>
+              </div>
             </div>
 
             <div className="flex justify-end space-x-3 pt-4 border-t border-neutral-100">
               <button
-                onClick={() => setModalMode('none')}
+                onClick={() => {
+                  setModalMode('none');
+                  setInstallmentAttachments([]);
+                }}
                 className="px-6 py-2.5 rounded-sm text-neutral-500 font-bold text-sm hover:bg-neutral-50 transition-all"
               >
                 Cancel
               </button>
               <button
-                disabled={!installmentAmount || parseFloat(installmentAmount) <= 0}
+                disabled={!installmentAmount || parseFloat(installmentAmount) <= 0 || installmentAttachments.length === 0}
                 onClick={() => {
                   const amt = parseFloat(installmentAmount);
-                  const totalPaid = (sale.downpayment || 0) + (sale.installments || []).reduce((sum, inst) => sum + inst.amount, 0);
-                  const balance = (artwork.price || 0) - totalPaid;
-                  const isOverpayment = amt > balance + 0.01;
-
                   if (onAddInstallment) {
                     wrapAction(async () => {
-                      await onAddInstallment(sale.id, amt, installmentDate, installmentReference);
+                      await onAddInstallment(sale.id, amt, installmentDate, installmentReference, installmentAttachments);
                       setModalMode('none');
-                    }, isOverpayment ? 'Submitting Overpayment for Approval...' : 'Recording Payment...');
+                      setInstallmentAmount('');
+                      setInstallmentReference('');
+                      setInstallmentAttachments([]);
+                    }, 'Submitting for Admin Approval...');
                   }
                 }}
-                className={`px-8 py-2.5 rounded-sm font-black text-sm shadow-lg active:scale-95 transition-all ${(parseFloat(installmentAmount) > ((artwork.price || 0) - (sale.downpayment || 0) - (sale.installments || []).reduce((sum, inst) => sum + inst.amount, 0)) + 0.01)
-                    ? 'bg-red-600 text-white shadow-red-200'
-                    : 'bg-neutral-900 text-white shadow-neutral-200'
-                  } disabled:opacity-50`}
+                className="px-8 py-2.5 bg-neutral-900 text-white rounded-sm font-bold shadow-lg shadow-neutral-200 hover:shadow-neutral-400 hover:-translate-y-0.5 transition-all disabled:opacity-50"
               >
-                {parseFloat(installmentAmount) > ((artwork.price || 0) - (sale.downpayment || 0) - (sale.installments || []).reduce((sum, inst) => sum + inst.amount, 0)) + 0.01
-                  ? 'Submit for Approval'
-                  : 'Record Payment'
-                }
+                Submit for Approval
               </button>
             </div>
           </div>
@@ -2868,23 +3148,55 @@ const MasterView: React.FC<MasterViewProps> = ({
               <input type="text" placeholder="+63 912 345 6789" required className="w-full px-5 py-3 bg-neutral-50 border-0 rounded-sm text-sm font-bold text-neutral-700 focus:outline-none focus:ring-2 focus:ring-neutral-500/20 focus:bg-neutral-50 hover:bg-neutral-100 transition-all" value={clientContact} onChange={(e) => setClientContact(e.target.value)} />
             </div>
 
-            <div className="space-y-1">
-              <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">Downpayment (Optional)</label>
-              <input
-                type="text"
-                inputMode="numeric"
-                placeholder="0.00"
-                className="w-full px-5 py-3 bg-neutral-50 border-0 rounded-sm text-sm font-bold text-neutral-700 focus:outline-none focus:ring-2 focus:ring-neutral-500/20 focus:bg-neutral-50 hover:bg-neutral-100 transition-all"
-                value={saleDownpayment}
-                onFocus={(e) => e.target.select()}
-                onChange={(e) => {
-                  const val = e.target.value.replace(/[^0-9.]/g, '');
-                  const parts = val.split('.');
-                  if (parts.length > 2) parts.splice(2);
-                  if (parts[0] && parts[0].length > 1) parts[0] = parts[0].replace(/^0+/, '') || '0';
-                  setSaleDownpayment(parts.join('.'));
-                }}
-              />
+            <div className="space-y-3">
+              <div className="flex items-center justify-between p-4 bg-neutral-50 rounded-sm border border-neutral-100 group hover:bg-neutral-100 transition-all cursor-pointer" onClick={() => setIsDownpayment(!isDownpayment)}>
+                <div className="flex items-center gap-3">
+                  <div className={`w-10 h-10 rounded-sm flex items-center justify-center transition-all ${isDownpayment ? 'bg-neutral-900 text-white shadow-lg' : 'bg-white text-neutral-400 border border-neutral-200'}`}>
+                    <Clock size={20} />
+                  </div>
+                  <div>
+                    <p className="text-xs font-black uppercase tracking-widest text-neutral-900">Installment Sale</p>
+                    <p className="text-[10px] font-bold text-neutral-500">Enable downpayment & balance tracking</p>
+                  </div>
+                </div>
+                <div className={`w-12 h-6 rounded-md transition-all relative ${isDownpayment ? 'bg-neutral-900' : 'bg-neutral-200'}`}>
+                  <div className={`absolute top-1 w-4 h-4 rounded-sm bg-white transition-all ${isDownpayment ? 'right-1' : 'left-1'}`} />
+                </div>
+              </div>
+
+              {isDownpayment ? (
+                <div className="space-y-1 animate-in fade-in slide-in-from-top-2 duration-300">
+                  <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">Initial Downpayment Amount</label>
+                  <div className="relative">
+                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-neutral-400 font-bold text-sm">₱</span>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      placeholder="0.00"
+                      className="w-full pl-8 pr-5 py-3 bg-white border border-neutral-200 rounded-sm text-sm font-bold text-neutral-700 focus:outline-none focus:ring-2 focus:ring-neutral-500/20 focus:bg-neutral-50 transition-all"
+                      value={saleDownpayment}
+                      onFocus={(e) => e.target.select()}
+                      onChange={(e) => {
+                        const val = e.target.value.replace(/[^0-9.]/g, '');
+                        const parts = val.split('.');
+                        if (parts.length > 2) parts.splice(2);
+                        if (parts[0] && parts[0].length > 1) parts[0] = parts[0].replace(/^0+/, '') || '0';
+                        setSaleDownpayment(parts.join('.'));
+                      }}
+                    />
+                  </div>
+                </div>
+              ) : (
+                <div className="p-4 bg-indigo-50 border border-indigo-100 rounded-sm flex items-start gap-3">
+                  <Shield size={18} className="text-indigo-500 mt-0.5 flex-shrink-0" />
+                  <div className="space-y-1">
+                    <p className="text-[11px] font-black text-indigo-900 uppercase tracking-tight">Full Payment Mode</p>
+                    <p className="text-[10px] font-medium text-indigo-700 leading-relaxed">
+                      This sale will be treated as a single full payment. Outstanding balance metrics will be hidden until the sale is approved by admin.
+                    </p>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="space-y-1">
@@ -3035,14 +3347,15 @@ const MasterView: React.FC<MasterViewProps> = ({
                   if (clientName && clientContact && saleRsa.length > 0 && (!saleDelivered || saleItdr.length > 0)) wrapAction(async () => {
                     const selectedEvent = events.find(e => e.id === saleEventId);
                     const eventInfo = selectedEvent ? { id: selectedEvent.id, name: selectedEvent.title } : undefined;
-                    const downpaymentAmount = saleDownpayment ? parseFloat(saleDownpayment) : undefined;
-                    await onSale(artwork.id, clientName, clientEmail, clientContact, saleDelivered, eventInfo, saleAttachment, saleItdr.length > 0 ? saleItdr : undefined, saleRsa.length > 0 ? saleRsa : undefined, saleOrcr.length > 0 ? saleOrcr : undefined, downpaymentAmount);
+                    const downpaymentAmount = (isDownpayment && saleDownpayment) ? parseFloat(saleDownpayment) : undefined;
+                    await onSale(artwork.id, clientName, clientEmail, clientContact, saleDelivered, eventInfo, saleAttachment, saleItdr.length > 0 ? saleItdr : undefined, saleRsa.length > 0 ? saleRsa : undefined, saleOrcr.length > 0 ? saleOrcr : undefined, downpaymentAmount, isDownpayment);
                     setModalMode('none');
                     setSaleAttachment(''); // Reset attachment
                     setSaleItdr([]);
                     setSaleRsa([]);
                     setSaleOrcr([]);
                     setSaleDownpayment('');
+                    setIsDownpayment(false);
                     setSaleDelivered(false);
                     setClientName('');
                     setClientEmail('');

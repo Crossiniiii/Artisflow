@@ -387,7 +387,7 @@ export const useArtworkOperations = () => {
     return true;
   };
 
-  const handleSale = async (id: string, clientName: string, clientEmail: string, clientContact: string, delivered: boolean, eventInfo?: any, attachment?: string, itdr?: string[], rsa?: string[], orcr?: string[], downpayment?: number) => {
+  const handleSale = async (id: string, clientName: string, clientEmail: string, clientContact: string, delivered: boolean, eventInfo?: any, attachment?: string, itdr?: string[], rsa?: string[], orcr?: string[], downpayment?: number, isDownpayment?: boolean) => {
     const existingPendingSales = getPendingSalesForArtwork(id);
     if (existingPendingSales.length > 0) {
       pushNotification('Sale Already Pending', 'This artwork already has a sale waiting for approval.', 'system');
@@ -398,7 +398,7 @@ export const useArtworkOperations = () => {
     const previousArtwork = artworks.find(a => String(a.id) === String(id));
     const agentName = currentUser?.name || 'Unknown';
     const agentId = currentUser?.id;
-    const { updatedArtworks, newSale } = applySingleSale(artworks, id, clientName, clientEmail, clientContact, agentName, delivered, eventInfo, attachment, itdr, rsa, orcr, downpayment, agentId);
+    const { updatedArtworks, newSale } = applySingleSale(artworks, id, clientName, clientEmail, clientContact, agentName, delivered, eventInfo, attachment, itdr, rsa, orcr, downpayment, agentId, isDownpayment);
     if (!newSale) return;
     setSales(prev => [...prev, newSale]);
     setArtworks(updatedArtworks);
@@ -467,7 +467,8 @@ export const useArtworkOperations = () => {
     downpayment?: number,
     clientEmail?: string,
     clientContact?: string,
-    perArtworkDownpayments?: Record<string, number>
+    perArtworkDownpayments?: Record<string, number>,
+    isDownpayment?: boolean
   ) => {
     const duplicateIds = ids.filter(id => getPendingSalesForArtwork(id).length > 0);
     if (duplicateIds.length > 0) {
@@ -489,7 +490,8 @@ export const useArtworkOperations = () => {
       attachments,
       downpayment,
       agentId,
-      perArtworkDownpayments
+      perArtworkDownpayments,
+      isDownpayment
     );
     setArtworks(updatedArtworks);
     setAllArtworksIncludingDeleted(updatedArtworks);
@@ -655,7 +657,7 @@ export const useArtworkOperations = () => {
     }
   };
 
-  const handleAddInstallment = async (saleId: string, amount: number, date: string, reference?: string) => {
+  const handleAddInstallment = async (saleId: string, amount: number, date: string, reference?: string, attachments?: string[]) => {
     const sale = sales.find(s => s.id === saleId);
     if (!sale) return;
 
@@ -678,7 +680,8 @@ export const useArtworkOperations = () => {
         recordedBy: currentUser?.name || 'Unknown',
         reference,
         createdAt: new Date().toISOString(),
-        isPending: isOverpayment // Overpayments need approval
+        attachmentUrls: attachments || [],
+        isPending: true // All installments now need admin approval as requested
       };
 
       const updatedInstallments = [...(sale.installments || []), installment];
@@ -700,7 +703,7 @@ export const useArtworkOperations = () => {
       setImportStatus(prev => ({ ...prev, progress: { current: 100, total: 100 }, message: 'Payment recorded successfully!' }));
 
       // Audit Logging
-      logActivity(sale.artworkId, 'Payment Recorded', `₱${amount.toLocaleString()} payment received (Ref: ${reference || 'N/A'})`, findArtwork(sale.artworkId));
+      logActivity(sale.artworkId, 'Payment Submitted', `₱${amount.toLocaleString()} payment submitted for approval (Ref: ${reference || 'N/A'})`, findArtwork(sale.artworkId));
 
       setTimeout(() => setImportStatus({ isVisible: false }), 800);
       pushNotification('Payment Recorded', `₱${amount.toLocaleString()} has been added to the payment history for ${sale.clientName}.`, 'system');
@@ -714,13 +717,12 @@ export const useArtworkOperations = () => {
     }
   };
 
-  const handleEditPayment = async (saleId: string, paymentId: string, updates: { amount: number; date?: string; reference?: string }) => {
+  const handleEditPayment = async (saleId: string, paymentId: string, updates: { amount: number; date?: string; reference?: string; attachmentUrls?: string[] }) => {
     const sale = sales.find(s => s.id === saleId);
     if (!sale) return;
 
     const isDownpayment = paymentId === 'downpayment';
-    const createdAt = isDownpayment ? sale.downpaymentRecordedAt : sale.installments?.find(i => i.id === paymentId)?.createdAt;
-
+    const createdAt = isDownpayment ? sale.downpaymentRecordedAt : (sale.installments?.find(i => i.id === paymentId)?.createdAt);
     const isNew = createdAt && (new Date().getTime() - new Date(createdAt).getTime() < 24 * 60 * 60 * 1000);
     const isAdmin = userRole === UserRole.ADMIN;
 
@@ -738,7 +740,13 @@ export const useArtworkOperations = () => {
         updatedSale = { ...sale, downpayment: updates.amount };
       } else {
         const updatedInstallments = (sale.installments || []).map(i =>
-          i.id === paymentId ? { ...i, amount: updates.amount, date: updates.date || i.date, reference: updates.reference || i.reference } : i
+          i.id === paymentId ? { 
+            ...i, 
+            amount: updates.amount, 
+            date: updates.date || i.date, 
+            reference: updates.reference || i.reference,
+            attachmentUrls: updates.attachmentUrls || i.attachmentUrls
+          } : i
         );
         updatedSale = { ...sale, installments: updatedInstallments };
       }
@@ -746,11 +754,19 @@ export const useArtworkOperations = () => {
       setSales(prev => prev.map(s => s.id === saleId ? updatedSale : s));
       logActivity(sale.artworkId, 'Payment Edited', `Updated ${isDownpayment ? 'downpayment' : 'installment'} to ₱${updates.amount.toLocaleString()}`, findArtwork(sale.artworkId));
 
-      if (!IS_DEMO_MODE) {
-        await supabase.from('sales').update(mapToSnakeCase({
-          downpayment: updatedSale.downpayment,
-          installments: updatedSale.installments
-        })).eq('id', saleId);
+      try {
+        if (!IS_DEMO_MODE) {
+          const { error } = await supabase.from('sales').update(mapToSnakeCase({
+            downpayment: updatedSale.downpayment,
+            installments: updatedSale.installments
+          })).eq('id', saleId);
+
+          if (error) throw error;
+        }
+      } catch (error: any) {
+        alert(`Database Error (Edit Payment): ${error.message}`);
+        setSales(prev => prev.map(s => s.id === saleId ? sale : s)); // Revert
+        return;
       }
     } else {
       const previousSales = sales;
@@ -761,8 +777,9 @@ export const useArtworkOperations = () => {
         date: updates.date || '',
         reference: updates.reference || '',
         requestedAt: new Date().toISOString(),
-        requestedBy: currentUserName,
-        status: 'Pending' as const
+        requestedBy: currentUser?.name || 'Unknown',
+        status: 'Pending' as const,
+        attachmentUrls: updates.attachmentUrls
       };
 
       if (isDownpayment) {
@@ -777,11 +794,19 @@ export const useArtworkOperations = () => {
       setSales(prev => prev.map(s => s.id === saleId ? updatedSale : s));
       pushNotification('Edit Requested', 'Change submitted for admin approval.', 'system');
 
-      if (!IS_DEMO_MODE) {
-        await supabase.from('sales').update(mapToSnakeCase({
-          pendingDownpaymentEdit: updatedSale.pendingDownpaymentEdit,
-          installments: updatedSale.installments
-        })).eq('id', saleId);
+      try {
+        if (!IS_DEMO_MODE) {
+          const { error } = await supabase.from('sales').update(mapToSnakeCase({
+            pendingDownpaymentEdit: updatedSale.pendingDownpaymentEdit,
+            installments: updatedSale.installments
+          })).eq('id', saleId);
+
+          if (error) throw error;
+        }
+      } catch (error: any) {
+        alert(`Database Error (Request Payment Edit): ${error.message}`);
+        setSales(previousSales); // Revert to known good state
+        return;
       }
     }
   };
@@ -820,14 +845,28 @@ export const useArtworkOperations = () => {
     }
 
     setSales(prev => prev.map(s => s.id === saleId ? updatedSale : s));
-    logActivity(sale.artworkId, 'Payment Edit Approved', `Approved edit for ${isDownpayment ? 'downpayment' : 'installment'}`, findArtwork(sale.artworkId));
+    const installment = !isDownpayment ? (sale.installments || []).find(i => i.id === paymentId) : null;
+    const logType = (installment?.isPending) ? 'Payment Accepted' : 'Payment Edit Approved';
+    const logMsg = installment?.isPending 
+      ? `Approved ₱${installment.amount.toLocaleString()} payment`
+      : `Approved edit for ${isDownpayment ? 'downpayment' : 'installment'}`;
 
-    if (!IS_DEMO_MODE) {
-      await supabase.from('sales').update(mapToSnakeCase({
-        downpayment: updatedSale.downpayment,
-        pendingDownpaymentEdit: null,
-        installments: updatedSale.installments
-      })).eq('id', saleId);
+    logActivity(sale.artworkId, logType, logMsg, findArtwork(sale.artworkId));
+
+    try {
+      if (!IS_DEMO_MODE) {
+        const { error } = await supabase.from('sales').update(mapToSnakeCase({
+          downpayment: updatedSale.downpayment,
+          pendingDownpaymentEdit: null,
+          installments: updatedSale.installments
+        })).eq('id', saleId);
+
+        if (error) throw error;
+      }
+    } catch (error: any) {
+      alert(`Database Error (Approve Payment): ${error.message}`);
+      setSales(prev => prev.map(s => s.id === saleId ? sale : s)); // Revert
+      return;
     }
   };
 
@@ -842,23 +881,43 @@ export const useArtworkOperations = () => {
     if (isDownpayment) {
       updatedSale = { ...sale, pendingDownpaymentEdit: undefined };
     } else {
-      const updatedInstallments = (sale.installments || []).filter(i => {
-        if (i.id === paymentId && i.isPending) return false; // Remove pending new installment
-        return true;
-      }).map(i =>
-        i.id === paymentId ? { ...i, pendingEdit: undefined } : i
-      );
+      const updatedInstallments = (sale.installments || []).map(i => {
+        if (i.id === paymentId) {
+          if (i.isPending) {
+            // Mark new payment as declined instead of deleting
+            return { ...i, isPending: false, isDeclined: true, declinedAt: new Date().toISOString() };
+          }
+          // Clear edit request on existing payment
+          return { ...i, pendingEdit: undefined };
+        }
+        return i;
+      });
       updatedSale = { ...sale, installments: updatedInstallments };
     }
 
+    const installment = !isDownpayment ? (sale.installments || []).find(i => i.id === paymentId) : null;
+    const isNewPaymentDecline = installment?.isPending;
+    const logType = isNewPaymentDecline ? 'Payment Declined' : 'Payment Edit Declined';
+    const amount = isDownpayment ? (sale.pendingDownpaymentEdit?.amount || 0) : (installment?.pendingEdit?.amount || installment?.amount || 0);
+    const logMsg = `${isNewPaymentDecline ? 'Declined' : 'Declined edit for'} ₱${amount.toLocaleString()} ${isDownpayment ? 'downpayment' : 'installment'}`;
+
+    logActivity(sale.artworkId, logType, logMsg, findArtwork(sale.artworkId));
     setSales(prev => prev.map(s => s.id === saleId ? updatedSale : s));
     pushNotification('Edit Declined', 'Payment edit request has been declined.', 'system');
 
-    if (!IS_DEMO_MODE) {
-      await supabase.from('sales').update(mapToSnakeCase({
-        pendingDownpaymentEdit: null,
-        installments: updatedSale.installments
-      })).eq('id', saleId);
+    try {
+      if (!IS_DEMO_MODE) {
+        const { error } = await supabase.from('sales').update(mapToSnakeCase({
+          pendingDownpaymentEdit: null,
+          installments: updatedSale.installments
+        })).eq('id', saleId);
+
+        if (error) throw error;
+      }
+    } catch (error: any) {
+      alert(`Database Error (Decline Payment): ${error.message}`);
+      setSales(prev => prev.map(s => s.id === saleId ? sale : s)); // Revert
+      return;
     }
   };
 

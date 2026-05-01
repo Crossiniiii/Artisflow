@@ -3,7 +3,7 @@ import { supabase } from '../../supabase';
 import { UserAccount } from '../../types';
 import { IS_DEMO_MODE } from '../../constants';
 import { mapFromSnakeCase } from '../../utils/supabaseUtils';
-import { LOGIN_PROFILE_COLUMNS, PROFILE_COLUMNS } from './shared';
+import { LOGIN_PROFILE_COLUMNS, PROFILE_COLUMNS, getGlobalSyncChannel, subscribeGlobalSyncChannel, unsubscribeGlobalSyncChannel } from './shared';
 
 interface UseAccountsSyncParams {
   currentUser: UserAccount | null;
@@ -11,6 +11,7 @@ interface UseAccountsSyncParams {
   accounts: UserAccount[];
   setAccounts: Dispatch<SetStateAction<UserAccount[]>>;
   setIsLoadingUsers: Dispatch<SetStateAction<boolean>>;
+  handleSyncError: (error: any, context: string) => void;
 }
 
 export const useAccountsSync = ({
@@ -18,7 +19,8 @@ export const useAccountsSync = ({
   activeTab,
   accounts,
   setAccounts,
-  setIsLoadingUsers
+  setIsLoadingUsers,
+  handleSyncError
 }: UseAccountsSyncParams) => {
   useEffect(() => {
     if (IS_DEMO_MODE) return;
@@ -26,13 +28,18 @@ export const useAccountsSync = ({
       const syncAccountsOnly = async (blockUi: boolean) => {
         if (blockUi) setIsLoadingUsers(true);
         try {
-          const { data } = await supabase
+          const { data, error } = await supabase
             .from('profiles')
             .select(LOGIN_PROFILE_COLUMNS)
             .eq('status', 'Active')
             .order('name', { ascending: true })
             .limit(100);
-          if (data) setAccounts(mapFromSnakeCase(data) as UserAccount[]);
+          
+          if (error) {
+            handleSyncError(error, 'User Accounts');
+          } else if (data) {
+            setAccounts(mapFromSnakeCase(data) as UserAccount[]);
+          }
         } finally {
           setIsLoadingUsers(false);
         }
@@ -64,16 +71,20 @@ export const useAccountsSync = ({
     const syncAccounts = async () => {
       setIsLoadingUsers(true);
       try {
-        const { data } = await supabase.from('profiles').select(PROFILE_COLUMNS).limit(300);
-        if (data) setAccounts(mapFromSnakeCase(data) as UserAccount[]);
+        const { data, error } = await supabase.from('profiles').select(PROFILE_COLUMNS).limit(300);
+        if (error) {
+          handleSyncError(error, 'Profiles List');
+        } else if (data) {
+          setAccounts(mapFromSnakeCase(data) as UserAccount[]);
+        }
       } finally {
         setIsLoadingUsers(false);
       }
     };
 
     void syncAccounts();
-    const profileChannel = supabase.channel('profiles-realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, (payload) => {
+    const globalChannel = getGlobalSyncChannel();
+    globalChannel.on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, (payload) => {
         if (payload.eventType === 'INSERT') {
           const newUser = mapFromSnakeCase([payload.new])[0] as UserAccount;
           setAccounts(prev => prev.some(a => a.id === newUser.id) ? prev : [...prev, newUser]);
@@ -83,8 +94,9 @@ export const useAccountsSync = ({
         } else if (payload.eventType === 'DELETE') {
           setAccounts(prev => prev.filter(a => a.id !== payload.old.id));
         }
-      }).subscribe();
+      });
 
-    return () => { supabase.removeChannel(profileChannel); };
+    subscribeGlobalSyncChannel();
+    return () => { unsubscribeGlobalSyncChannel(); };
   }, [currentUser, activeTab, accounts.length, setAccounts, setIsLoadingUsers]);
 };

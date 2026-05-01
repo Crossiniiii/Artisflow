@@ -4,14 +4,42 @@ import { repairBase64Image, validateImageUrl } from '../../utils/imageValidator'
 
 type WithId = { id: string };
 
+let globalChannelInstance: ReturnType<typeof supabase.channel> | null = null;
+let globalChannelSubscribers = 0;
+
+export const getGlobalSyncChannel = () => {
+  if (!globalChannelInstance) {
+    globalChannelInstance = supabase.channel('artisflow-global-sync');
+  }
+  return globalChannelInstance;
+};
+
+export const subscribeGlobalSyncChannel = () => {
+  if (!globalChannelInstance) return;
+  if (globalChannelSubscribers === 0) {
+    globalChannelInstance.subscribe();
+  }
+  globalChannelSubscribers++;
+};
+
+export const unsubscribeGlobalSyncChannel = () => {
+  if (!globalChannelInstance) return;
+  globalChannelSubscribers--;
+  if (globalChannelSubscribers <= 0) {
+    supabase.removeChannel(globalChannelInstance);
+    globalChannelInstance = null;
+    globalChannelSubscribers = 0;
+  }
+};
+
 export const PROFILE_COLUMNS = 'id, name, first_name, full_name, email, role, branch, status, permissions, last_login, position';
 export const LOGIN_PROFILE_COLUMNS = 'id, name, first_name, full_name, email, role, status';
 export const DASHBOARD_ARTWORK_COLUMNS = 'id, title, artist, code, status, price, remarks, current_branch, created_at, import_period, reserved_for_event_name';
 export const FULL_ARTWORK_COLUMNS = 'id, code, title, artist, medium, dimensions, year, price, status, current_branch, created_at, updated_at, remarks, reservation_expiry, reserved_for_event_id, reserved_for_event_name, size_frame, sold_at_branch, deleted_at, import_period';
 
-export const ARTWORK_SYNC_PAGE_SIZE = 40;
+export const ARTWORK_SYNC_PAGE_SIZE = 500;
 export const ARTWORK_SYNC_MAX_RETRIES = 2;
-export const DASHBOARD_IMAGE_SYNC_LIMIT = 80;
+export const DASHBOARD_IMAGE_SYNC_LIMIT = 0;
 export const ARTWORK_SYNC_FAILURE_BACKOFF_MS = 30 * 1000;
 export const OPERATIONS_ROW_LIMITS = {
   logs: 120,

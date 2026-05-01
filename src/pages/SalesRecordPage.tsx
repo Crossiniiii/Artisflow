@@ -66,29 +66,44 @@ const SaleDetailModal = ({
                 </div>
                 {(() => {
                     const price = artwork.price || 0;
+                    const isSaleApproved = sale.status === SaleStatus.APPROVED;
                     const downpayment = sale.downpayment || 0;
                     const installmentsTotal = (sale.installments || []).filter(i => !i.isPending).reduce((sum, inst) => sum + inst.amount, 0);
-                    const totalPaid = downpayment + installmentsTotal;
+                    
+                    // Only include downpayment if the sale is approved
+                    const totalPaid = (isSaleApproved ? downpayment : 0) + installmentsTotal;
                     const balance = price - totalPaid;
                     const isFullyPaid = balance <= 0 && totalPaid > 0;
-
-                    if (totalPaid === 0) return null;
+                    
+                    const showBalance = sale.isDownpayment || isSaleApproved;
 
                     return (
                         <>
                             <div className="flex justify-between items-center text-sm">
                                 <span className="text-neutral-500">Total Paid</span>
-                                <span className="font-bold text-emerald-600">₱{totalPaid.toLocaleString()}</span>
+                                <span className="font-black text-emerald-600">₱{totalPaid.toLocaleString()}</span>
                             </div>
-                            <div className="border-t border-neutral-200 my-2"></div>
-                            <div className="flex justify-between items-center">
-                                <span className={`text-xs font-bold uppercase ${isFullyPaid ? 'text-emerald-600' : 'text-neutral-500'}`}>
-                                    {isFullyPaid ? 'Status' : 'Remaining Balance'}
-                                </span>
-                                <span className={`font-black ${isFullyPaid ? 'text-emerald-700' : 'text-red-700'}`}>
-                                    {isFullyPaid ? 'FULLY PAID' : `₱${balance.toLocaleString()}`}
-                                </span>
-                            </div>
+                            
+                            {!isSaleApproved && downpayment > 0 && (
+                              <div className="flex justify-between items-center text-[10px] mt-1 bg-amber-50/50 p-2 rounded-sm border border-amber-100/50">
+                                  <span className="font-black text-amber-600 uppercase tracking-widest">For Approval</span>
+                                  <span className="font-black text-amber-700">₱{downpayment.toLocaleString()}</span>
+                              </div>
+                            )}
+
+                            {showBalance && (
+                              <>
+                                <div className="border-t border-neutral-200 my-2"></div>
+                                <div className="flex justify-between items-center">
+                                    <span className={`text-xs font-bold uppercase ${isFullyPaid ? 'text-emerald-600' : 'text-neutral-500'}`}>
+                                        {isFullyPaid ? 'Status' : 'Remaining Balance'}
+                                    </span>
+                                    <span className={`font-black ${isFullyPaid ? 'text-emerald-700' : 'text-red-700'}`}>
+                                        {isFullyPaid ? 'FULLY PAID' : `₱${balance.toLocaleString()}`}
+                                    </span>
+                                </div>
+                              </>
+                            )}
                         </>
                     );
                 })()}
@@ -401,7 +416,7 @@ const SalesRecordPage: React.FC<SalesRecordPageProps> = ({
   };
 
   const exportSales = () => {
-    const headers = ['Sale ID', 'Artwork Code', 'Title', 'Client', 'Agent', 'Branch', 'Sale Date', 'Price', 'Downpayment', 'Remaining Balance', 'Delivery Status'];
+    const headers = ['Sale ID', 'Artwork Code', 'Title', 'Client', 'Agent', 'Branch', 'Sale Date', 'Price', 'Downpayment', 'Remaining Balance', 'Delivery Status', 'Payment Mode'];
     const rows = sales.map(sale => {
       const art = filteredArtworks.find(a => a.id === sale.artworkId);
       const snapshot = sale.artworkSnapshot;
@@ -428,7 +443,8 @@ const SalesRecordPage: React.FC<SalesRecordPageProps> = ({
         price,
         downpayment,
         balance,
-        sale.isDelivered ? 'Delivered' : 'Awaiting Delivery'
+        sale.isDelivered ? 'Delivered' : 'Awaiting Delivery',
+        sale.isDownpayment ? 'Downpayment' : 'Full Payment'
       ];
     });
 
@@ -681,16 +697,20 @@ const SalesRecordPage: React.FC<SalesRecordPageProps> = ({
                       const balance = price - totalPaid;
                       const isFullyPaid = balance <= 0 && totalPaid > 0;
                       
-                      if (totalPaid === 0) return null;
+                      const showBalance = sale.isDownpayment || sale.status === SaleStatus.APPROVED;
+                      
+                      if (totalPaid === 0 && !showBalance) return null;
                       
                       return (
                         <div className="mt-1 flex flex-col items-end space-y-0.5">
                           <span className="text-[10px] text-neutral-400 font-bold">
                             Paid: ₱{totalPaid.toLocaleString()}
                           </span>
-                          <span className={`text-[10px] font-bold ${isFullyPaid ? 'text-emerald-600' : 'text-red-600'}`}>
-                            {isFullyPaid ? 'FULLY PAID' : `Bal: ₱${balance.toLocaleString()}`}
-                          </span>
+                          {showBalance && (
+                            <span className={`text-[10px] font-bold ${isFullyPaid ? 'text-emerald-600' : 'text-red-600'}`}>
+                              {isFullyPaid ? 'FULLY PAID' : `Bal: ₱${balance.toLocaleString()}`}
+                            </span>
+                          )}
                         </div>
                       );
                     })()}
@@ -710,6 +730,11 @@ const SalesRecordPage: React.FC<SalesRecordPageProps> = ({
                       <span className="inline-flex items-center space-x-1.5 px-2.5 py-1 bg-neutral-100 text-neutral-500 rounded-md text-[10px] font-bold uppercase">
                         <span className="w-1.5 h-1.5 bg-neutral-400 rounded-sm"></span>
                         <span>Cancelled</span>
+                      </span>
+                    ) : sale.status === SaleStatus.FOR_SALE_APPROVAL ? (
+                      <span className="inline-flex items-center space-x-1.5 px-2.5 py-1 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-md text-[10px] font-bold uppercase tracking-widest">
+                        <span className="w-1.5 h-1.5 bg-indigo-500 rounded-sm animate-pulse"></span>
+                        <span>For Approval</span>
                       </span>
                     ) : sale.isDelivered ? (
                       <span className="inline-flex items-center space-x-1.5 px-2.5 py-1 bg-neutral-200 text-neutral-900 border border-neutral-300 rounded-md text-[10px] font-bold uppercase">
@@ -784,6 +809,10 @@ const SalesRecordPage: React.FC<SalesRecordPageProps> = ({
                         {sale.isCancelled ? (
                           <span className="inline-flex items-center px-2 py-0.5 bg-neutral-100 text-neutral-500 rounded-md text-[10px] font-bold uppercase">
                             Cancelled
+                          </span>
+                        ) : sale.status === SaleStatus.FOR_SALE_APPROVAL ? (
+                          <span className="inline-flex items-center px-2 py-0.5 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-md text-[10px] font-bold uppercase tracking-widest">
+                            For Approval
                           </span>
                         ) : sale.isDelivered ? (
                           <span className="inline-flex items-center px-2 py-0.5 bg-neutral-200 text-neutral-900 border border-neutral-300 rounded-md text-[10px] font-bold uppercase">

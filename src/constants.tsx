@@ -36,7 +36,6 @@ export const BRANCH_CATEGORIES = [
 
 export const APP_TABS = [
   { id: 'dashboard', label: 'Dashboard' },
-  { id: 'inventory', label: 'Inventory' },
   { id: 'analytics', label: 'Inventory Insights' },
   { id: 'import-history', label: 'Import History' },
   { id: 'snapshots', label: 'Artwork Timeline' },
@@ -46,7 +45,6 @@ export const APP_TABS = [
   { id: 'audit-logs', label: 'System Audit Logs' },
   { id: 'accounts', label: 'User Accounts' },
   { id: 'chat', label: 'Inbox' },
-  { id: 'galleria', label: 'Galleria' },
   { id: 'sales-approval', label: 'Sales Approval' },
   { id: 'payment-approval', label: 'Payment Approval' }
 ];
@@ -61,13 +59,13 @@ export const ROLE_PERMISSIONS = {
 export const getDefaultAccessibleTabs = (role: UserRole): string[] => {
   switch (role) {
     case UserRole.ADMIN:
-      return ['dashboard', 'inventory', 'analytics', 'import-history', 'snapshots', 'operations', 'sales-history', 'sales-approval', 'payment-approval', 'artwork-transfer', 'audit-logs', 'accounts', 'galleria', 'chat'];
+      return ['dashboard', 'analytics', 'import-history', 'snapshots', 'operations', 'sales-history', 'sales-approval', 'payment-approval', 'artwork-transfer', 'audit-logs', 'accounts', 'chat'];
     case UserRole.INVENTORY_PERSONNEL:
-      return ['dashboard', 'inventory', 'analytics', 'import-history', 'snapshots', 'operations', 'sales-history', 'artwork-transfer', 'accounts', 'chat'];
+      return ['dashboard', 'analytics', 'import-history', 'snapshots', 'operations', 'sales-history', 'artwork-transfer', 'accounts', 'chat'];
     case UserRole.SALES_AGENT:
-      return ['dashboard', 'inventory', 'sales-history', 'artwork-transfer', 'accounts', 'chat'];
+      return ['dashboard', 'sales-history', 'artwork-transfer', 'accounts', 'chat'];
     case UserRole.EXCLUSIVE:
-      return ['dashboard', 'galleria'];
+      return ['dashboard'];
     default:
       return ['dashboard'];
   }

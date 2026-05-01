@@ -10,7 +10,10 @@ import {
   DASHBOARD_IMAGE_SYNC_LIMIT,
   DASHBOARD_ARTWORK_COLUMNS,
   fetchPagedRows,
-  FULL_ARTWORK_COLUMNS
+  FULL_ARTWORK_COLUMNS,
+  getGlobalSyncChannel,
+  subscribeGlobalSyncChannel,
+  unsubscribeGlobalSyncChannel
 } from './shared';
 
 interface UseArtworkSyncParams {
@@ -142,8 +145,8 @@ export const useArtworkSync = ({
     };
 
     void syncArtworks();
-    const artworkChannel = supabase.channel('artworks-realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'artworks' }, (payload) => {
+    const globalChannel = getGlobalSyncChannel();
+    globalChannel.on('postgres_changes', { event: '*', schema: 'public', table: 'artworks' }, (payload) => {
         const updatedItem = mapFromSnakeCase([payload.new || payload.old])[0] as Artwork;
         if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
           const normalized = updatedItem.imageUrl?.startsWith('data:image')
@@ -170,7 +173,9 @@ export const useArtworkSync = ({
           setArtworks(prev => prev.filter(a => String(a.id) !== itemId));
           setAllArtworksIncludingDeleted(prev => prev.filter(a => String(a.id) !== itemId));
         }
-      }).subscribe();
-    return () => { supabase.removeChannel(artworkChannel); };
+      });
+      
+    subscribeGlobalSyncChannel();
+    return () => { unsubscribeGlobalSyncChannel(); };
   }, [currentUser?.id, shouldLoadFullArtworks, setAllArtworksIncludingDeleted, setArtworks, setIsLoadingArtworks, handleSyncError]);
 };

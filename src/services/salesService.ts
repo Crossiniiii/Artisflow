@@ -20,7 +20,8 @@ export const buildBulkSale = (
   },
   totalDownpayment?: number,
   agentId?: string,
-  perArtworkDownpayments?: Record<string, number>
+  perArtworkDownpayments?: Record<string, number>,
+  isDownpayment?: boolean
 ): { updatedArtworks: Artwork[]; newSales: SaleRecord[] } => {
   const now = new Date().toISOString();
   const normalizeAttachmentList = (value?: string | string[]) =>
@@ -93,6 +94,7 @@ export const buildBulkSale = (
       rsaUrl: normalizedRsaUrls,
       orCrUrl: normalizedOrCrUrls,
       downpayment: itemDownpayment,
+      isDownpayment: isDownpayment,
       downpaymentRecordedAt: itemDownpayment ? now : undefined,
       artworkSnapshot: art ? {
         title: art.title,
@@ -137,7 +139,8 @@ export const applySingleSale = (
   rsaUrls?: string[],
   orCrUrls?: string[],
   downpayment?: number,
-  agentId?: string
+  agentId?: string,
+  isDownpayment?: boolean
 ): { updatedArtworks: Artwork[]; newSale: SaleRecord | null } => {
   const now = new Date().toISOString();
   const art = artworks.find(a => String(a.id) === String(artworkId));
@@ -164,6 +167,7 @@ export const applySingleSale = (
     rsaUrl: rsaUrls,
     orCrUrl: orCrUrls,
     downpayment,
+    isDownpayment: isDownpayment,
     downpaymentRecordedAt: downpayment ? now : undefined,
     artworkSnapshot: {
       title: art.title,

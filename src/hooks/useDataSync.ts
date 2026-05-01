@@ -162,7 +162,8 @@ export const useDataSync = ({ activeTab, currentUser, selectedArtworkId }: UseDa
     activeTab,
     accounts,
     setAccounts,
-    setIsLoadingUsers
+    setIsLoadingUsers,
+    handleSyncError
   });
 
   useArtworkSync({

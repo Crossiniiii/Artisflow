@@ -231,14 +231,13 @@ const ArtworkTransfer: React.FC<ArtworkTransferProps> = ({
                     <tr key={req.id} className="hover:bg-neutral-50 transition-colors">
                       <td className="px-6 py-4">
                         <div
-                          className="flex items-center space-x-3 cursor-pointer group"
+                          className="flex items-center space-x-4 cursor-pointer group/art"
                           onClick={(e) => {
                             e.stopPropagation();
                             onViewArtwork?.(req.artworkId);
                           }}
-                          title="View Artwork Details"
                         >
-                          <div className="w-10 h-10 rounded-sm bg-neutral-100 overflow-hidden group-hover:ring-2 ring-neutral-400 transition-all">
+                          <div className="w-12 h-12 rounded-sm bg-neutral-100 overflow-hidden group-hover/art:ring-2 ring-neutral-900 transition-all shadow-sm">
                             {displayImage ? (
                               <OptimizedImage src={displayImage || undefined} alt="" className="w-full h-full object-cover" />
                             ) : (
@@ -248,34 +247,34 @@ const ArtworkTransfer: React.FC<ArtworkTransferProps> = ({
                             )}
                           </div>
                           <div>
-                            <div className="font-bold text-neutral-900 group-hover:text-neutral-700 transition-colors">{displayTitle}</div>
-                            <div className="text-xs text-neutral-500">{displayCode}</div>
+                            <div className="font-black text-neutral-900 group-hover/art:text-neutral-600 transition-colors leading-tight">{displayTitle}</div>
+                            <div className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest mt-0.5">{displayCode}</div>
                           </div>
                         </div>
                       </td>
                       <td className="px-6 py-4">
-                        <div className="flex items-center space-x-2 text-sm">
-                          <span className="font-medium text-neutral-600">{req.fromBranch}</span>
-                          <ArrowRightLeft size={14} className="text-neutral-400" />
-                          <span className="font-bold text-neutral-900">{req.toBranch}</span>
+                        <div className="flex items-center space-x-3 text-xs">
+                          <span className="font-bold text-neutral-600">{req.fromBranch}</span>
+                          <ArrowRightLeft size={12} className="text-neutral-300" />
+                          <span className="font-black text-neutral-900">{req.toBranch}</span>
                         </div>
                       </td>
                       <td className="px-6 py-4">
-                        <div className="text-sm text-neutral-900">{req.requestedBy}</div>
+                        <div className="text-xs font-bold text-neutral-900">{req.requestedBy}</div>
                         {req.notes && (
-                          <div className="text-xs text-neutral-500 mt-1 italic max-w-[200px] truncate">{req.notes}</div>
+                          <div className="text-[10px] text-neutral-400 mt-1 italic max-w-[200px] truncate">"{req.notes}"</div>
                         )}
                       </td>
                       <td className="px-6 py-4">
-                        <div className="text-sm text-neutral-600">
+                        <div className="text-xs font-bold text-neutral-700">
                           {new Date(req.requestedAt).toLocaleDateString()}
                         </div>
-                        <div className="text-xs text-neutral-400">
+                        <div className="text-[10px] font-medium text-neutral-400 mt-0.5">
                           {new Date(req.requestedAt).toLocaleTimeString()}
                         </div>
                       </td>
                       <td className="px-6 py-4">
-                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-sm text-xs font-medium border ${getStatusColor(req.status)}`}>
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded-sm text-[9px] font-black uppercase tracking-widest border ${getStatusColor(req.status)}`}>
                           {req.status}
                         </span>
                       </td>
@@ -284,48 +283,43 @@ const ArtworkTransfer: React.FC<ArtworkTransferProps> = ({
                           <div className="flex justify-end space-x-2">
                             <button
                               onClick={() => setConfirmationModal({ type: 'accept', request: req })}
-                              className="p-2 text-neutral-900 hover:bg-neutral-100 rounded-sm transition-colors"
-                              title="Accept Transfer"
+                              className="px-4 py-1.5 bg-neutral-900 text-white text-[10px] font-black uppercase tracking-widest rounded-sm hover:bg-black transition-all shadow-sm active:scale-95"
                             >
-                              <CheckCircle2 size={20} />
+                              Accept
                             </button>
                             {req.status !== 'On Hold' && (
                               <button
                                 onClick={() => setConfirmationModal({ type: 'hold', request: req })}
-                                className="p-2 text-neutral-600 hover:bg-neutral-100 rounded-lg transition-colors"
-                                title="Put On Hold"
+                                className="px-4 py-1.5 bg-neutral-100 text-neutral-600 text-[10px] font-black uppercase tracking-widest rounded-sm hover:bg-neutral-200 transition-all active:scale-95 border border-neutral-200"
                               >
-                                <PauseCircle size={20} />
+                                Hold
                               </button>
                             )}
                             <button
                               onClick={() => setConfirmationModal({ type: 'decline', request: req })}
-                              className="p-2 text-neutral-400 hover:bg-neutral-100 rounded-lg transition-colors"
-                              title="Decline Transfer"
+                              className="px-4 py-1.5 bg-white text-neutral-400 text-[10px] font-black uppercase tracking-widest rounded-sm hover:bg-neutral-50 hover:text-neutral-600 transition-all border border-neutral-200 active:scale-95"
                             >
-                              <XCircle size={20} />
+                              Decline
                             </button>
                           </div>
                         )}
                         {req.status !== 'Pending' && req.status !== 'On Hold' && (
-                          <div className="flex items-center justify-end gap-3">
-                            <div className="text-xs text-neutral-400">
+                          <div className="flex items-center justify-end gap-2">
+                            <div className="text-[10px] font-bold text-neutral-400 uppercase tracking-tight mr-2">
                               {req.respondedBy ? `Processed by ${req.respondedBy}` : '-'}
                             </div>
                             <button
                               onClick={() => setDetailsModal(req)}
-                              className="p-2 text-neutral-400 hover:text-neutral-600 hover:bg-neutral-100 rounded-lg transition-colors"
-                              title="View Details"
+                              className="px-4 py-1.5 bg-neutral-100 text-neutral-600 text-[10px] font-black uppercase tracking-widest rounded-sm hover:bg-neutral-200 transition-all border border-neutral-200"
                             >
-                              <Eye size={20} />
+                              Details
                             </button>
                             {onDelete && (
                               <button
                                 onClick={() => setConfirmationModal({ type: 'delete', request: req })}
-                                className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                                title="Delete Record"
+                                className="px-4 py-1.5 bg-rose-50 text-rose-600 text-[10px] font-black uppercase tracking-widest rounded-sm hover:bg-rose-100 transition-all border border-rose-100"
                               >
-                                <Trash2 size={20} />
+                                Delete
                               </button>
                             )}
                           </div>
@@ -342,149 +336,130 @@ const ArtworkTransfer: React.FC<ArtworkTransferProps> = ({
 
       {/* Details Modal */}
       {detailsModal && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-md max-w-2xl w-full p-0 shadow-xl transform transition-all overflow-hidden">
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-sm max-w-xl w-full p-0 shadow-2xl transform transition-all overflow-hidden border border-neutral-200">
             {/* Header */}
-            <div className="px-6 py-4 border-b border-neutral-100 flex justify-between items-center bg-neutral-50/50">
-              <h3 className="text-lg font-bold text-neutral-900">Transfer Details</h3>
+            <div className="px-8 py-6 border-b border-neutral-100 flex justify-between items-center bg-white">
+              <div>
+                <h3 className="text-xl font-black text-neutral-900 uppercase tracking-tight">Transfer Manifest</h3>
+                <p className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest mt-1">Official Document ID: {detailsModal.id.slice(0, 8).toUpperCase()}</p>
+              </div>
               <button
                 onClick={() => setDetailsModal(null)}
-                className="text-neutral-400 hover:text-neutral-600 transition-colors"
+                className="p-2 hover:bg-neutral-100 rounded-full transition-colors text-neutral-400 hover:text-neutral-900"
               >
                 <XCircle size={24} />
               </button>
             </div>
 
-            <div className="p-6 space-y-6">
-              {/* Artwork Header */}
+            <div className="p-8 space-y-8">
+              {/* Artwork Section */}
               <div
-                className="flex items-start gap-4 p-4 bg-neutral-50 rounded-md border border-neutral-100 cursor-pointer hover:bg-neutral-100 transition-colors group relative"
+                className="flex items-center gap-6 p-4 bg-neutral-50 rounded-sm border border-neutral-100 cursor-pointer group transition-all hover:bg-neutral-100"
                 onClick={() => onViewArtwork?.(detailsModal.artworkId)}
-                title="Click to view artwork details"
               >
-                <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <Eye size={16} className="text-neutral-400" />
-                </div>
-                <div className="w-20 h-20 rounded-sm bg-white overflow-hidden shadow-sm flex-shrink-0 group-hover:shadow-md transition-shadow">
+                <div className="w-24 h-24 rounded-sm bg-white overflow-hidden shadow-sm flex-shrink-0 group-hover:ring-2 ring-neutral-900 transition-all">
                   <img src={detailsModal.artworkImage} alt="" className="w-full h-full object-cover" />
                 </div>
                 <div className="flex-1">
                   <div className="flex justify-between items-start">
                     <div>
-                      <h4 className="font-bold text-neutral-900 text-lg group-hover:text-neutral-600 transition-colors">{detailsModal.artworkTitle}</h4>
-                      <p className="text-neutral-500">{detailsModal.artworkCode}</p>
+                      <h4 className="font-black text-neutral-900 text-lg leading-tight group-hover:text-neutral-600 transition-colors">{detailsModal.artworkTitle}</h4>
+                      <p className="text-xs font-bold text-neutral-400 uppercase tracking-widest mt-1">{detailsModal.artworkCode}</p>
                     </div>
-                    <span className={`px-3 py-1 rounded-sm text-xs font-bold border ${getStatusColor(detailsModal.status)}`}>
+                    <span className={`px-2 py-0.5 rounded-sm text-[9px] font-black uppercase tracking-widest border ${getStatusColor(detailsModal.status)}`}>
                       {detailsModal.status}
                     </span>
                   </div>
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-8">
-                {/* Route Info */}
+              <div className="grid grid-cols-2 gap-12">
+                {/* Route */}
                 <div className="space-y-4">
-                  <h5 className="text-xs font-bold text-neutral-400 uppercase tracking-wider">Transfer Route</h5>
-                  <div className="flex flex-col gap-3">
-                    <div className="flex items-center gap-3 text-sm">
-                      <div className="w-2 h-2 rounded-full bg-neutral-300"></div>
-                      <span className="text-neutral-500">From:</span>
-                      <span className="font-medium text-neutral-900">{detailsModal.fromBranch}</span>
+                  <h5 className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">Routing Data</h5>
+                  <div className="space-y-3">
+                    <div>
+                      <p className="text-[9px] font-bold text-neutral-400 uppercase tracking-tight mb-1">Origin</p>
+                      <p className="text-sm font-bold text-neutral-700">{detailsModal.fromBranch}</p>
                     </div>
-                    <div className="pl-1">
-                      <div className="w-0.5 h-4 bg-neutral-200 ml-[3px]"></div>
+                    <div className="flex justify-center py-1">
+                      <ArrowRightLeft size={16} className="text-neutral-200" />
                     </div>
-                    <div className="flex items-center gap-3 text-sm">
-                      <div className="w-2 h-2 rounded-full bg-neutral-900"></div>
-                      <span className="text-neutral-500">To:</span>
-                      <span className="font-bold text-neutral-900">{detailsModal.toBranch}</span>
+                    <div>
+                      <p className="text-[9px] font-bold text-neutral-400 uppercase tracking-tight mb-1">Destination</p>
+                      <p className="text-sm font-black text-neutral-900">{detailsModal.toBranch}</p>
                     </div>
                   </div>
                 </div>
 
-                {/* Timeline Info */}
+                {/* Timeline */}
                 <div className="space-y-4">
-                  <h5 className="text-xs font-bold text-neutral-400 uppercase tracking-wider">Timeline</h5>
+                  <h5 className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">Audit Timeline</h5>
                   <div className="space-y-4">
-                    {/* Requested */}
-                    <div className="flex gap-3">
-                      <div className="mt-0.5 text-neutral-400"><User size={16} /></div>
-                      <div>
-                        <div className="text-xs text-neutral-500">Requested by</div>
-                        <div className="text-sm font-medium text-neutral-900">{detailsModal.requestedBy}</div>
-                        <div className="text-xs text-neutral-400 flex items-center gap-1 mt-1">
-                          <Calendar size={12} />
-                          {new Date(detailsModal.requestedAt).toLocaleString()}
-                        </div>
-                      </div>
+                    <div>
+                      <p className="text-[9px] font-bold text-neutral-400 uppercase tracking-tight mb-1">Requested By</p>
+                      <p className="text-sm font-bold text-neutral-900">{detailsModal.requestedBy}</p>
+                      <p className="text-[10px] text-neutral-400 mt-1 font-medium">{new Date(detailsModal.requestedAt).toLocaleString()}</p>
                     </div>
 
-                    {/* Responded */}
                     {(detailsModal.status === 'Accepted' || detailsModal.status === 'Declined' || detailsModal.status === 'On Hold') && detailsModal.respondedBy && (
-                      <div className="flex gap-3 pt-2 border-t border-neutral-100">
-                        <div className="mt-0.5 text-neutral-400">
-                          {detailsModal.status === 'Accepted' && <CheckCircle2 size={16} className="text-neutral-900" />}
-                          {detailsModal.status === 'Declined' && <XCircle size={16} className="text-neutral-400" />}
-                          {detailsModal.status === 'On Hold' && <PauseCircle size={16} className="text-neutral-500" />}
-                        </div>
-                        <div>
-                          <div className="text-xs text-neutral-500">
-                            {detailsModal.status === 'Accepted' ? 'Accepted by' :
-                              detailsModal.status === 'Declined' ? 'Declined by' : 'Put on hold by'}
-                          </div>
-                          <div className="text-sm font-medium text-neutral-900">{detailsModal.respondedBy}</div>
-                          {detailsModal.respondedAt && (
-                            <div className="text-xs text-neutral-400 flex items-center gap-1 mt-1">
-                              <Calendar size={12} />
-                              {new Date(detailsModal.respondedAt).toLocaleString()}
-                            </div>
-                          )}
-                        </div>
+                      <div className="pt-4 border-t border-neutral-100">
+                        <p className="text-[9px] font-bold text-neutral-400 uppercase tracking-tight mb-1">
+                          {detailsModal.status === 'Accepted' ? 'Verified By' :
+                            detailsModal.status === 'Declined' ? 'Rejected By' : 'Suspended By'}
+                        </p>
+                        <p className="text-sm font-bold text-neutral-900">{detailsModal.respondedBy}</p>
+                        {detailsModal.respondedAt && (
+                          <p className="text-[10px] text-neutral-400 mt-1 font-medium">{new Date(detailsModal.respondedAt).toLocaleString()}</p>
+                        )}
                       </div>
                     )}
                   </div>
                 </div>
               </div>
 
-              {/* Notes */}
-              {detailsModal.notes && (
-                <div className="pt-4 border-t border-neutral-100">
-                  <h5 className="text-xs font-bold text-neutral-400 uppercase tracking-wider mb-2">Notes</h5>
-                  <div className="bg-neutral-50 p-3 rounded-md text-sm text-neutral-600 italic">
-                    "{detailsModal.notes}"
-                  </div>
-                </div>
-              )}
-
-              {/* IT/DR Attachment */}
-              {detailsModal.itdrUrl && (() => {
-                const urls = Array.isArray(detailsModal.itdrUrl) ? detailsModal.itdrUrl : [detailsModal.itdrUrl];
-                return (
-                  <div className="pt-4 border-t border-neutral-100">
-                    <h5 className="text-xs font-bold text-neutral-400 uppercase tracking-wider mb-2">IT/DR Attachment{urls.length > 1 ? 's' : ''}</h5>
-                    <div className={`bg-neutral-50 p-4 rounded-md ${urls.length > 1 ? 'grid grid-cols-2 gap-3' : ''}`}>
-                      {urls.map((url, i) => (
-                        <img
-                          key={i}
-                          src={url}
-                          alt={`IT/DR Document ${i + 1}`}
-                          className="w-full h-auto rounded-md border border-neutral-200 shadow-sm cursor-pointer hover:shadow-md transition-shadow"
-                          onClick={() => window.open(url, '_blank')}
-                          title="Click to view full size"
-                        />
-                      ))}
+              {/* Notes & Attachments */}
+              <div className="space-y-6">
+                {detailsModal.notes && (
+                  <div className="pt-6 border-t border-neutral-100">
+                    <h5 className="text-[10px] font-black text-neutral-400 uppercase tracking-widest mb-3">Administrative Notes</h5>
+                    <div className="bg-neutral-50 p-4 rounded-sm text-xs text-neutral-600 font-medium leading-relaxed italic">
+                      "{detailsModal.notes}"
                     </div>
                   </div>
-                );
-              })()}
+                )}
+
+                {detailsModal.itdrUrl && (() => {
+                  const urls = Array.isArray(detailsModal.itdrUrl) ? detailsModal.itdrUrl : [detailsModal.itdrUrl];
+                  return (
+                    <div className="pt-6 border-t border-neutral-100">
+                      <h5 className="text-[10px] font-black text-neutral-400 uppercase tracking-widest mb-4">Supporting Documentation (IT/DR)</h5>
+                      <div className="grid grid-cols-2 gap-4">
+                        {urls.map((url, i) => (
+                          <div key={i} className="relative group">
+                            <img
+                              src={url}
+                              alt=""
+                              className="w-full h-32 object-cover rounded-sm border border-neutral-200 shadow-sm cursor-pointer group-hover:shadow-md transition-all"
+                              onClick={() => window.open(url, '_blank')}
+                            />
+                            <div className="absolute inset-0 bg-black/0 group-hover:bg-black/5 transition-colors pointer-events-none rounded-sm"></div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
             </div>
 
-            <div className="px-6 py-4 bg-neutral-50 border-t border-neutral-100 flex justify-end">
+            <div className="px-8 py-6 bg-neutral-50 border-t border-neutral-100 flex justify-end">
               <button
                 onClick={() => setDetailsModal(null)}
-                className="px-4 py-2 bg-white border border-neutral-200 text-neutral-700 hover:bg-neutral-50 hover:text-neutral-900 rounded-lg transition-colors text-sm font-medium shadow-sm"
+                className="px-6 py-2.5 bg-white border border-neutral-200 text-neutral-900 hover:bg-neutral-100 rounded-sm transition-all text-[10px] font-black uppercase tracking-widest shadow-sm active:scale-95"
               >
-                Close Details
+                Close Manifest
               </button>
             </div>
           </div>

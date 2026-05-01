@@ -104,6 +104,7 @@ export const useMasterViewDerived = ({
         if (activityFilter === 'Reservation') return action.includes('reserved');
         if (activityFilter === 'Transfer') return action.includes('transfer');
         if (activityFilter === 'Edit') return action.includes('edit') || action.includes('updated');
+        if (activityFilter === 'Payment') return action.includes('payment') || action.includes('accepted') || action.includes('declined');
         return true;
       });
     }

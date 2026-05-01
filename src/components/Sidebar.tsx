@@ -47,7 +47,6 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, userRole, us
     { id: 'dashboard', label: 'Dashboard', icon: ICONS.Dashboard, color: 'text-blue-600', groupId: 'main' },
 
     // Inventory Section
-    { id: 'inventory', label: 'Inventory List', icon: <Package size={20} />, color: 'text-blue-600', groupId: 'inventory' },
     { id: 'analytics', label: 'Inventory Insights', icon: <BarChart3 size={20} />, color: 'text-violet-600', groupId: 'inventory' },
     { id: 'artwork-transfer', label: 'Artwork T/R', icon: <ArrowRightLeft size={20} />, color: 'text-orange-600', groupId: 'inventory' },
     { id: 'snapshots', label: 'Artwork Timeline', icon: <History size={20} />, color: 'text-pink-600', groupId: 'inventory' },
@@ -61,7 +60,6 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, userRole, us
     { id: 'operations', label: 'Gallery Operations', icon: <Settings2 size={20} />, color: 'text-indigo-600', groupId: 'management' },
     { id: 'accounts', label: 'User Accounts', icon: ICONS.Users, color: 'text-sky-600', groupId: 'management' },
     { id: 'chat', label: 'Inbox & Messaging', icon: ICONS.Chat, color: 'text-blue-500', groupId: 'management' },
-    { id: 'galleria', label: 'Galleria View', icon: <Sparkles size={20} />, color: 'text-amber-500', groupId: 'management' },
 
     // Logs Section
     { id: 'audit-logs', label: 'System Audit Logs', icon: <ShieldEllipsis size={20} />, color: 'text-red-600', groupId: 'logs' },

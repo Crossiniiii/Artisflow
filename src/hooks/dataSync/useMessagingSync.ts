@@ -8,7 +8,10 @@ import {
   OPERATIONS_ROW_LIMITS,
   removeRealtimeRecord,
   updateRealtimeRecord,
-  upsertRealtimeRecord
+  upsertRealtimeRecord,
+  getGlobalSyncChannel,
+  subscribeGlobalSyncChannel,
+  unsubscribeGlobalSyncChannel
 } from './shared';
 
 interface UseMessagingSyncParams {
@@ -61,12 +64,13 @@ export const useMessagingSync = ({
       }
     };
 
-    const notificationChannel = supabase.channel('notifications-realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'notifications' }, handleNotificationRealtime)
-      .subscribe();
+    const globalChannel = getGlobalSyncChannel();
+    globalChannel.on('postgres_changes', { event: '*', schema: 'public', table: 'notifications' }, handleNotificationRealtime);
+    
+    subscribeGlobalSyncChannel();
     return () => {
       window.clearTimeout(timer);
-      supabase.removeChannel(notificationChannel);
+      unsubscribeGlobalSyncChannel();
     };
   }, [currentUser?.id, setNotifications]);
 
@@ -108,10 +112,11 @@ export const useMessagingSync = ({
     };
 
     void syncMessaging();
-    const msgChannel = supabase.channel('messaging-realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'conversations' }, handleConversationRealtime)
-      .subscribe();
-    return () => { supabase.removeChannel(msgChannel); };
+    const globalChannel = getGlobalSyncChannel();
+    globalChannel.on('postgres_changes', { event: '*', schema: 'public', table: 'conversations' }, handleConversationRealtime);
+    
+    subscribeGlobalSyncChannel();
+    return () => { unsubscribeGlobalSyncChannel(); };
   }, [currentUser?.id, shouldSyncMessaging, setConversations]);
 
   useEffect(() => {
@@ -127,8 +132,8 @@ export const useMessagingSync = ({
     };
 
     void syncMessages();
-    const chatChannel = supabase.channel('chat-realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, (payload) => {
+    const globalChannel = getGlobalSyncChannel();
+    globalChannel.on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, (payload) => {
         const newMessage = mapFromSnakeCase([payload.new])[0] as ChatMessage;
         if (payload.eventType === 'INSERT') {
           setMessages(prev => prev.some(m => m.id === newMessage.id) ? prev : [...prev, newMessage]);
@@ -137,7 +142,9 @@ export const useMessagingSync = ({
         } else if (payload.eventType === 'DELETE') {
           setMessages(prev => prev.filter(m => m.id !== payload.old.id));
         }
-      }).subscribe();
-    return () => { supabase.removeChannel(chatChannel); };
+      });
+      
+    subscribeGlobalSyncChannel();
+    return () => { unsubscribeGlobalSyncChannel(); };
   }, [currentUser?.id, shouldSyncMessaging, conversations, setMessages]);
 };

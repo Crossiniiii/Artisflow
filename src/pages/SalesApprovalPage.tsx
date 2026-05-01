@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { SaleRecord, Artwork, SaleStatus, UserPermissions } from '../types';
-import { CheckCircle, XCircle, FileImage, FileText, ShieldCheck, LayoutGrid, Rows3, Eye, ExternalLink, Calendar, User, Mail, Phone, Tag, Info, AlertCircle, MessageSquare, ChevronRight } from 'lucide-react';
+import { CheckCircle, XCircle, FileImage, FileText, ShieldCheck, Shield, Clock, LayoutGrid, Rows3, Eye, ExternalLink, Calendar, User, Mail, Phone, Tag, Info, AlertCircle, MessageSquare, ChevronRight } from 'lucide-react';
 import { OptimizedImage } from '../components/OptimizedImage';
 import { motion, AnimatePresence } from 'framer-motion';
 import { createPortal } from 'react-dom';
@@ -22,6 +22,8 @@ const SalesApprovalPage: React.FC<SalesApprovalPageProps> = ({
   onDeclineSale, 
   userPermissions 
 }) => {
+  const [activeTab, setActiveTab] = useState<'approval' | 'history'>('approval');
+  const [selectedBranch, setSelectedBranch] = useState<string>('All');
   const [requestedFiles, setRequestedFiles] = useState<Set<string>>(new Set());
 
   const pendingSales = useMemo(() => {
@@ -204,7 +206,7 @@ const SalesApprovalPage: React.FC<SalesApprovalPageProps> = ({
       >
         <div className="mb-4 flex flex-wrap gap-2">
           <span className="inline-flex items-center rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-amber-700">
-            Pending Approval
+            For Approval: {formatCurrency(sale.downpayment || 0)}
           </span>
           {sale.requestedAttachments && sale.requestedAttachments.length > 0 && (
             <span className="inline-flex items-center rounded-md border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-indigo-700 animate-pulse">
@@ -318,7 +320,7 @@ const SalesApprovalPage: React.FC<SalesApprovalPageProps> = ({
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2 mb-2">
                 <span className="inline-flex items-center rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-amber-700">
-                  Pending Approval
+                  For Approval: {formatCurrency(sale.downpayment || 0)}
                 </span>
               </div>
               <h4 className="font-bold text-neutral-900 tracking-tight">{art?.title || 'Untitled Artwork'}</h4>
@@ -428,8 +430,29 @@ const SalesApprovalPage: React.FC<SalesApprovalPageProps> = ({
     : [];
   const selectedSaleChecklist = getChecklistState(selectedSale);
 
+
+  // Approval History
+  const approvalHistory = useMemo(() => {
+    return sales
+      .filter(s => s.status === SaleStatus.APPROVED || s.status === SaleStatus.DECLINED)
+      .map(s => {
+        const art = artworks.find(a => a.id === s.artworkId);
+        return {
+          ...s,
+          artwork: art,
+          branch: art?.currentBranch || 'Main'
+        };
+      })
+      .sort((a, b) => new Date(b.saleDate).getTime() - new Date(a.saleDate).getTime());
+  }, [sales, artworks]);
+
+  const branches = ['All', ...Array.from(new Set(approvalHistory.map(h => h.branch)))].filter(b => b !== 'Main').sort();
+  const filteredHistory = selectedBranch === 'All' 
+    ? approvalHistory 
+    : approvalHistory.filter(h => h.branch === selectedBranch);
+
   return (
-    <div className="min-h-screen w-full max-w-none bg-[radial-gradient(circle_at_top_left,rgba(219,234,254,0.45),transparent_22%),linear-gradient(180deg,#f6f9fc_0%,#eef3f8_100%)] px-8 py-8 pb-20">
+    <div className="max-w-[1400px] mx-auto p-8 space-y-10">
       {isProcessing && createPortal(
         <LoadingOverlay 
           isVisible={isProcessing} 
@@ -438,32 +461,183 @@ const SalesApprovalPage: React.FC<SalesApprovalPageProps> = ({
         />, 
         document.body
       )}
-      <div className="mb-8 flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
-        <div>
-          <h1 className="text-4xl font-black tracking-[-0.05em] text-slate-950">Sales Approval</h1>
-          <p className="text-sm text-slate-500 mt-2 font-medium">Review and verify new sale declarations from agents.</p>
+
+      {/* Header Section */}
+      <div className="flex flex-col gap-6 border-b-2 border-neutral-900 pb-8">
+        <div className="flex items-end justify-between">
+          <div>
+            <h1 className="text-3xl font-bold text-neutral-900">Sales Approval</h1>
+            <p className="text-xs font-bold text-neutral-400 mt-1 uppercase tracking-widest">Review and verify sale declarations</p>
+          </div>
+          <div className="flex items-center gap-6 text-right">
+            <div className="pr-6 border-r border-neutral-200">
+              <p className="text-[10px] font-black text-neutral-400 uppercase tracking-widest mb-1">Queue</p>
+              <p className="text-2xl font-black text-neutral-900">{pendingSales.length}</p>
+            </div>
+            <div>
+              <p className="text-[10px] font-black text-neutral-400 uppercase tracking-widest mb-1">Total Verified</p>
+              <p className="text-2xl font-black text-neutral-900">{approvalHistory.length}</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Primary Tabs */}
+        <div className="flex gap-1 p-1 bg-neutral-100 rounded-sm w-fit border border-neutral-200">
+          <button
+            onClick={() => setActiveTab('approval')}
+            className={`px-8 py-2.5 text-[10px] font-black uppercase tracking-[0.2em] rounded-sm transition-all flex items-center gap-2 ${activeTab === 'approval' ? 'bg-white text-neutral-900 shadow-sm border border-neutral-200/50' : 'text-neutral-400 hover:text-neutral-600'}`}
+          >
+            <ShieldCheck size={14} />
+            Pending
+            {pendingSales.length > 0 && (
+              <span className="ml-1 w-4 h-4 bg-indigo-600 text-white text-[8px] flex items-center justify-center rounded-full">
+                {pendingSales.length}
+              </span>
+            )}
+          </button>
+          <button
+            onClick={() => setActiveTab('history')}
+            className={`px-8 py-2.5 text-[10px] font-black uppercase tracking-[0.2em] rounded-sm transition-all flex items-center gap-2 ${activeTab === 'history' ? 'bg-white text-neutral-900 shadow-sm border border-neutral-200/50' : 'text-neutral-400 hover:text-neutral-600'}`}
+          >
+            <Clock size={14} />
+            History
+          </button>
         </div>
       </div>
 
-      {pendingSales.length === 0 ? (
-        <div className="bg-white border text-center py-20 rounded-md shadow-sm border-neutral-200/60">
-          <ShieldCheck className="mx-auto text-neutral-300 mb-4" size={48} />
-          <h3 className="text-lg font-bold text-neutral-900 tracking-tight">All Caught Up</h3>
-          <p className="text-sm text-neutral-500 mt-2">There are no pending sales requiring approval.</p>
-        </div>
-      ) : (
-        <div>
-          {viewMode === 'grid' ? (
-            <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-              {pendingSales.map(renderSaleCard)}
+      <AnimatePresence mode="wait">
+        {activeTab === 'approval' ? (
+          <motion.div
+            key="approval"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            transition={{ duration: 0.2 }}
+            className="space-y-8"
+          >
+            {pendingSales.length === 0 ? (
+              <div className="py-24 bg-neutral-50 rounded-sm border border-dashed border-neutral-200 flex flex-col items-center justify-center text-neutral-300 gap-4">
+                <ShieldCheck size={56} strokeWidth={1} />
+                <div className="text-center">
+                  <p className="text-sm font-black uppercase tracking-[0.2em] text-neutral-400">Queue Synchronized</p>
+                  <p className="text-[10px] font-bold mt-1 tracking-widest">No pending sale declarations require verification.</p>
+                </div>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-6">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-4">
+                    <button 
+                      onClick={() => setViewMode('grid')}
+                      className={`p-2 rounded-sm border transition-all ${viewMode === 'grid' ? 'bg-neutral-900 text-white border-neutral-900 shadow-md' : 'bg-white text-neutral-400 border-neutral-200'}`}
+                    >
+                      <LayoutGrid size={16} />
+                    </button>
+                    <button 
+                      onClick={() => setViewMode('list')}
+                      className={`p-2 rounded-sm border transition-all ${viewMode === 'list' ? 'bg-neutral-900 text-white border-neutral-900 shadow-md' : 'bg-white text-neutral-400 border-neutral-200'}`}
+                    >
+                      <Rows3 size={16} />
+                    </button>
+                  </div>
+                </div>
+
+                <div className={viewMode === 'grid' ? "grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4" : "space-y-4"}>
+                  {pendingSales.map(sale => (
+                    <div key={sale.id} className="animate-in fade-in slide-in-from-bottom-2 duration-500">
+                      {viewMode === 'grid' ? renderSaleCard(sale) : renderSaleRow(sale)}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </motion.div>
+        ) : (
+          <motion.div
+            key="history"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            transition={{ duration: 0.2 }}
+            className="space-y-8"
+          >
+            <div className="flex flex-col gap-8">
+              {/* Branch Selector */}
+              <div className="flex flex-wrap gap-2 p-1 bg-neutral-100 rounded-sm w-fit border border-neutral-200">
+                {branches.map(branch => (
+                  <button
+                    key={branch}
+                    onClick={() => setSelectedBranch(branch)}
+                    className={`px-6 py-2 text-[10px] font-black uppercase tracking-widest rounded-sm transition-all ${selectedBranch === branch ? 'bg-white text-neutral-900 shadow-sm border border-neutral-200/50' : 'text-neutral-400 hover:text-neutral-600'}`}
+                  >
+                    {branch}
+                  </button>
+                ))}
+              </div>
+
+              <div className="bg-white rounded-sm border border-neutral-200 shadow-sm overflow-hidden">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-neutral-50 border-b border-neutral-200">
+                      <th className="px-6 py-4 text-[10px] font-black text-neutral-400 uppercase tracking-widest">Artwork</th>
+                      <th className="px-6 py-4 text-[10px] font-black text-neutral-400 uppercase tracking-widest">Client</th>
+                      <th className="px-6 py-4 text-[10px] font-black text-neutral-400 uppercase tracking-widest">Branch</th>
+                      <th className="px-6 py-4 text-[10px] font-black text-neutral-400 uppercase tracking-widest">Status</th>
+                      <th className="px-6 py-4 text-[10px] font-black text-neutral-400 uppercase tracking-widest">Total Value</th>
+                      <th className="px-6 py-4 text-[10px] font-black text-neutral-400 uppercase tracking-widest text-right">Approval Date</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-neutral-100">
+                    {filteredHistory.length === 0 ? (
+                      <tr>
+                        <td colSpan={6} className="px-6 py-24 text-center text-[10px] font-bold text-neutral-300 uppercase tracking-widest italic">
+                          No historical sale records found
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredHistory.map((h) => (
+                        <tr key={h.id} className="hover:bg-neutral-50/30 transition-all group">
+                          <td className="px-6 py-4">
+                            <div className="flex items-center gap-4">
+                              <div className="w-10 h-10 rounded-sm bg-neutral-50 overflow-hidden border border-neutral-100 shadow-sm">
+                                {h.artwork?.imageUrl && <img src={h.artwork.imageUrl} className="w-full h-full object-cover grayscale group-hover:grayscale-0 transition-all" alt="" />}
+                              </div>
+                              <div>
+                                <span className="text-[11px] font-black text-neutral-900 uppercase tracking-tight block">{h.artwork?.title}</span>
+                                <span className="text-[9px] font-bold text-neutral-400 uppercase tracking-widest">{h.artwork?.artist}</span>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4">
+                            <span className="text-[11px] font-bold text-neutral-600">{h.clientName}</span>
+                          </td>
+                          <td className="px-6 py-4">
+                            <span className="px-2 py-0.5 rounded-sm bg-neutral-50 text-neutral-500 text-[9px] font-black uppercase tracking-widest border border-neutral-200">
+                              {h.branch}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4">
+                            <span className={`px-2 py-0.5 rounded-sm text-[8px] font-black uppercase tracking-widest border ${h.status === SaleStatus.APPROVED ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-rose-50 text-rose-700 border-rose-100'}`}>
+                              {h.status}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 text-[11px] font-black text-neutral-900">₱{(h.artwork?.price || 0).toLocaleString()}</td>
+                          <td className="px-6 py-4 text-right">
+                            <div className="inline-flex items-center gap-2 text-neutral-400">
+                              <Calendar size={12} />
+                              <span className="text-[10px] font-bold">{new Date(h.saleDate).toLocaleDateString()}</span>
+                            </div>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
-          ) : (
-            <div className="space-y-4">
-              {pendingSales.map(renderSaleRow)}
-            </div>
-          )}
-        </div>
-      )}
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Sale Detail Modal */}
       <AnimatePresence>

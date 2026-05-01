@@ -125,6 +125,9 @@ export interface InstallmentRecord {
   reference?: string;
   createdAt?: string; // To track "New" vs "Old"
   isPending?: boolean; // For overpayments needing approval
+  isDeclined?: boolean; // For tracking rejected payment requests
+  declinedAt?: string;
+  attachmentUrls?: string[];
   pendingEdit?: {
     amount: number;
     date: string;
@@ -132,6 +135,7 @@ export interface InstallmentRecord {
     requestedAt: string;
     requestedBy: string;
     status: 'Pending' | 'Approved' | 'Declined';
+    attachmentUrls?: string[];
   };
 }
 
@@ -157,6 +161,7 @@ export interface SaleRecord {
   soldAtEventId?: string; // ID of the event/auction where it was sold
   soldAtEventName?: string; // Name of the event/auction where it was sold
   downpayment?: number;
+  isDownpayment?: boolean;
   downpaymentRecordedAt?: string; // To track "New" vs "Old"
   pendingDownpaymentEdit?: {
     amount: number;

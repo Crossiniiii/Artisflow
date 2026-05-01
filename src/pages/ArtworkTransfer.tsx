@@ -300,7 +300,7 @@ const ArtworkTransfer: React.FC<ArtworkTransferProps> = ({
                           )}
                           <button
                             onClick={() => setConfirmationModal({ type: 'decline', request: req })}
-                            className="p-2 text-neutral-400 hover:bg-neutral-100 rounded-lg transition-colors"
+                            className="p-2 text-rose-500 hover:bg-rose-50 rounded-lg transition-colors"
                             title="Decline Transfer"
                           >
                             <XCircle size={20} />
@@ -537,14 +537,15 @@ const ArtworkTransfer: React.FC<ArtworkTransferProps> = ({
                   setConfirmationModal(null);
                 }}
                 disabled={isProcessing}
-                className={`px-4 py-2 text-white rounded-md transition-colors font-medium shadow-sm ${confirmationModal.type === 'accept'
-                  ? 'bg-neutral-900 hover:bg-black'
-                  : confirmationModal.type === 'hold'
-                    ? 'bg-neutral-500 hover:bg-neutral-600'
+                className={`px-4 py-2 rounded-md transition-colors font-medium shadow-sm ${
+                  confirmationModal.type === 'accept'
+                    ? 'bg-neutral-900 hover:bg-black text-white'
+                    : confirmationModal.type === 'hold'
+                    ? 'bg-neutral-500 hover:bg-neutral-600 text-white'
                     : confirmationModal.type === 'delete'
-                      ? 'bg-red-600 hover:bg-red-700'
-                      : 'bg-white text-neutral-700 border border-neutral-300 hover:bg-neutral-50'
-                  }`}
+                    ? 'bg-red-600 hover:bg-red-700 text-white'
+                    : 'bg-white text-neutral-700 border border-neutral-300 hover:bg-neutral-50'
+                }`}
               >
                 Confirm {confirmationModal.type === 'hold' ? 'On Hold' : confirmationModal.type === 'delete' ? 'Delete' : (confirmationModal.type.charAt(0).toUpperCase() + confirmationModal.type.slice(1))}
               </button>

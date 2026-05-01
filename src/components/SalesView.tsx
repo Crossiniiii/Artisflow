@@ -10,7 +10,7 @@ interface SalesViewProps {
   artworks: Artwork[];
   branches: string[];
   permissions?: UserPermissions;
-  onAddInstallment?: (saleId: string, amount: number, date: string, reference?: string) => void;
+  onAddInstallment?: (saleId: string, amount: number, date: string, reference?: string, proofImage?: string | string[]) => void;
   onDeleteSale?: (saleId: string) => void | Promise<boolean | void>;
 }
 
@@ -24,6 +24,7 @@ const SalesView: React.FC<SalesViewProps> = ({ sales, artworks, branches, onAddI
   const [installmentAmount, setInstallmentAmount] = useState('');
   const [installmentDate, setInstallmentDate] = useState(new Date().toISOString().split('T')[0]);
   const [installmentReference, setInstallmentReference] = useState('');
+  const [installmentProof, setInstallmentProof] = useState<string[]>([]);
   const [imageOverrides, setImageOverrides] = useState<Record<string, string>>({});
 
   const validSales = sales.filter(s => {
@@ -111,7 +112,7 @@ const SalesView: React.FC<SalesViewProps> = ({ sales, artworks, branches, onAddI
       if (!art) return;
       
       const price = art.price || 0;
-      const totalInstallments = (sale.installments || []).reduce((sum, inst) => sum + inst.amount, 0);
+      const totalInstallments = (sale.installments || []).filter(i => !i.isPending).reduce((sum, inst) => sum + inst.amount, 0);
       const totalPaid = (sale.downpayment || 0) + totalInstallments;
 
       totalGrossAmount += price;
@@ -156,7 +157,7 @@ const SalesView: React.FC<SalesViewProps> = ({ sales, artworks, branches, onAddI
     const matchesBranch = selectedBranch === 'All' || branch === selectedBranch;
 
     const price = art.price || 0;
-    const totalInstallments = (sale.installments || []).reduce((sum, inst) => sum + inst.amount, 0);
+    const totalInstallments = (sale.installments || []).filter(i => !i.isPending).reduce((sum, inst) => sum + inst.amount, 0);
     const totalPaid = (sale.downpayment || 0) + totalInstallments;
 
     const isPartial = !!(sale.downpayment && (totalPaid < price || price === 0));
@@ -293,7 +294,7 @@ const SalesView: React.FC<SalesViewProps> = ({ sales, artworks, branches, onAddI
             if (!art) return null;
 
             const price = art.price || 0;
-            const totalInstallments = (sale.installments || []).reduce((sum, inst) => sum + inst.amount, 0);
+            const totalInstallments = (sale.installments || []).filter(i => !i.isPending).reduce((sum, inst) => sum + inst.amount, 0);
             const totalPaid = (sale.downpayment || 0) + totalInstallments;
             const isPartial = !!(sale.downpayment && (totalPaid < price || price === 0));
             const displayImage = art.imageUrl || '';
@@ -519,7 +520,18 @@ const SalesView: React.FC<SalesViewProps> = ({ sales, artworks, branches, onAddI
                     </div>
                     <div className="flex items-center justify-between border-t border-neutral-100 pt-3">
                       <span className="text-sm font-bold text-neutral-700">Remaining Balance</span>
-                      <span className="text-lg font-black text-emerald-600">₱{Math.max((selectedSaleDetailArtwork.price || 0) - ((selectedSaleDetail.downpayment || 0) + (selectedSaleDetail.installments || []).reduce((sum, installment) => sum + installment.amount, 0)), 0).toLocaleString()}</span>
+                      {(() => {
+                        const price = selectedSaleDetailArtwork.price || 0;
+                        const totalPaid = (selectedSaleDetail.downpayment || 0) + (selectedSaleDetail.installments || []).filter(i => !i.isPending).reduce((sum, i) => sum + i.amount, 0);
+                        const balance = Math.max(price - totalPaid, 0);
+                        const isFullyPaid = balance <= 0 && totalPaid > 0;
+
+                        return (
+                          <span className={`text-lg font-black ${isFullyPaid ? 'text-emerald-600' : 'text-red-600'}`}>
+                            ₱{balance.toLocaleString()}
+                          </span>
+                        );
+                      })()}
                     </div>
                   </div>
                 </div>
@@ -648,12 +660,13 @@ const SalesView: React.FC<SalesViewProps> = ({ sales, artworks, branches, onAddI
                   const amt = parseFloat(installmentAmount);
                   if (isNaN(amt) || amt <= 0) return alert('Enter a valid amount.');
                   
-                  if (onAddInstallment) {
-                    onAddInstallment(selectedPartialSale.id, amt, installmentDate, installmentReference);
+                  if (onAddInstallment && selectedPartialSale) {
+                    onAddInstallment(selectedPartialSale.id, amt, installmentDate, installmentReference, installmentProof);
                   }
                   setIsInstallmentModalOpen(false);
+                  setInstallmentProof([]);
                 }}
-                disabled={!installmentAmount || !installmentDate}
+                disabled={!installmentAmount || !installmentDate || installmentProof.length === 0}
                 className="px-6 py-2.5 rounded-xl font-bold text-sm bg-neutral-900 text-white hover:bg-black disabled:opacity-50 transition-all flex items-center gap-2"
               >
                 <PlusCircle size={16} /> Save Installment

@@ -93,6 +93,7 @@ export const buildBulkSale = (
       rsaUrl: normalizedRsaUrls,
       orCrUrl: normalizedOrCrUrls,
       downpayment: itemDownpayment,
+      downpaymentRecordedAt: itemDownpayment ? now : undefined,
       artworkSnapshot: art ? {
         title: art.title,
         artist: art.artist,
@@ -163,6 +164,7 @@ export const applySingleSale = (
     rsaUrl: rsaUrls,
     orCrUrl: orCrUrls,
     downpayment,
+    downpaymentRecordedAt: downpayment ? now : undefined,
     artworkSnapshot: {
       title: art.title,
       artist: art.artist,

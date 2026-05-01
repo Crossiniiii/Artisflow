@@ -24,6 +24,7 @@ const AuditLogsPage = lazy(() => import('./pages/AuditLogsPage'));
 const ArtworkTransfer = lazy(() => import('./pages/ArtworkTransfer'));
 const ChatPage = lazy(() => import('./pages/ChatPage'));
 const SalesApprovalPage = lazy(() => import('./pages/SalesApprovalPage'));
+const PaymentApprovalPage = lazy(() => import('./pages/PaymentApprovalPage'));
 const LoginPage = lazy(() => import('./pages/LoginPage'));
 import ErrorBoundary from './components/ErrorBoundary';
 
@@ -108,7 +109,8 @@ const App: React.FC = () => {
     handleAddToAuction, handleReturnArtwork, handleBulkReturnArtwork,
       handleConfirmAudit, handleReturnToGallery, handleSendToFramer, handleBulkSendToFramer,
       handleReturnFromFramer, handleDeleteFramerRecord, handleUpdateReturnRecord, handleBulkDeleteReturnRecords,
-      handleSale, handleDeliver, handleApproveSale, handleDeclineSale, handleAddInstallment, handleDeleteSaleRecord
+      handleSale, handleDeliver, handleApproveSale, handleDeclineSale, handleAddInstallment, handleDeleteSaleRecord,
+      handleEditPayment, handleApprovePaymentEdit, handleDeclinePaymentEdit
     } = useArtworkOperations();
   const {
     handleCreateTransferRequest, handleAcceptTransfer, handleDeclineTransfer,
@@ -119,8 +121,8 @@ const App: React.FC = () => {
   const { handleAddBranch, handleUpdateBranch, handleDeleteBranch, handleUpdateBranchAddress } = useBranchOperations();
     const { handleSendMessage, handleStartConversation, handleMarkRead, handleDeleteConversation } = useChatOperations();
   
-    const handleDeclineSaleWithMessaging = async (saleId: string, reason?: string) => {
-      await handleDeclineSale(saleId, reason);
+    const handleDeclineSaleWithMessaging = async (saleId: string, reason?: string, requestedFiles?: string[]) => {
+      await handleDeclineSale(saleId, reason, requestedFiles);
       
       if (!reason || !currentUser) return;
   
@@ -150,7 +152,18 @@ const App: React.FC = () => {
       if (conversationId) {
         const artwork = artworks.find(a => a.id === sale.artworkId);
         const artTitle = artwork?.title || sale.artworkSnapshot?.title || 'Unknown Artwork';
-        const messageText = `🚫 SALE DECLINED\nArtwork: ${artTitle}\nClient: ${sale.clientName}\nReason: ${reason}`;
+        let messageText = `🚫 SALE DECLINED\nArtwork: ${artTitle}\nClient: ${sale.clientName}\nReason: ${reason}`;
+        
+        if (requestedFiles && requestedFiles.length > 0) {
+          const fileLabels = requestedFiles.map(f => {
+            if (f === 'itdr') return 'IT/DR';
+            if (f === 'rsa') return 'RSA/AR';
+            if (f === 'orcr') return 'OR/CR';
+            return f;
+          }).join(', ');
+          messageText += `\n\n♻️ RE-UPLOAD REQUESTED: ${fileLabels}`;
+        }
+        
         await handleSendMessage(conversationId, messageText, currentUser);
       }
     };
@@ -735,7 +748,7 @@ const App: React.FC = () => {
                 artwork={selectedArt}
                 branches={branches}
                 logs={logs.filter(l => String(l.artworkId) === String(selectedArt.id))}
-                sale={sales.find(s => String(s.artworkId) === String(selectedArt.id))}
+                sale={sales.find(s => String(s.artworkId) === String(selectedArt.id) && !s.isCancelled)}
                 userRole={userRole}
                 userPermissions={currentPermissions}
                 events={events}
@@ -756,6 +769,9 @@ const App: React.FC = () => {
                 onDeliver={handleDeliver}
                 onEdit={(updates) => handleUpdateArtwork(selectedArt.id, updates)}
                 onAddInstallment={handleAddInstallment}
+                onEditPayment={handleEditPayment}
+                onApprovePaymentEdit={handleApprovePaymentEdit}
+                onDeclinePaymentEdit={handleDeclinePaymentEdit}
                 framerRecords={framerRecords}
                 returnRecords={returnRecords}
                 onNavigateTo={(tab, view) => {
@@ -826,6 +842,35 @@ const App: React.FC = () => {
           return (
             <Suspense fallback={<div>Loading...</div>}>
               <AuditLogsPage logs={logs} artworks={artworks} onViewArtwork={handleViewArtwork} onDeleteLogs={handleDeleteLogs} permissions={currentUser?.permissions} />
+            </Suspense>
+          );
+        case 'payment-approval':
+          const canAccessPaymentApproval = currentPermissions.accessibleTabs
+            ? currentPermissions.accessibleTabs.includes('payment-approval')
+            : (userRole === UserRole.ADMIN);
+
+          if (!canAccessPaymentApproval) return (
+            <ErrorBoundary name="Dashboard-Fallback-PaymentApproval">
+              <Dashboard
+                artworks={artworks}
+                sales={sales}
+                events={events}
+                accounts={validAccounts}
+                onSelectArt={handleViewArtwork}
+                onManageEvents={() => setActiveTab('operations')}
+                onNavigateFromStat={handleNavigateFromStat}
+              />
+            </ErrorBoundary>
+          );
+          return (
+            <Suspense fallback={<div>Loading...</div>}>
+              <PaymentApprovalPage
+                sales={sales}
+                artworks={artworks}
+                onApprovePaymentEdit={handleApprovePaymentEdit}
+                onDeclinePaymentEdit={handleDeclinePaymentEdit}
+                userPermissions={currentPermissions}
+              />
             </Suspense>
           );
         case 'sales-approval':

@@ -2,7 +2,18 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { UserRole, UserPermissions } from '../types';
 import { ICONS, getDefaultAccessibleTabs } from '../constants';
-import { BarChart3, ShieldEllipsis, FileSpreadsheet, History, Settings2, ArrowRightLeft, ShieldCheck, Sparkles } from 'lucide-react';
+import { 
+  BarChart3, 
+  ShieldEllipsis, 
+  FileSpreadsheet, 
+  History, 
+  Settings2, 
+  ArrowRightLeft, 
+  ShieldCheck, 
+  Sparkles,
+  Package,
+  CreditCard
+} from 'lucide-react';
 
 interface SidebarProps {
   activeTab: string;
@@ -36,12 +47,14 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, userRole, us
     { id: 'dashboard', label: 'Dashboard', icon: ICONS.Dashboard, color: 'text-blue-600', groupId: 'main' },
 
     // Inventory Section
+    { id: 'inventory', label: 'Inventory List', icon: <Package size={20} />, color: 'text-blue-600', groupId: 'inventory' },
     { id: 'analytics', label: 'Inventory Insights', icon: <BarChart3 size={20} />, color: 'text-violet-600', groupId: 'inventory' },
     { id: 'artwork-transfer', label: 'Artwork T/R', icon: <ArrowRightLeft size={20} />, color: 'text-orange-600', groupId: 'inventory' },
     { id: 'snapshots', label: 'Artwork Timeline', icon: <History size={20} />, color: 'text-pink-600', groupId: 'inventory' },
 
     // Sales Section
     { id: 'sales-approval', label: 'Sales Approval', icon: <ShieldCheck size={20} />, color: 'text-yellow-600', groupId: 'sales' },
+    { id: 'payment-approval', label: 'Payment Approval', icon: <CreditCard size={20} />, color: 'text-blue-600', groupId: 'sales' },
     { id: 'sales-history', label: 'Sales History', icon: ICONS.Sales, color: 'text-emerald-600', groupId: 'sales' },
 
     // Management Section

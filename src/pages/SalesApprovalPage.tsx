@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { SaleRecord, Artwork, SaleStatus, UserPermissions } from '../types';
-import { CheckCircle, XCircle, FileImage, FileText, ShieldCheck, LayoutGrid, Rows3, Eye, ExternalLink, Calendar, User, Mail, Phone, Tag, Info, AlertCircle, MessageSquare } from 'lucide-react';
+import { CheckCircle, XCircle, FileImage, FileText, ShieldCheck, LayoutGrid, Rows3, Eye, ExternalLink, Calendar, User, Mail, Phone, Tag, Info, AlertCircle, MessageSquare, ChevronRight } from 'lucide-react';
 import { OptimizedImage } from '../components/OptimizedImage';
 import { motion, AnimatePresence } from 'framer-motion';
 import { createPortal } from 'react-dom';
@@ -11,11 +11,19 @@ interface SalesApprovalPageProps {
   sales: SaleRecord[];
   artworks: Artwork[];
   onApproveSale: (saleId: string) => void;
-  onDeclineSale: (saleId: string, reason?: string) => void;
+  onDeclineSale: (saleId: string, reason?: string, requestedFiles?: string[]) => void;
   userPermissions?: UserPermissions;
 }
 
-const SalesApprovalPage: React.FC<SalesApprovalPageProps> = ({ sales, artworks, onApproveSale, onDeclineSale, userPermissions }) => {
+const SalesApprovalPage: React.FC<SalesApprovalPageProps> = ({ 
+  sales, 
+  artworks, 
+  onApproveSale, 
+  onDeclineSale, 
+  userPermissions 
+}) => {
+  const [requestedFiles, setRequestedFiles] = useState<Set<string>>(new Set());
+
   const pendingSales = useMemo(() => {
     const latestPendingByArtwork = new Map<string, SaleRecord>();
 
@@ -30,6 +38,7 @@ const SalesApprovalPage: React.FC<SalesApprovalPageProps> = ({ sales, artworks, 
 
     return Array.from(latestPendingByArtwork.values());
   }, [sales]);
+
   const [contactConfirmed, setContactConfirmed] = useState<Record<string, boolean>>({});
   const { isProcessing, processMessage, processProgress, wrapAction } = useActionProcessing({ itemTitle: 'Sales Approval', itemCode: 'SAL' });
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
@@ -144,6 +153,7 @@ const SalesApprovalPage: React.FC<SalesApprovalPageProps> = ({ sales, artworks, 
     e.stopPropagation();
     setDeclineSaleId(saleId);
     setDeclineReason('');
+    setRequestedFiles(new Set());
     setIsDeclineModalOpen(true);
   };
 
@@ -173,10 +183,11 @@ const SalesApprovalPage: React.FC<SalesApprovalPageProps> = ({ sales, artworks, 
   const confirmDecline = async () => {
     if (declineSaleId) {
       await wrapAction(async () => {
-        await Promise.resolve(onDeclineSale(declineSaleId, declineReason));
+        await Promise.resolve(onDeclineSale(declineSaleId, declineReason, Array.from(requestedFiles)));
         setIsDeclineModalOpen(false);
         setDeclineSaleId(null);
         setDeclineReason('');
+        setRequestedFiles(new Set());
         if (selectedSale?.id === declineSaleId) setSelectedSale(null);
       }, 'Synchronizing Sale Decline with Database...');
     }
@@ -191,10 +202,15 @@ const SalesApprovalPage: React.FC<SalesApprovalPageProps> = ({ sales, artworks, 
         onClick={() => setSelectedSale(sale)}
         className="group relative cursor-pointer overflow-hidden rounded-lg border border-slate-200 bg-[linear-gradient(180deg,#ffffff_0%,#f8fbff_100%)] p-6 shadow-[0_10px_24px_rgba(15,23,42,0.05)] transition-all duration-200 hover:-translate-y-0.5 hover:border-sky-300 hover:shadow-[0_18px_32px_rgba(37,99,235,0.10)]"
       >
-        <div className="mb-4">
+        <div className="mb-4 flex flex-wrap gap-2">
           <span className="inline-flex items-center rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-amber-700">
             Pending Approval
           </span>
+          {sale.requestedAttachments && sale.requestedAttachments.length > 0 && (
+            <span className="inline-flex items-center rounded-md border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-indigo-700 animate-pulse">
+              Re-upload Verification
+            </span>
+          )}
         </div>
         {art && (
           <div className="flex items-center gap-4 mb-6">
@@ -425,40 +441,8 @@ const SalesApprovalPage: React.FC<SalesApprovalPageProps> = ({ sales, artworks, 
       <div className="mb-8 flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
         <div>
           <h1 className="text-4xl font-black tracking-[-0.05em] text-slate-950">Sales Approval</h1>
-          <p className="mt-2 text-sm font-medium text-slate-500">
-            Review and approve pending sales transactions.
-          </p>
+          <p className="text-sm text-slate-500 mt-2 font-medium">Review and verify new sale declarations from agents.</p>
         </div>
-        {pendingSales.length > 0 && (
-          <div className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white/90 p-1 shadow-[0_8px_20px_rgba(15,23,42,0.05)] backdrop-blur">
-            <button
-              type="button"
-              onClick={() => setViewMode('grid')}
-                className={`inline-flex items-center gap-2 rounded-md px-3 py-2 text-xs font-bold uppercase tracking-[0.16em] transition-colors ${
-                  viewMode === 'grid'
-                    ? 'bg-[#0f172a] text-white shadow-[0_8px_16px_rgba(15,23,42,0.14)]'
-                    : 'text-slate-500 hover:bg-slate-100 hover:text-slate-900'
-                }`}
-              aria-pressed={viewMode === 'grid'}
-            >
-              <LayoutGrid size={14} />
-              Grid
-            </button>
-            <button
-              type="button"
-              onClick={() => setViewMode('list')}
-                className={`inline-flex items-center gap-2 rounded-md px-3 py-2 text-xs font-bold uppercase tracking-[0.16em] transition-colors ${
-                  viewMode === 'list'
-                    ? 'bg-[#0f172a] text-white shadow-[0_8px_16px_rgba(15,23,42,0.14)]'
-                    : 'text-slate-500 hover:bg-slate-100 hover:text-slate-900'
-                }`}
-              aria-pressed={viewMode === 'list'}
-            >
-              <Rows3 size={14} />
-              List
-            </button>
-          </div>
-        )}
       </div>
 
       {pendingSales.length === 0 ? (
@@ -503,6 +487,9 @@ const SalesApprovalPage: React.FC<SalesApprovalPageProps> = ({ sales, artworks, 
                       <span className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-400">ID: {selectedSale.id.substring(0, 8)}</span>
                       <div className="w-1 h-1 rounded-full bg-slate-300"></div>
                       <span className="rounded-md border border-amber-200 bg-amber-50 px-3 py-1 text-[11px] font-black uppercase tracking-[0.18em] text-amber-700">Pending Approval</span>
+                      {selectedSale.requestedAttachments && selectedSale.requestedAttachments.length > 0 && (
+                        <span className="rounded-md border border-indigo-200 bg-indigo-50 px-3 py-1 text-[11px] font-black uppercase tracking-[0.18em] text-indigo-700 animate-pulse">Re-upload Verification</span>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -560,6 +547,27 @@ const SalesApprovalPage: React.FC<SalesApprovalPageProps> = ({ sales, artworks, 
                         </div>
                       </div>
                     </section>
+                    
+                    {selectedSale.requestedAttachments && selectedSale.requestedAttachments.length > 0 && (
+                      <section className="animate-in fade-in slide-in-from-top-2 duration-500">
+                        <h3 className="mb-3 text-[10px] font-black uppercase tracking-[0.24em] text-indigo-400">Re-upload Context</h3>
+                        <div className="rounded-xl border border-indigo-100 bg-indigo-50/30 p-5 shadow-sm">
+                          <div className="flex flex-wrap gap-2 mb-4">
+                            {selectedSale.requestedAttachments.map(req => (
+                              <span key={req} className="px-3 py-1 bg-white border border-indigo-200 text-indigo-700 text-[10px] font-black uppercase tracking-widest rounded-lg shadow-sm">
+                                {req === 'itdr' ? 'IT/DR' : req === 'rsa' ? 'RSA/AR' : 'OR/CR'} REQUIRED
+                              </span>
+                            ))}
+                          </div>
+                          {selectedSale.declineReason && (
+                            <div className="bg-white/80 border border-indigo-100 rounded-lg p-4">
+                              <p className="text-[10px] font-black text-indigo-300 uppercase tracking-widest mb-2">Previous Decline Reason</p>
+                              <p className="text-sm font-medium text-slate-700 italic">"{selectedSale.declineReason}"</p>
+                            </div>
+                          )}
+                        </div>
+                      </section>
+                    )}
 
                     <section>
                        <h3 className="mb-3 text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Approval Checklist</h3>
@@ -879,6 +887,41 @@ const SalesApprovalPage: React.FC<SalesApprovalPageProps> = ({ sales, artworks, 
                     placeholder="e.g. Incomplete attachments, Incorrect price snapshot, Client details mismatch..."
                     className="w-full h-32 px-5 py-4 bg-neutral-50 border-none rounded-2xl text-sm focus:ring-2 focus:ring-neutral-200 transition-all resize-none placeholder:text-neutral-300"
                   />
+                </div>
+
+                <div>
+                  <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest px-1 block mb-3">Request Re-upload (Optional)</label>
+                  <div className="grid grid-cols-1 gap-2">
+                    {[
+                      { id: 'itdr', label: 'IT/DR (Inventory Transfer)' },
+                      { id: 'rsa', label: 'RSA/AR (Sales Agreement)' },
+                      { id: 'orcr', label: 'OR/CR (Receipt/Registration)' }
+                    ].map((file) => (
+                      <button
+                        key={file.id}
+                        onClick={() => {
+                          const next = new Set(requestedFiles);
+                          if (next.has(file.id)) next.delete(file.id);
+                          else next.add(file.id);
+                          setRequestedFiles(next);
+                        }}
+                        className={`flex items-center justify-between px-5 py-3.5 rounded-2xl border transition-all ${
+                          requestedFiles.has(file.id)
+                            ? 'bg-red-50 border-red-200 text-red-700 shadow-sm'
+                            : 'bg-white border-neutral-100 text-neutral-600 hover:bg-neutral-50'
+                        }`}
+                      >
+                        <span className="text-xs font-bold">{file.label}</span>
+                        {requestedFiles.has(file.id) ? (
+                          <div className="w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center">
+                            <CheckCircle size={12} strokeWidth={3} />
+                          </div>
+                        ) : (
+                          <div className="w-5 h-5 border-2 border-neutral-200 rounded-full" />
+                        )}
+                      </button>
+                    ))}
+                  </div>
                 </div>
 
                 <div className="flex gap-3">

@@ -13,7 +13,9 @@ import {
   PackageCheck,
   Users,
   Calendar,
-  MessageSquare
+  MessageSquare,
+  AlertCircle,
+  RotateCcw
 } from 'lucide-react';
 
 import { UserRole, UserPermissions } from './types';
@@ -45,7 +47,8 @@ export const APP_TABS = [
   { id: 'accounts', label: 'User Accounts' },
   { id: 'chat', label: 'Inbox' },
   { id: 'galleria', label: 'Galleria' },
-  { id: 'sales-approval', label: 'Sales Approval' }
+  { id: 'sales-approval', label: 'Sales Approval' },
+  { id: 'payment-approval', label: 'Payment Approval' }
 ];
 
 export const ROLE_PERMISSIONS = {
@@ -58,7 +61,7 @@ export const ROLE_PERMISSIONS = {
 export const getDefaultAccessibleTabs = (role: UserRole): string[] => {
   switch (role) {
     case UserRole.ADMIN:
-      return ['dashboard', 'inventory', 'analytics', 'import-history', 'snapshots', 'operations', 'sales-history', 'sales-approval', 'artwork-transfer', 'audit-logs', 'accounts', 'galleria', 'chat'];
+      return ['dashboard', 'inventory', 'analytics', 'import-history', 'snapshots', 'operations', 'sales-history', 'sales-approval', 'payment-approval', 'artwork-transfer', 'audit-logs', 'accounts', 'galleria', 'chat'];
     case UserRole.INVENTORY_PERSONNEL:
       return ['dashboard', 'inventory', 'analytics', 'import-history', 'snapshots', 'operations', 'sales-history', 'artwork-transfer', 'accounts', 'chat'];
     case UserRole.SALES_AGENT:
@@ -190,5 +193,7 @@ export const ICONS = {
   Shield: <Shield size={20} />,
   Deliver: <PackageCheck size={20} />,
   Calendar: <Calendar size={20} />,
-  Chat: <MessageSquare size={20} />
+  Chat: <MessageSquare size={20} />,
+  Warning: <AlertCircle size={20} />,
+  Refresh: <RotateCcw size={20} />
 };

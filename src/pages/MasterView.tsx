@@ -17,7 +17,7 @@ import {
 import { ICONS } from '../constants';
 import CertificateModal from '../components/CertificateModal';
 import { ActionResultModal } from '../components/modals/ActionResultModal';
-import { XCircle, Bookmark, Edit, Paperclip, ChevronDown, Trash2, RotateCcw, AlertTriangle, Upload, Tag, Archive, Wrench, Gavel, FileSpreadsheet, Download, FileText, Package, Image as ImageIcon, Clock, Calendar, Home, ArrowRight, Plus } from 'lucide-react';
+import { XCircle, Bookmark, Edit, Paperclip, ChevronDown, Trash2, RotateCcw, AlertTriangle, AlertCircle, Upload, Tag, Archive, Wrench, Gavel, FileSpreadsheet, Download, FileText, Package, Image as ImageIcon, Clock, Calendar, Home, ArrowRight, Plus, ChevronLeft, LayoutDashboard, Box, Truck, ShoppingCart, PackageCheck, MessageSquare, ArrowRightLeft } from 'lucide-react';
 import LoadingOverlay from '../components/LoadingOverlay';
 import { OptimizedImage } from '../components/OptimizedImage';
 import { compressImage } from '../utils/imageUtils';
@@ -65,13 +65,17 @@ interface MasterViewProps {
   framerRecords?: FramerRecord[];
   returnRecords?: ReturnRecord[];
   onAddInstallment?: (saleId: string, amount: number, date: string, reference?: string) => void;
+  onEditPayment?: (saleId: string, paymentId: string, updates: { amount: number; date?: string; reference?: string }) => void;
+  onApprovePaymentEdit?: (saleId: string, paymentId: string) => void;
+  onDeclinePaymentEdit?: (saleId: string, paymentId: string) => void;
 }
 
 const MasterView: React.FC<MasterViewProps> = ({
   artwork, branches, logs, sale, userRole, userPermissions, onTransfer, onSale, onCancelSale, onDeliver, onReturn, onReturnToGallery, onSendToFramer, onReturnFromFramer, onEdit, onBack, events = [], onReserve, onReservationComplete, onCancelReservation, onDelete, onAddToAuction, onNavigateTo,
-  framerRecords = [], returnRecords = [], onAddInstallment
+  framerRecords = [], returnRecords = [], onAddInstallment, onEditPayment, onApprovePaymentEdit, onDeclinePaymentEdit
 }) => {
-  const [modalMode, setModalMode] = useState<'transfer' | 'sale' | 'reserve' | 'certificate' | 'edit' | 'attach-unified' | 'return' | 'framer' | 'framer-return' | 'retouch-return' | 'auction' | 'delivery-attach' | 'none' | 'installment'>('none');
+  const [modalMode, setModalMode] = useState<'transfer' | 'sale' | 'reserve' | 'certificate' | 'edit' | 'attach-unified' | 'return' | 'framer' | 'framer-return' | 'retouch-return' | 'auction' | 'delivery-attach' | 'none' | 'installment' | 'edit-payment'>('none');
+  const [editingPayment, setEditingPayment] = useState<{ id: string; amount: string; date: string; reference: string; type: 'downpayment' | 'installment' } | null>(null);
   const [optimisticArtwork, setOptimisticArtwork] = useState<Artwork | null>(null);
   const [pendingViewState, setPendingViewState] = useState<{ status?: ArtworkStatus; currentBranch?: string } | null>(null);
 
@@ -152,6 +156,7 @@ const MasterView: React.FC<MasterViewProps> = ({
   const [installmentAmount, setInstallmentAmount] = useState('');
   const [installmentDate, setInstallmentDate] = useState(new Date().toISOString().slice(0, 10));
   const [installmentReference, setInstallmentReference] = useState('');
+  const [installmentProof, setInstallmentProof] = useState<string[]>([]);
 
   // Reservation States
   const [reserveType, setReserveType] = useState<'Person' | 'Event' | 'Auction'>('Person');
@@ -222,7 +227,7 @@ const MasterView: React.FC<MasterViewProps> = ({
     setFramerAttachment([]);
   };
   const [itdrUrl, setItdrUrl] = useState<string[]>(parseAttachmentString(artwork.itdrImageUrl));
-  const [timelineView, setTimelineView] = useState<'activity' | 'transfers'>('activity');
+  const [timelineView, setTimelineView] = useState<'activity' | 'transfers' | 'payments'>('activity');
   const [showItdrPreview, setShowItdrPreview] = useState(false);
   const [showRsaPreview, setShowRsaPreview] = useState(false);
   const [showOrCrPreview, setShowOrCrPreview] = useState(false);
@@ -499,182 +504,217 @@ const MasterView: React.FC<MasterViewProps> = ({
   };
 
   return (
-    <div className="max-w-7xl mx-auto space-y-8 animate-in slide-in-from-bottom-4 duration-300">
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <button onClick={onBack} className="flex items-center space-x-2 text-neutral-500 hover:text-neutral-900 font-bold px-4 py-2 rounded-sm hover:bg-neutral-100 transition-all transform hover:-translate-y-0.5 w-full sm:w-auto justify-center sm:justify-start">
-          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
-          <span>Back to Previous Tab</span>
-        </button>
-        <div className="flex items-center space-x-3 w-full sm:w-auto justify-center sm:justify-end">
-          <span className="text-xs font-bold text-neutral-400 uppercase tracking-widest">Master File ID: {artwork.id}</span>
+    <div className="max-w-7xl mx-auto space-y-10 animate-in fade-in duration-500 pb-20">
+      {/* Navigation & Header */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center space-x-5">
+          <button
+            onClick={onBack}
+            className="p-2 rounded-lg hover:bg-neutral-100 transition-colors text-neutral-500 hover:text-neutral-900"
+            title="Back to Previous Tab"
+          >
+            <ChevronLeft size={20} />
+          </button>
+          <div className="h-8 w-px bg-neutral-200 mx-1 hidden sm:block" />
+          <div>
+            <div className="flex items-center gap-3">
+              <h1 className="text-2xl font-bold text-neutral-900 tracking-tight">Artwork Record</h1>
+              <StatusBadge status={displayStatus} />
+            </div>
+            <div className="flex items-center space-x-2 mt-0.5 text-neutral-400">
+              <span className="text-[10px] uppercase tracking-wider font-bold">System ID:</span>
+              <span className="text-xs font-mono text-neutral-500">{artwork.id.split('-')[0]}</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-3">
+          {currentUser?.role === UserRole.ADMIN && onDelete && (
+            <button
+              onClick={() => {
+                setConfirmModal({
+                  isOpen: true,
+                  title: 'Delete Artwork',
+                  message: 'Are you sure you want to permanently delete this artwork? This action cannot be undone.',
+                  confirmLabel: 'Delete Permanently',
+                  variant: 'danger',
+                  onConfirm: () => wrapAction(() => onDelete(artwork.id), 'Deleting Artwork...')
+                });
+              }}
+              className="p-2.5 text-rose-500 hover:bg-rose-50 rounded-lg transition-colors border border-transparent hover:border-rose-100"
+              title="Delete Record"
+            >
+              <Trash2 size={20} />
+            </button>
+          )}
+          <button className="flex items-center space-x-2 px-4 py-2.5 bg-neutral-900 text-white rounded-lg text-[13px] font-semibold hover:bg-black transition-all shadow-sm active:scale-95">
+            <Download size={16} />
+            <span>Export PDF</span>
+          </button>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-8 p-2 sm:p-0">
-        <div className="lg:col-span-2 space-y-4 md:space-y-8">
-          <div className="bg-white rounded-md border border-neutral-200 shadow-sm overflow-hidden flex flex-col md:flex-row">
-            <div className="w-full md:w-2/5 relative bg-neutral-100 min-h-[320px] md:min-h-[440px] flex items-center justify-center">
-              <OptimizedImage
-                src={artwork.imageUrl || undefined}
-                className="w-full h-full object-contain"
-                alt={artwork.title}
-                fallback={
-                  <div className="w-full h-full flex items-center justify-center bg-neutral-100 text-neutral-300">
-                    <div className="flex flex-col items-center gap-2">
-                      <ImageIcon size={32} />
-                      <span className="text-xs font-semibold uppercase tracking-widest">No Preview</span>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        {/* Main Content Area */}
+        <div className="lg:col-span-2 space-y-8">
+          {/* Artwork Detail Card */}
+          <div className="bg-white rounded-xl shadow-xl shadow-neutral-200/40 overflow-hidden border border-neutral-200 relative animate-in slide-in-from-bottom-4 duration-500">
+            <div className="flex flex-col md:flex-row">
+              {/* Image Section */}
+              <div className="w-full md:w-[380px] aspect-square bg-neutral-50 relative group flex-shrink-0 border-r border-neutral-100">
+                <OptimizedImage
+                  src={artwork.imageUrl || undefined}
+                  className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
+                  alt={artwork.title}
+                  fallback={
+                    <div className="w-full h-full flex flex-col items-center justify-center text-neutral-300">
+                      <ImageIcon size={48} strokeWidth={1} />
+                      <span className="text-[10px] font-bold mt-4 uppercase tracking-widest">No Preview Available</span>
+                    </div>
+                  }
+                  {...(artwork.imageUrl ? { onClick: () => setShowImagePreview(true) } : {})}
+                  containerClassName={artwork.imageUrl ? 'w-full h-full cursor-zoom-in' : 'w-full h-full'}
+                />
+                <div className="absolute top-4 left-4">
+                  <div className="px-3 py-1 bg-white/90 backdrop-blur-sm shadow-sm rounded-lg border border-white/20">
+                    <span className="text-[10px] font-bold text-neutral-800 uppercase tracking-widest">Master File</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Info Section */}
+              <div className="flex-1 p-8 lg:p-10 flex flex-col">
+                <div className="space-y-1 mb-10">
+                  <p className="text-xs font-bold text-blue-600 uppercase tracking-widest">{artwork.artist || 'Unknown Artist'}</p>
+                  <h2 className="text-4xl font-bold text-neutral-900 leading-tight tracking-tight">{artwork.title}</h2>
+                  <p className="text-neutral-400 font-medium italic text-base">{artwork.year || 'Date not specified'}</p>
+                </div>
+
+                <div className="grid grid-cols-2 gap-y-8 gap-x-10 mb-10">
+                  <div className="space-y-1.5">
+                    <p className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest">Medium</p>
+                    <div className="flex items-center space-x-2.5 text-neutral-700">
+                      <LayoutDashboard size={14} className="text-neutral-400" />
+                      <p className="text-sm font-semibold">{artwork.medium || 'Not specified'}</p>
                     </div>
                   </div>
-                }
-                {...(artwork.imageUrl ? { onClick: () => setShowImagePreview(true) } : {})}
-                containerClassName={artwork.imageUrl ? 'w-full h-full cursor-zoom-in' : 'w-full h-full'}
-              />
-              <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent"></div>
-            </div>
-            <div className="p-3 sm:p-5 md:p-8 flex-1 space-y-4 md:space-y-6">
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs font-black text-neutral-900 bg-neutral-100 px-2 py-1 rounded uppercase tracking-tighter">{artwork.code}</span>
-                  <StatusBadge status={displayStatus} />
-                  {(displayStatus === ArtworkStatus.RESERVED && artwork.reservedForEventName) && (
-                    <span className="ml-2 px-2.5 py-1 rounded-sm bg-neutral-50 border border-neutral-200 text-[10px] font-black uppercase tracking-widest text-neutral-700 hidden sm:inline-block">
-                      Reserved for: {artwork.reservedForEventName}
-                    </span>
-                  )}
+                  <div className="space-y-1.5">
+                    <p className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest">Dimensions</p>
+                    <div className="flex items-center space-x-2.5 text-neutral-700">
+                      <Box size={14} className="text-neutral-400" />
+                      <p className="text-sm font-semibold">{artwork.dimensions || 'Not specified'}</p>
+                    </div>
+                  </div>
+                  <div className="space-y-1.5">
+                    <p className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest">Valuation</p>
+                    <div className="flex items-center space-x-2.5 text-neutral-900">
+                      <Tag size={14} className="text-emerald-500" />
+                      <p className="text-xl font-bold tracking-tight">₱{(artwork.price || 0).toLocaleString()}</p>
+                    </div>
+                  </div>
+                  <div className="space-y-1.5">
+                    <p className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest">Current Location</p>
+                    <div className="flex items-center space-x-2.5 text-neutral-700">
+                      <Home size={14} className="text-neutral-400" />
+                      <p className="text-sm font-semibold truncate">{displayBranch || 'Warehouse'}</p>
+                    </div>
+                  </div>
                 </div>
-                <h1 className="text-2xl sm:text-3xl font-bold text-neutral-900 leading-tight">{artwork.title}</h1>
-                <p className="text-base sm:text-lg text-neutral-500 font-medium">{artwork.artist}, {artwork.year}</p>
-                <div className="mt-3 flex flex-wrap items-center gap-2">
-                  <span className="inline-flex items-center px-2.5 py-1 rounded-sm bg-neutral-50 border border-neutral-200 text-[10px] font-black uppercase tracking-widest text-neutral-700">
-                    <span className="w-1.5 h-1.5 rounded-sm bg-neutral-500 mr-1.5" />
-                    Added: {new Date(artwork.createdAt).toLocaleDateString()}
-                  </span>
-                </div>
-              </div>
 
-              <div className="grid grid-cols-2 gap-y-3 gap-x-4 sm:gap-x-8 text-sm pt-4 border-t border-neutral-100">
-                <div><p className="text-xs font-bold text-neutral-400 uppercase tracking-wider mb-1">Medium</p><p className="text-neutral-700 font-medium break-words">{artwork.medium}</p></div>
-                <div><p className="text-xs font-bold text-neutral-400 uppercase tracking-wider mb-1">Size</p><p className="text-neutral-700 font-medium break-words">{artwork.dimensions}</p></div>
-                {artwork.sizeFrame && (
-                  <div><p className="text-xs font-bold text-neutral-400 uppercase tracking-wider mb-1">Size with Frame</p><p className="text-neutral-700 font-medium break-words">{artwork.sizeFrame}</p></div>
-                )}
-                  <div>
-                    <p className="text-xs font-bold text-neutral-400 uppercase tracking-wider mb-1">Valuation</p>
-                    <p className="text-neutral-900 font-bold">₱{(artwork.price || 0).toLocaleString()}</p>
-                    {sale?.downpayment && (
-                      <div className="mt-3 space-y-2 p-3 bg-red-50/50 rounded-sm border border-red-100">
-                        <div className="flex justify-between items-center">
-                          <p className="text-[10px] font-black text-red-600 uppercase tracking-widest">Downpayment</p>
-                          <p className="text-sm font-black text-red-700">₱{(sale.downpayment || 0).toLocaleString()}</p>
-                        </div>
-                        
-                        {/* Installments History */}
-                        {sale.installments && sale.installments.length > 0 && (
-                          <div className="pt-2 mt-2 border-t border-red-100 space-y-2">
-                            <p className="text-[10px] font-black text-neutral-400 uppercase tracking-widest mb-1">Payment History</p>
-                            {sale.installments.map((inst, i) => (
-                              <div key={inst.id} className="flex justify-between items-center text-[11px]">
-                                <span className="text-neutral-500 font-bold">{new Date(inst.date).toLocaleDateString()}</span>
-                                <span className="text-neutral-900 font-black">₱{inst.amount.toLocaleString()}</span>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-
-                        <div className="pt-2 mt-2 border-t border-red-200">
-                          <p className="text-[10px] font-black text-red-600 uppercase tracking-widest mb-1">Outstanding Balance</p>
-                          <p className="text-lg font-black text-red-700">
-                            ₱{(
-                              (artwork.price || 0) - 
-                              (sale.downpayment || 0) - 
-                              (sale.installments || []).reduce((sum, inst) => sum + inst.amount, 0)
-                            ).toLocaleString()}
-                          </p>
-                        </div>
-                        
-                        {(artwork.price || 0) - (sale.downpayment || 0) - (sale.installments || []).reduce((sum, inst) => sum + inst.amount, 0) <= 0 && (
-                          <div className="mt-2 py-1 bg-emerald-500 text-white text-[9px] font-black uppercase tracking-widest text-center rounded-sm shadow-sm">
-                            Fully Paid
-                          </div>
-                        )}
+                {/* Financial Status Card (if sold) */}
+                {sale?.downpayment && !sale.isCancelled && (
+                  <div className="mt-auto p-5 bg-rose-50/30 rounded-xl border border-rose-100/50">
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="flex items-center gap-2">
+                        <ShoppingCart size={16} className="text-rose-500" />
+                        <h4 className="text-xs font-bold text-rose-900 uppercase tracking-widest">Active Sale Information</h4>
                       </div>
-                    )}
+                      <StatusBadge status={displayStatus} />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-6">
+                      <div className="space-y-1">
+                        <p className="text-[10px] font-bold text-rose-400 uppercase tracking-tight">Paid Amount</p>
+                        <p className="text-lg font-bold text-rose-700">₱{(sale.downpayment || 0).toLocaleString()}</p>
+                      </div>
+
+                      {(() => {
+                        const balance = (artwork.price || 0) -
+                          (sale.downpayment || 0) -
+                          (sale.installments || []).filter(i => !i.isPending).reduce((sum, inst) => sum + inst.amount, 0);
+                        const isFullyPaid = balance <= 0;
+
+                        return (
+                          <div className="space-y-1">
+                            <p className={`text-[10px] font-bold uppercase tracking-tight ${isFullyPaid ? 'text-emerald-400' : 'text-red-400'}`}>
+                              {isFullyPaid ? 'Paid in Full' : 'Outstanding'}
+                            </p>
+                            <p className={`text-lg font-bold ${isFullyPaid ? 'text-emerald-700' : 'text-red-700'}`}>
+                              ₱{balance.toLocaleString()}
+                            </p>
+                          </div>
+                        );
+                      })()}
+                    </div>
                   </div>
-                <div><p className="text-xs font-bold text-neutral-400 uppercase tracking-wider mb-1">Location</p><p className="text-neutral-700 font-medium">{displayBranch}</p></div>
+                )}
+
+                {!sale?.downpayment && (
+                  <div className="mt-auto pt-8 border-t border-neutral-100 flex items-center justify-between">
+                    <div className="flex items-center space-x-4">
+                      <div className="flex -space-x-2">
+                        {[1, 2, 3].map(i => (
+                          <div key={i} className="w-8 h-8 rounded-full bg-neutral-100 border-2 border-white flex items-center justify-center text-[10px] font-bold text-neutral-400">
+                            {String.fromCharCode(64 + i)}
+                          </div>
+                        ))}
+                      </div>
+                      <span className="text-[11px] text-neutral-400 font-medium uppercase tracking-wider italic">Managed by Inventory Personnel</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button className="p-2 text-neutral-300 hover:text-neutral-600 transition-colors"><MessageSquare size={18} /></button>
+                      <button className="p-2 text-neutral-300 hover:text-neutral-600 transition-colors"><FileText size={18} /></button>
+                    </div>
+                  </div>
+                )}
               </div>
-
-              {/* Extra Details from Import */}
-              {Object.keys(artwork).filter(key => !['id', 'code', 'title', 'artist', 'medium', 'dimensions', 'sizeFrame', 'year', 'price', 'status', 'currentBranch', 'imageUrl', 'createdAt', 'updatedAt', 'deletedAt', 'importPeriod', 'reservedForEventId', 'reservedForEventName', 'reservationExpiry', 'soldAtBranch', 'sheetName', 'itemCount', 'itdrImageUrl', 'rsaImageUrl', 'orCrImageUrl', 'ROWINDEX', 'rowindex', 'rowIndex'].includes(key)).length > 0 && (
-                <div className="pt-4 border-t border-neutral-100 mt-4">
-                  <p className="text-xs font-bold text-neutral-400 uppercase tracking-wider mb-3">Additional Details</p>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-4 gap-x-8 text-sm">
-                    {Object.keys(artwork)
-                      .filter(key => !['id', 'code', 'title', 'artist', 'medium', 'dimensions', 'sizeFrame', 'year', 'price', 'status', 'currentBranch', 'imageUrl', 'createdAt', 'updatedAt', 'deletedAt', 'importPeriod', 'reservedForEventId', 'reservedForEventName', 'reservationExpiry', 'soldAtBranch', 'sheetName', 'itemCount', 'itdrImageUrl', 'rsaImageUrl', 'orCrImageUrl', 'ROWINDEX', 'rowindex', 'rowIndex'].includes(key))
-                      .map(key => (
-                        <div key={key}>
-                          <p className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest mb-1">{key}</p>
-                          <p className="text-neutral-700 font-medium">{String((artwork as any)[key])}</p>
-                        </div>
-                      ))}
-                  </div>
-                </div>
-              )}
-
-              {(displayStatus === ArtworkStatus.DELIVERED || displayStatus === ArtworkStatus.CANCELLED) && (
-                <div className="bg-neutral-50 border border-neutral-200 p-4 rounded-sm flex items-start space-x-3">
-                  <div className="text-neutral-400">{ICONS.Shield}</div>
-                  <div>
-                    <p className="text-xs font-bold text-neutral-700">Record Finalized</p>
-                    <p className="text-[11px] text-neutral-500 mt-0.5">This record is finalized due to its current status. Activity is restricted for audit integrity.</p>
-                  </div>
-                </div>
-              )}
             </div>
           </div>
 
-          <div className="bg-white p-4 sm:p-6 lg:p-8 rounded-md border border-neutral-200 shadow-sm">
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
-              <div className="flex items-center space-x-3">
-                <h3 className="text-xl font-bold text-neutral-900">Artwork History</h3>
-                <span className="text-xs font-normal text-neutral-400">(Audit Trail)</span>
-              </div>
-              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
-                {timelineView === 'activity' && (
-                  <div className="relative w-full sm:w-auto">
-                    <select
-                      value={activityFilter}
-                      onChange={(e) => setActivityFilter(e.target.value)}
-                      className="w-full sm:w-auto appearance-none bg-neutral-50 border border-neutral-200 text-neutral-600 text-[11px] font-bold uppercase tracking-widest rounded-sm px-4 py-2 pr-8 focus:outline-none focus:ring-2 focus:ring-neutral-200 cursor-pointer hover:bg-neutral-100 transition-colors"
-                    >
-                      <option value="All">All Activity</option>
-                      <option value="Sale">Sales</option>
-                      <option value="Reservation">Reservations</option>
-                      <option value="Transfer">Transfers</option>
-                      <option value="Edit">Edits</option>
-                    </select>
-                    <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 pointer-events-none" />
-                  </div>
-                )}
-                <div className="flex p-1 bg-neutral-100 rounded-sm w-full sm:w-auto">
-                  <button
-                    onClick={() => setTimelineView('activity')}
-                    className={`flex-1 sm:flex-none px-4 py-2 text-[11px] font-black uppercase tracking-widest rounded-sm transition-all transform duration-200 ${timelineView === 'activity' ? 'bg-white text-neutral-900 shadow-md scale-105' : 'text-neutral-400 hover:text-neutral-600'
-                      }`}
-                  >
-                    Activity
-                  </button>
-                  <button
-                    onClick={() => setTimelineView('transfers')}
-                    className={`flex-1 sm:flex-none px-4 py-2 text-[11px] font-black uppercase tracking-widest rounded-sm transition-all transform duration-200 ${timelineView === 'transfers' ? 'bg-white text-neutral-900 shadow-md scale-105' : 'text-neutral-400 hover:text-neutral-600'
-                      }`}
-                  >
-                    History Transfer
-                  </button>
+          {/* History Timeline Container */}
+          <div className="bg-white p-8 rounded-xl border border-neutral-200 shadow-xl shadow-neutral-200/20">
+            <div className="flex items-center justify-between mb-8">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-neutral-100 rounded-lg"><History size={20} className="text-neutral-600" /></div>
+                <div>
+                  <h3 className="text-lg font-bold text-neutral-900">Activity & Audit Trail</h3>
+                  <p className="text-xs text-neutral-400">Complete historical logs for this record</p>
                 </div>
               </div>
+              <div className="flex items-center p-1 bg-neutral-50 rounded-lg border border-neutral-200">
+                <button
+                  onClick={() => setTimelineView('activity')}
+                  className={`px-4 py-1.5 text-[11px] font-bold uppercase tracking-widest rounded-md transition-all ${timelineView === 'activity' ? 'bg-white text-neutral-900 shadow-sm' : 'text-neutral-400 hover:text-neutral-600'}`}
+                >
+                  Activity
+                </button>
+                <button
+                  onClick={() => setTimelineView('transfers')}
+                  className={`px-4 py-1.5 text-[11px] font-bold uppercase tracking-widest rounded-md transition-all ${timelineView === 'transfers' ? 'bg-white text-neutral-900 shadow-sm' : 'text-neutral-400 hover:text-neutral-600'}`}
+                >
+                  Transfers
+                </button>
+                <button
+                  onClick={() => setTimelineView('payments')}
+                  className={`px-4 py-1.5 text-[11px] font-bold uppercase tracking-widest rounded-md transition-all ${timelineView === 'payments' ? 'bg-white text-neutral-900 shadow-sm' : 'text-neutral-400 hover:text-neutral-600'}`}
+                >
+                  Payments
+                </button>
+              </div>
             </div>
+
             {timelineView === 'activity' && (
-              <div className="space-y-6">
+              <div className="space-y-0 relative before:absolute before:left-[11px] before:top-2 before:bottom-2 before:w-0.5 before:bg-neutral-100">
                 {effectiveLogs.map((log) => (
                   <div
                     key={log.id}
@@ -682,234 +722,241 @@ const MasterView: React.FC<MasterViewProps> = ({
                       setSelectedLog(log);
                       setShowLogDetails(true);
                     }}
-                    className="relative pl-8 pb-6 last:pb-0 border-l-2 border-neutral-100 group hover:bg-neutral-50 cursor-pointer rounded-r-md transition-all duration-200 pr-4"
+                    className="relative pl-10 pb-8 last:pb-0 group cursor-pointer"
                   >
-                    <div className={`absolute -left-[9px] top-0 w-4 h-4 rounded-sm border-2 border-white shadow-sm transition-transform group-hover:scale-110 ${(log.action.includes('Sale') || log.action.includes('Sold')) ? 'bg-red-600' :
+                    <div className={`absolute left-0 top-1 w-[22px] h-[22px] rounded-full border-4 border-white shadow-sm z-10 transition-transform group-hover:scale-110 ${(log.action.includes('Sale') || log.action.includes('Sold')) ? 'bg-rose-500' :
                       log.action.includes('Delivered') ? 'bg-indigo-500' :
                         log.action.includes('Transfer') ? 'bg-emerald-500' :
                           log.action.includes('Reserved') ? 'bg-amber-500' :
                             log.action.includes('Cancelled') ? 'bg-neutral-500' : 'bg-blue-500'
                       }`}></div>
-                    <div>
+                    <div className="bg-neutral-50/0 group-hover:bg-neutral-50/80 p-3 rounded-xl transition-colors -m-3">
                       <div className="flex items-center justify-between mb-1">
-                        <p className={`text-sm font-bold transition-colors ${(log.action.includes('Sale') || log.action.includes('Sold')) ? 'text-red-600 group-hover:text-red-700' : 'text-neutral-900 group-hover:text-neutral-600'}`}>{log.action}</p>
+                        <p className="text-sm font-bold text-neutral-900">{log.action}</p>
                         <time className="text-[10px] text-neutral-400 font-medium">{new Date(log.timestamp).toLocaleString()}</time>
                       </div>
-                      <p className="text-xs text-neutral-500 leading-relaxed line-clamp-2">{log.details || 'System event recorded'}</p>
-                      <div className="mt-2 inline-flex items-center space-x-1.5 px-2 py-0.5 bg-neutral-100 group-hover:bg-neutral-200 rounded-sm text-[10px] text-neutral-500 font-bold uppercase transition-colors">
-                        <span className="w-1 h-1 bg-neutral-400 rounded-sm"></span>
-                        <span>Auth: {log.user}</span>
+                      <p className="text-xs text-neutral-500 line-clamp-1 group-hover:line-clamp-none transition-all">{log.details || 'System event recorded'}</p>
+                      <div className="mt-2 flex items-center gap-2">
+                        <span className="text-[9px] font-bold text-neutral-400 uppercase tracking-widest">Auth: {log.user}</span>
                       </div>
                     </div>
                   </div>
                 ))}
               </div>
             )}
+
             {timelineView === 'transfers' && (
-              <div className="space-y-4">
-                {transferLogs.length === 0 && (
-                  <p className="text-sm text-neutral-500">No transfer history recorded for this artwork.</p>
-                )}
-                <div className="relative border-l border-neutral-200 ml-3 space-y-6">
-                  {transferLogs.map((log) => (
-                    <div
-                      key={log.id}
-                      onClick={() => {
-                        setSelectedLog(log);
-                        setShowLogDetails(true);
-                      }}
-                      className="relative pl-8 pb-6 last:pb-0 group hover:bg-neutral-50 cursor-pointer rounded-r-xl transition-all duration-200 pr-4"
-                    >
-                      <div className="absolute -left-[9px] top-0 w-4 h-4 rounded-full border-2 border-white shadow-sm transition-transform group-hover:scale-110 bg-emerald-500"></div>
-                      <div>
-                        <div className="flex items-center justify-between mb-1">
-                          <p className="text-sm font-bold text-neutral-900 group-hover:text-neutral-600 transition-colors">{log.details || 'Transferred'}</p>
-                          <time className="text-[10px] text-neutral-400 font-medium">{new Date(log.timestamp).toLocaleString()}</time>
+              <div className="space-y-6">
+                {transferLogs.length === 0 ? (
+                  <div className="text-center py-10">
+                    <Truck size={32} className="mx-auto text-neutral-200 mb-3" />
+                    <p className="text-sm text-neutral-400 font-medium">No transfer history recorded.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-0 relative before:absolute before:left-[11px] before:top-2 before:bottom-2 before:w-0.5 before:bg-neutral-100">
+                    {transferLogs.map((log) => (
+                      <div
+                        key={log.id}
+                        onClick={() => {
+                          setSelectedLog(log);
+                          setShowLogDetails(true);
+                        }}
+                        className="relative pl-10 pb-8 last:pb-0 group cursor-pointer"
+                      >
+                        <div className="absolute left-0 top-1 w-[22px] h-[22px] rounded-full border-4 border-white shadow-sm z-10 transition-transform group-hover:scale-110 bg-emerald-500"></div>
+                        <div className="bg-neutral-50/0 group-hover:bg-neutral-50/80 p-3 rounded-xl transition-colors -m-3">
+                          <div className="flex items-center justify-between mb-1">
+                            <p className="text-sm font-bold text-neutral-900">{log.details || 'Artwork Transferred'}</p>
+                            <time className="text-[10px] text-neutral-400 font-medium">{new Date(log.timestamp).toLocaleString()}</time>
+                          </div>
+                          <p className="text-xs text-neutral-400 uppercase tracking-widest font-bold">Authorized by {log.user}</p>
                         </div>
-                        <p className="text-xs text-neutral-500 leading-relaxed">Authorized by {log.user}</p>
                       </div>
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {timelineView === 'payments' && (
+              <div className="space-y-4">
+                {(!sale?.downpayment && (sale?.installments?.length || 0) === 0) ? (
+                  <div className="text-center py-10">
+                    <Tag size={32} className="mx-auto text-neutral-200 mb-3" />
+                    <p className="text-sm text-neutral-400 font-medium">No payment history recorded.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {sale?.downpayment && (
+                      <div className="flex items-center justify-between p-4 bg-emerald-50/50 rounded-xl border border-emerald-100">
+                        <div className="flex items-center gap-4">
+                          <div className="w-10 h-10 rounded-lg bg-emerald-100 flex items-center justify-center text-emerald-600">
+                            <ArrowRight size={18} />
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <p className="text-sm font-bold text-neutral-900">Initial Downpayment</p>
+                              <span className="text-[10px] bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded font-black uppercase tracking-widest">Verified</span>
+                            </div>
+                            <p className="text-xs text-neutral-500">{new Date(sale.soldAt || '').toLocaleDateString()}</p>
+                          </div>
+                        </div>
+                        <p className="text-base font-black text-emerald-700">₱{sale.downpayment.toLocaleString()}</p>
+                      </div>
+                    )}
+
+                    {sale?.installments?.map((inst) => (
+                      <div key={inst.id} className={`flex items-center justify-between p-4 rounded-xl border transition-all ${inst.isPending ? 'bg-amber-50/50 border-amber-100' : 'bg-neutral-50/50 border-neutral-100'}`}>
+                        <div className="flex items-center gap-4">
+                          <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${inst.isPending ? 'bg-amber-100 text-amber-600' : 'bg-neutral-100 text-neutral-600'}`}>
+                            {inst.proofImage ? (
+                              <button 
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  const url = Array.isArray(inst.proofImage) ? inst.proofImage[0] : inst.proofImage;
+                                  if (url) window.open(url, '_blank');
+                                }}
+                                className="w-full h-full rounded-lg overflow-hidden border border-neutral-200 hover:scale-105 transition-transform"
+                              >
+                                <img src={Array.isArray(inst.proofImage) ? inst.proofImage[0] : inst.proofImage} alt="Receipt" className="w-full h-full object-cover" />
+                              </button>
+                            ) : (
+                              <Clock size={18} />
+                            )}
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <p className="text-sm font-bold text-neutral-900">Installment Payment</p>
+                              {inst.isPending ? (
+                                <span className="text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded font-black uppercase tracking-widest animate-pulse">Pending Approval</span>
+                              ) : (
+                                <span className="text-[10px] bg-neutral-100 text-neutral-600 px-1.5 py-0.5 rounded font-black uppercase tracking-widest">Verified</span>
+                              )}
+                            </div>
+                            <p className="text-xs text-neutral-500">
+                              {new Date(inst.date).toLocaleDateString()} • Ref: {inst.reference || 'None'}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <p className={`text-base font-black ${inst.isPending ? 'text-amber-700' : 'text-neutral-900'}`}>₱{inst.amount.toLocaleString()}</p>
+                          <p className="text-[9px] text-neutral-400 font-bold uppercase tracking-widest">By {inst.recordedBy}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
           </div>
         </div>
 
-        <div className="space-y-8">
-          <div className="bg-white p-4 sm:p-6 rounded-md border border-neutral-200 shadow-sm sticky top-8 max-h-[calc(100vh-2rem)] overflow-y-auto custom-scrollbar">
-            <h3 className="text-lg font-bold text-neutral-900 mb-6">Operations Panel</h3>
-            <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-1 gap-3">
-              {userPermissions?.canEditArtwork && (
-                <ActionButton
-                  label="Edit Artwork"
-                  icon={<Edit size={20} />}
-                  variant="emerald"
-                  disabled={isStatusTransitioning}
-                  onClick={() => setModalMode('edit')}
-                />
+        {/* Sidebar: Operations Panel */}
+        <div className="lg:col-span-1 space-y-6 sticky top-8">
+          <div className="bg-white rounded-xl border border-neutral-200 shadow-xl shadow-neutral-200/30 overflow-hidden">
+            <div className="px-6 py-5 border-b border-neutral-100 bg-neutral-50/50">
+              <h3 className="text-base font-bold text-neutral-900 flex items-center gap-2">
+                <Wrench size={18} className="text-neutral-400" />
+                Operations Panel
+              </h3>
+            </div>
+
+            <div className="p-6 space-y-6">
+              {/* Declined Sale Alert */}
+              {sale?.status === 'Declined' && sale.requestedAttachments && sale.requestedAttachments.length > 0 && (
+                <div className="bg-rose-50 border border-rose-100 rounded-xl p-4 space-y-3">
+                  <div className="flex items-center gap-2 text-rose-600">
+                    <AlertTriangle size={16} />
+                    <h4 className="text-[10px] font-bold uppercase tracking-widest">Re-upload Required</h4>
+                  </div>
+                  <p className="text-xs text-rose-700 italic bg-white/60 p-2.5 rounded-lg border border-rose-100/50">
+                    "{sale.declineReason || 'Attachments need correction.'}"
+                  </p>
+                  <button
+                    onClick={() => {
+                      setTempItdr(parseAttachmentString(artwork.itdrImageUrl));
+                      setTempRsa(parseAttachmentString(artwork.rsaImageUrl));
+                      setTempOrcr(parseAttachmentString(artwork.orCrImageUrl));
+                      setModalMode('attach-unified');
+                    }}
+                    className="w-full py-2 bg-rose-600 hover:bg-rose-700 text-white text-[11px] font-bold uppercase tracking-widest rounded-lg transition-all shadow-sm active:scale-95 flex items-center justify-center gap-2"
+                  >
+                    <Upload size={14} />
+                    Resubmit Attachments
+                  </button>
+                </div>
               )}
 
-              {userPermissions?.canTransferArtwork && (
-                <ActionButton
-                  label="Transfer to Branch"
-                  icon={ICONS.Transfers}
-                  disabled={isStatusTransitioning || !(displayStatus === ArtworkStatus.AVAILABLE || displayStatus === ArtworkStatus.EXCLUSIVE_VIEW_ONLY)}
-                  onClick={() => setModalMode('transfer')}
-                />
-              )}
+              {/* Action Buttons Grid */}
+              <div className="space-y-3">
+                <p className="text-[10px] font-bold text-neutral-400 uppercase tracking-[0.2em] mb-4">Core Actions</p>
 
-              {userPermissions?.canEditArtwork && (
-                <>
-                  {onDelete && userPermissions?.canDeleteArtwork && (
-                    <ActionButton
-                      label="Delete Artwork"
-                      icon={<Trash2 size={20} />}
-                      variant="rose"
-                      disabled={isStatusTransitioning || isImmutable || displayStatus === ArtworkStatus.RESERVED}
-                      onClick={() => {
-                        setConfirmModal({
-                          isOpen: true,
-                          title: 'Delete Artwork',
-                          message: 'Are you sure you want to permanently delete this artwork? This action cannot be undone.',
-                          variant: 'danger',
-                          confirmLabel: 'Delete Permanently',
-                          onConfirm: () => wrapAction(() => onDelete(artwork.id), 'Deleting Artwork...')
-                        });
-                      }}
-                    />
-                  )}
-                  {onReturn && (
-                    <ActionButton
-                      label="Return to Artist"
-                      icon={<RotateCcw size={20} />}
-                      variant="slate"
-                      disabled={isStatusTransitioning || isImmutable || displayStatus === ArtworkStatus.FOR_RETOUCH || displayStatus === ArtworkStatus.FOR_FRAMING || displayStatus === ArtworkStatus.RESERVED}
-                      onClick={() => setModalMode('return')}
-                    />
-                  )}
-                  {onSendToFramer && (
-                    <ActionButton
-                      label="Send to Framer"
-                      icon={<Wrench size={20} />}
-                      variant="amber"
-                      disabled={isStatusTransitioning || isImmutable || displayStatus === ArtworkStatus.FOR_RETOUCH || displayStatus === ArtworkStatus.FOR_FRAMING || displayStatus === ArtworkStatus.RESERVED}
-                      onClick={() => setModalMode('framer')}
-                    />
-                  )}
-                  {displayStatus === ArtworkStatus.FOR_RETOUCH && onReturnToGallery && (
-                    <ActionButton
-                      label="Return to Gallery"
-                      icon={<Archive size={20} />}
-                      variant="emerald"
-                      disabled={isStatusTransitioning}
-                      onClick={() => {
-                        setReturnBranch(displayBranch || branches[0]);
-                        setModalMode('retouch-return');
-                      }}
-                    />
-                  )}
-                  {displayStatus === ArtworkStatus.FOR_FRAMING && onReturnFromFramer && (
-                    <ActionButton
-                      label="Return from Framer"
-                      icon={<Archive size={20} />}
-                      variant="emerald"
-                      disabled={isStatusTransitioning}
-                      onClick={() => {
-                        setReturnBranch(displayBranch || branches[0]);
-                        setModalMode('framer-return');
-                      }}
-                    />
-                  )}
-                </>
-              )}
-
-              {onAddToAuction && userPermissions?.canManageEvents && displayStatus === ArtworkStatus.AVAILABLE && (
-                <ActionButton
-                  label="Add to Auction"
-                  icon={<Gavel size={20} />}
-                  variant="indigo"
-                  disabled={isStatusTransitioning || isImmutable}
-                  onClick={() => setModalMode('auction')}
-                />
-              )}
-
-              {userPermissions?.canReserveArtwork && (
-                <ActionButton
-                  label="Reserve Artwork"
-                  icon={<Bookmark size={20} />}
-                  variant="yellow"
-                  disabled={isStatusTransitioning || displayStatus !== ArtworkStatus.AVAILABLE}
-                  onClick={() => setModalMode('reserve')}
-                />
-              )}
-
-              {userPermissions?.canReserveArtwork && displayStatus === ArtworkStatus.RESERVED && onCancelReservation && (
-                <ActionButton
-                  label="Cancel Reservation"
-                  icon={<XCircle size={20} />}
-                  variant="rose"
-                  disabled={isStatusTransitioning}
-                  onClick={() => {
-                    setConfirmModal({
-                      isOpen: true,
-                      title: 'Cancel Reservation',
-                      message: 'Are you sure you want to cancel this reservation? The artwork will become Available.',
-                      variant: 'warning',
-                      confirmLabel: 'Cancel Reservation',
-                      onConfirm: async () => {
-                        setOptimisticArtworkState({ status: ArtworkStatus.AVAILABLE, remarks: '', reservationExpiry: undefined });
-                        const success = await wrapAction(() => onCancelReservation(artwork.id), 'Cancelling Reservation...', ArtworkStatus.AVAILABLE);
-                        if (!success) {
-                          setOptimisticArtwork(null);
-                          setPendingViewState(null);
-                        } else {
-                          // Only set pending view state if the prop hasn't caught up yet
-                          if (artwork.status !== ArtworkStatus.AVAILABLE) {
-                            setPendingViewState({ status: ArtworkStatus.AVAILABLE });
-                          }
-                        }
-                      }
-                    });
-                  }}
-                />
-              )}
-
-              {userPermissions?.canSellArtwork && (
-                <>
+                {userPermissions?.canEditArtwork && (
                   <ActionButton
-                    label="Declare Sale"
-                    icon={ICONS.Sales}
-                    variant="amber"
+                    label="Edit Properties"
+                    icon={<Edit size={18} />}
+                    variant="emerald"
+                    disabled={isStatusTransitioning}
+                    onClick={() => setModalMode('edit')}
+                  />
+                )}
+
+                {userPermissions?.canTransferArtwork && (
+                  <ActionButton
+                    label="Transfer Branch"
+                    icon={<ArrowRightLeft size={18} />}
+                    disabled={isStatusTransitioning || !(displayStatus === ArtworkStatus.AVAILABLE || displayStatus === ArtworkStatus.EXCLUSIVE_VIEW_ONLY)}
+                    onClick={() => setModalMode('transfer')}
+                  />
+                )}
+
+                {userPermissions?.canReserveArtwork && (
+                  <ActionButton
+                    label={displayStatus === ArtworkStatus.RESERVED ? "Modify Reservation" : "Reserve Artwork"}
+                    icon={<Bookmark size={18} />}
+                    variant="yellow"
                     disabled={isStatusTransitioning || (displayStatus !== ArtworkStatus.AVAILABLE && displayStatus !== ArtworkStatus.RESERVED)}
                     onClick={() => {
-                      if (displayStatus === ArtworkStatus.RESERVED) {
-                        if (artwork.remarks?.includes('Type: Person')) {
-                          const targetName = artwork.remarks.split('Target:')[1]?.split('|')[0]?.trim();
-                          setConfirmModal({
-                            isOpen: true,
-                            title: 'Sell Reserved Artwork',
-                            message: `This artwork is reserved for ${targetName || 'a client'}. Are you sure you want to sell it?`,
-                            variant: 'warning',
-                            confirmLabel: 'Proceed with Sale',
-                            onConfirm: () => setModalMode('sale')
-                          });
-                        } else {
-                          // For Event/Auction, proceed directly to sale modal (it will auto-fill via useEffect)
-                          setModalMode('sale');
-                        }
+                      if (displayStatus === ArtworkStatus.RESERVED && onCancelReservation) {
+                        setConfirmModal({
+                          isOpen: true,
+                          title: 'Cancel Reservation',
+                          message: 'Are you sure you want to cancel this reservation? The artwork will become Available.',
+                          variant: 'warning',
+                          confirmLabel: 'Cancel Reservation',
+                          onConfirm: async () => {
+                            setOptimisticArtworkState({ status: ArtworkStatus.AVAILABLE, remarks: '', reservationExpiry: undefined });
+                            const success = await wrapAction(() => onCancelReservation(artwork.id), 'Cancelling Reservation...', ArtworkStatus.AVAILABLE);
+                            if (!success) { setOptimisticArtwork(null); setPendingViewState(null); }
+                          }
+                        });
                       } else {
-                        setModalMode('sale');
+                        setModalMode('reserve');
                       }
                     }}
                   />
+                )}
+
+                <div className="h-px bg-neutral-100 my-4" />
+                <p className="text-[10px] font-bold text-neutral-400 uppercase tracking-[0.2em] mb-4">Sales & Returns</p>
+
+                {userPermissions?.canSellArtwork && (
                   <ActionButton
-                    label="Mark as Delivered"
-                    icon={ICONS.Deliver}
+                    label="Declare Sale"
+                    icon={<ShoppingCart size={18} />}
+                    variant="amber"
+                    disabled={isStatusTransitioning || (displayStatus !== ArtworkStatus.AVAILABLE && displayStatus !== ArtworkStatus.RESERVED)}
+                    onClick={() => setModalMode('sale')}
+                  />
+                )}
+
+                {userPermissions?.canSellArtwork && displayStatus === ArtworkStatus.SOLD && (
+                  <ActionButton
+                    label="Mark Delivered"
+                    icon={<PackageCheck size={18} />}
                     variant="indigo"
-                    disabled={isStatusTransitioning || displayStatus !== ArtworkStatus.SOLD}
+                    disabled={isStatusTransitioning}
                     onClick={() => {
-                      // Check if mandatory attachments exist
                       if (!artwork.itdrImageUrl || !artwork.rsaImageUrl) {
                         setModalMode('delivery-attach');
                       } else {
@@ -924,82 +971,97 @@ const MasterView: React.FC<MasterViewProps> = ({
                       }
                     }}
                   />
-                </>
-              )}
+                )}
 
-              {(displayStatus === ArtworkStatus.SOLD || displayStatus === ArtworkStatus.DELIVERED) && userPermissions?.canAttachITDR && (
-                <ActionButton
-                  label="Attach IT/DR/RSA/AR/OR/CR"
-                  icon={<Paperclip size={20} />}
-                  variant="indigo"
-                  disabled={isStatusTransitioning}
-                  onClick={() => {
-                    setTempAttachmentUrl(Array.isArray(artwork.itdrImageUrl) ? (artwork.itdrImageUrl[0] || '') : (artwork.itdrImageUrl || ''));
-                    setActiveAttachmentTab('itdr');
-                    setModalMode('attach-unified');
-                  }}
-                />
-              )}
-
-              {displayStatus === ArtworkStatus.SOLD && userPermissions?.canSellArtwork && (
-                <div className="grid grid-cols-1 gap-3">
-                  {sale?.downpayment && onAddInstallment && (
-                    ((artwork.price || 0) - (sale.downpayment || 0) - (sale.installments || []).reduce((sum, inst) => sum + inst.amount, 0)) > 0
-                  ) && (
-                    <ActionButton
-                      label="Pay Installment"
-                      icon={ICONS.Sales}
-                      variant="emerald"
-                      disabled={isStatusTransitioning}
-                      onClick={() => {
-                        setInstallmentAmount('');
-                        setInstallmentReference('');
-                        setModalMode('installment');
-                      }}
-                    />
-                  )}
+                {displayStatus === ArtworkStatus.SOLD && sale?.downpayment && !sale.isCancelled && onAddInstallment && (
                   <ActionButton
-                    label="Cancel Sale Order"
-                    icon={<XCircle size={20} />}
-                    variant="rose"
+                    label="Post Payment"
+                    icon={<FileText size={18} />}
+                    variant="emerald"
+                    disabled={isStatusTransitioning}
+                    onClick={() => { setInstallmentAmount(''); setInstallmentReference(''); setModalMode('installment'); }}
+                  />
+                )}
+
+                {onReturn && userPermissions?.canEditArtwork && (
+                  <ActionButton
+                    label="Return to Artist"
+                    icon={<RotateCcw size={18} />}
+                    variant="slate"
+                    disabled={isStatusTransitioning || isImmutable || displayStatus === ArtworkStatus.RESERVED}
+                    onClick={() => setModalMode('return')}
+                  />
+                )}
+
+                {onSendToFramer && userPermissions?.canEditArtwork && (
+                  <ActionButton
+                    label="Send to Framer"
+                    icon={<Wrench size={18} />}
+                    variant="slate"
+                    disabled={isStatusTransitioning || isImmutable || displayStatus === ArtworkStatus.RESERVED}
+                    onClick={() => setModalMode('framer')}
+                  />
+                )}
+
+                {displayStatus === ArtworkStatus.FOR_RETOUCH && onReturnToGallery && (
+                  <ActionButton
+                    label="Return to Gallery"
+                    icon={<Archive size={18} />}
+                    variant="emerald"
                     disabled={isStatusTransitioning}
                     onClick={() => {
-                      setConfirmModal({
-                        isOpen: true,
-                        title: 'Cancel Sale',
-                        message: 'Are you sure you want to cancel this sale? Artwork will be marked as Cancelled.',
-                        variant: 'danger',
-                        confirmLabel: 'Cancel Sale',
-                        onConfirm: () => wrapAction(() => onCancelSale(artwork.id), 'Cancelling Sale...', ArtworkStatus.CANCELLED)
-                      });
+                      setReturnBranch(displayBranch || branches[0]);
+                      setModalMode('retouch-return');
                     }}
                   />
-                </div>
-              )}
+                )}
 
-              {canGenerateCert && (userPermissions?.canAccessCertificate ?? true) && <ActionButton label="Generate Certificate" icon={ICONS.History} variant="emerald" disabled={isStatusTransitioning} onClick={() => setModalMode('certificate')} />}
+                {displayStatus === ArtworkStatus.FOR_FRAMING && onReturnFromFramer && (
+                  <ActionButton
+                    label="Return from Framer"
+                    icon={<Archive size={18} />}
+                    variant="emerald"
+                    disabled={isStatusTransitioning}
+                    onClick={() => {
+                      setReturnBranch(displayBranch || branches[0]);
+                      setModalMode('framer-return');
+                    }}
+                  />
+                )}
 
-              {artwork.itdrImageUrl && (userPermissions?.canAttachITDR ?? true) && (
-                <div className="mt-3 grid grid-cols-2 gap-2">
-                  <ActionButton label="View IT/DR" icon={<Paperclip size={20} />} variant="neutral" disabled={isStatusTransitioning} onClick={() => setShowItdrPreview(true)} />
-                  <ActionButton label="Print IT/DR" icon={<Paperclip size={20} />} variant="neutral" disabled={isStatusTransitioning} onClick={handlePrintItdr} />
-                </div>
-              )}
-
-              {artwork.rsaImageUrl && (userPermissions?.canAttachITDR ?? true) && (
-                <div className="mt-3 grid grid-cols-2 gap-2">
-                  <ActionButton label="View RSA/AR" icon={<Paperclip size={20} />} variant="slate" disabled={isStatusTransitioning} onClick={() => setShowRsaPreview(true)} />
-                  <ActionButton label="Print RSA/AR" icon={<Paperclip size={20} />} variant="slate" disabled={isStatusTransitioning} onClick={handlePrintRsa} />
-                </div>
-              )}
-
-              {artwork.orCrImageUrl && (userPermissions?.canAttachITDR ?? true) && (
-                <div className="mt-3 grid grid-cols-2 gap-2">
-                  <ActionButton label="View OR/CR" icon={<Paperclip size={20} />} variant="neutral" disabled={isStatusTransitioning} onClick={() => setShowOrCrPreview(true)} />
-                  <ActionButton label="Print OR/CR" icon={<Paperclip size={20} />} variant="neutral" disabled={isStatusTransitioning} onClick={handlePrintOrCr} />
-                </div>
-              )}
+                {onAddToAuction && userPermissions?.canManageEvents && displayStatus === ArtworkStatus.AVAILABLE && (
+                  <ActionButton
+                    label="Add to Auction"
+                    icon={<Gavel size={18} />}
+                    variant="indigo"
+                    disabled={isStatusTransitioning || isImmutable}
+                    onClick={() => setModalMode('auction')}
+                  />
+                )}
+              </div>
             </div>
+
+            <div className="px-6 py-4 bg-neutral-50/50 border-t border-neutral-100">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest">Documentation</span>
+                <div className="flex gap-1.5">
+                  <button onClick={() => setModalMode('certificate')} className="p-2 bg-white border border-neutral-200 rounded-lg text-neutral-600 hover:text-neutral-900 transition-colors shadow-sm"><FileText size={14} /></button>
+                  <button onClick={handlePrintItdr} className="p-2 bg-white border border-neutral-200 rounded-lg text-neutral-600 hover:text-neutral-900 transition-colors shadow-sm"><Download size={14} /></button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Location Badge (Floating) */}
+          <div className="p-4 bg-white rounded-xl border border-neutral-200 shadow-sm flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-blue-50 rounded-lg"><Home size={16} className="text-blue-600" /></div>
+              <div>
+                <p className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest leading-none mb-1">Assigned Branch</p>
+                <p className="text-sm font-bold text-neutral-900">{displayBranch || 'Main Gallery'}</p>
+              </div>
+            </div>
+            <ArrowRight size={16} className="text-neutral-300" />
           </div>
         </div>
       </div>
@@ -2579,6 +2641,62 @@ const MasterView: React.FC<MasterViewProps> = ({
                   />
                 </div>
               </div>
+              
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest flex items-center gap-2">
+                  Payment Receipt <span className="text-red-500">*</span>
+                </label>
+                <div className="grid grid-cols-1 gap-2">
+                  {installmentProof.map((imgUrl, index) => (
+                    <div key={index} className="relative group rounded-md overflow-hidden shadow-md ring-1 ring-neutral-100 h-40">
+                      <img src={imgUrl} className="w-full h-full object-cover" alt="Receipt" />
+                      <div className="absolute inset-0 bg-neutral-900/60 backdrop-blur-[1px] opacity-0 group-hover:opacity-100 transition-all flex items-center justify-center">
+                        <button
+                          onClick={() => setInstallmentProof(prev => prev.filter((_, i) => i !== index))}
+                          className="px-4 py-2 bg-white text-neutral-700 rounded-sm text-xs font-bold shadow-lg hover:bg-neutral-100 transition-colors flex items-center gap-2"
+                        >
+                          <Trash2 size={14} /> Remove
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+
+                  {installmentProof.length === 0 && (
+                    <label className="flex flex-col items-center justify-center w-full h-40 bg-neutral-50 border-2 border-dashed border-neutral-200 rounded-md cursor-pointer hover:bg-white hover:border-neutral-300 hover:shadow-lg hover:shadow-neutral-500/10 transition-all group">
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={async (e) => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          try {
+                            const reader = new FileReader();
+                            reader.onload = (ev) => setInstallmentProof([ev.target?.result as string]);
+                            reader.readAsDataURL(file);
+                          } finally {
+                            e.target.value = '';
+                          }
+                        }}
+                      />
+                      <div className="p-3 bg-white rounded-sm shadow-sm mb-2 group-hover:scale-110 transition-transform ring-1 ring-neutral-100">
+                        <Upload size={20} className="text-neutral-400 group-hover:text-neutral-700 transition-colors" />
+                      </div>
+                      <span className="text-xs font-bold text-neutral-500 group-hover:text-neutral-900 transition-colors">Upload Receipt Proof</span>
+                      <p className="text-[10px] text-neutral-400 mt-1 uppercase tracking-widest font-black">Mandatory for Approval</p>
+                    </label>
+                  )}
+                </div>
+              </div>
+
+              {parseFloat(installmentAmount) > ((artwork.price || 0) - (sale.downpayment || 0) - (sale.installments || []).reduce((sum, inst) => sum + inst.amount, 0)) + 0.01 && (
+                <div className="p-3 bg-red-50 border border-red-100 rounded-sm flex items-start gap-2">
+                  <AlertCircle size={16} className="text-red-500 mt-0.5 flex-shrink-0" />
+                  <p className="text-xs font-bold text-red-600">
+                    needs approval from the admin, payment is higher than the original price.
+                  </p>
+                </div>
+              )}
             </div>
 
             <div className="flex justify-end space-x-3 pt-4 border-t border-neutral-100">
@@ -2589,26 +2707,112 @@ const MasterView: React.FC<MasterViewProps> = ({
                 Cancel
               </button>
               <button
-                disabled={!installmentAmount || parseFloat(installmentAmount) <= 0}
+                disabled={!installmentAmount || parseFloat(installmentAmount) <= 0 || installmentProof.length === 0}
                 onClick={() => {
                   const amt = parseFloat(installmentAmount);
-                  const balance = (artwork.price || 0) - (sale.downpayment || 0) - (sale.installments || []).reduce((sum, inst) => sum + inst.amount, 0);
+                  const totalPaid = (sale.downpayment || 0) + (sale.installments || []).reduce((sum, inst) => sum + inst.amount, 0);
+                  const balance = (artwork.price || 0) - totalPaid;
+                  const isOverpayment = amt > balance + 0.01;
                   
-                  if (amt > balance + 0.01) {
-                    alert(`Payment amount (₱${amt.toLocaleString()}) exceeds the outstanding balance (₱${balance.toLocaleString()}).`);
-                    return;
-                  }
-
+                  const isApprovalRequired = userRole !== UserRole.ADMIN;
+                  
                   if (onAddInstallment) {
                     wrapAction(async () => {
-                      await onAddInstallment(sale.id, amt, installmentDate, installmentReference);
+                      await onAddInstallment(sale.id, amt, installmentDate, installmentReference, installmentProof);
                       setModalMode('none');
-                    }, 'Recording Payment...');
+                      setInstallmentProof([]);
+                    }, isApprovalRequired ? 'Submitting Payment for Approval...' : 'Recording Payment...');
                   }
                 }}
-                className="px-8 py-2.5 bg-neutral-900 text-white rounded-sm font-black text-sm shadow-lg shadow-neutral-200 disabled:opacity-50 active:scale-95 transition-all"
+                className={`px-8 py-2.5 rounded-sm font-black text-sm shadow-lg active:scale-95 transition-all ${
+                  (parseFloat(installmentAmount) > ((artwork.price || 0) - (sale.downpayment || 0) - (sale.installments || []).reduce((sum, inst) => sum + inst.amount, 0)) + 0.01)
+                    ? 'bg-red-600 text-white shadow-red-200'
+                    : 'bg-neutral-900 text-white shadow-neutral-200'
+                } disabled:opacity-50`}
               >
-                Record Payment
+                {userRole !== UserRole.ADMIN
+                  ? 'Submit for Approval'
+                  : 'Record Payment'
+                }
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {modalMode === 'edit-payment' && editingPayment && (
+        <Modal onClose={() => setModalMode('none')} title={`Edit ${editingPayment.type === 'downpayment' ? 'Downpayment' : 'Installment'}`}>
+          <div className="space-y-6">
+            <div className="space-y-1">
+              <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">Amount <span className="text-red-500">*</span></label>
+              <div className="relative">
+                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-neutral-400 font-bold">₱</span>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  className="w-full pl-8 pr-4 py-3 bg-neutral-50 border border-neutral-200 rounded-sm text-sm font-black text-neutral-900"
+                  value={editingPayment.amount}
+                  onChange={(e) => {
+                    const val = e.target.value.replace(/[^0-9.]/g, '');
+                    const parts = val.split('.');
+                    if (parts.length > 2) parts.splice(2);
+                    setEditingPayment({ ...editingPayment, amount: parts.join('.') });
+                  }}
+                />
+              </div>
+            </div>
+
+            {editingPayment.type === 'installment' && (
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">Date Received <span className="text-red-500">*</span></label>
+                  <input
+                    type="date"
+                    className="w-full px-4 py-3 bg-neutral-50 border border-neutral-200 rounded-sm text-sm font-bold text-neutral-900"
+                    value={editingPayment.date}
+                    onChange={(e) => setEditingPayment({ ...editingPayment, date: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">Reference No.</label>
+                  <input
+                    type="text"
+                    className="w-full px-4 py-3 bg-neutral-50 border border-neutral-200 rounded-sm text-sm font-bold text-neutral-900"
+                    value={editingPayment.reference}
+                    onChange={(e) => setEditingPayment({ ...editingPayment, reference: e.target.value })}
+                  />
+                </div>
+              </div>
+            )}
+
+            <div className="flex justify-end space-x-3 pt-4 border-t border-neutral-100">
+              <button
+                onClick={() => setModalMode('none')}
+                className="px-6 py-2.5 rounded-sm text-neutral-500 font-bold text-sm hover:bg-neutral-50 transition-all"
+              >
+                Cancel
+              </button>
+              <button
+                disabled={!editingPayment.amount || parseFloat(editingPayment.amount) <= 0}
+                onClick={() => {
+                  const amt = parseFloat(editingPayment.amount);
+                  if (onEditPayment && sale) {
+                    onEditPayment(sale.id, editingPayment.id, {
+                      amount: amt,
+                      date: editingPayment.date,
+                      reference: editingPayment.reference
+                    });
+                    setModalMode('none');
+                  }
+                }}
+                className="px-8 py-2.5 bg-neutral-900 text-white rounded-sm font-black text-sm shadow-lg shadow-neutral-200 active:scale-95 transition-all"
+              >
+                {(() => {
+                  const createdAt = editingPayment.type === 'downpayment' ? sale?.downpaymentRecordedAt : (sale?.installments?.find(i => i.id === editingPayment.id)?.createdAt);
+                  const isNew = createdAt && (new Date().getTime() - new Date(createdAt).getTime() < 24 * 60 * 60 * 1000);
+                  const isAdmin = userRole === UserRole.ADMIN;
+                  return (isNew || isAdmin) ? 'Update Payment' : 'Request Approval';
+                })()}
               </button>
             </div>
           </div>
@@ -2960,14 +3164,14 @@ const MasterView: React.FC<MasterViewProps> = ({
 
 const ActionButton: React.FC<{ label: string, icon: React.ReactNode, variant?: string, disabled?: boolean, onClick: () => void }> = React.memo(({ label, icon, variant, disabled, onClick }) => {
   const styles = {
-    default: 'bg-white hover:bg-neutral-50 text-neutral-900 border-neutral-200 shadow-sm',
-    amber: 'bg-white hover:bg-neutral-50 text-neutral-800 border-neutral-200 shadow-sm',
-    yellow: 'bg-white hover:bg-neutral-50 text-neutral-800 border-neutral-200 shadow-sm',
-    indigo: 'bg-white hover:bg-neutral-50 text-neutral-800 border-neutral-200 shadow-sm',
-    emerald: 'bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-600 shadow-sm',
-    rose: 'bg-white hover:bg-neutral-50 text-neutral-800 border-neutral-200 shadow-sm',
-    slate: 'bg-white hover:bg-neutral-50 text-neutral-800 border-neutral-200 shadow-sm',
-    neutral: 'bg-white hover:bg-neutral-50 text-neutral-800 border-neutral-200 shadow-sm',
+    default: 'bg-white hover:bg-neutral-50 text-neutral-700 border-neutral-200',
+    emerald: 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-200',
+    rose: 'bg-rose-50 hover:bg-rose-100 text-rose-700 border-rose-200',
+    amber: 'bg-amber-50 hover:bg-amber-100 text-amber-700 border-amber-200',
+    yellow: 'bg-yellow-50 hover:bg-yellow-100 text-yellow-700 border-yellow-200',
+    indigo: 'bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border-indigo-200',
+    slate: 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200',
+    neutral: 'bg-white hover:bg-neutral-50 text-neutral-600 border-neutral-200',
   };
   const activeStyle = variant ? styles[variant as keyof typeof styles] : styles.default;
   return (
@@ -2978,32 +3182,32 @@ const ActionButton: React.FC<{ label: string, icon: React.ReactNode, variant?: s
         e.stopPropagation();
         onClick();
       }}
-      className={`relative z-10 w-full flex items-center justify-between px-5 py-3 rounded-xl font-bold text-[13px] border transition-all duration-200 shadow-sm hover:shadow-md hover:-translate-y-0.5 active:scale-95 disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:active:scale-100 ${activeStyle}`}
+      className={`group w-full flex items-center justify-between px-4 py-2.5 rounded-lg font-semibold text-[13px] border transition-all duration-200 hover:shadow-sm active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:shadow-none disabled:active:scale-100 ${activeStyle}`}
     >
-      <div className="flex items-center space-x-3.5">
+      <div className="flex items-center space-x-3">
         <span className="text-neutral-500 group-hover:text-neutral-900 transition-colors">{icon}</span>
         <span className="truncate tracking-tight">{label}</span>
       </div>
-      <ChevronDown className="w-4 h-4 opacity-20 flex-shrink-0 -rotate-90" />
+      <ChevronDown className="w-3.5 h-3.5 opacity-30 group-hover:opacity-50 transition-opacity -rotate-90" />
     </button>
   );
 });
 
 const Modal: React.FC<{ children: React.ReactNode, onClose: () => void, title: string, footer?: React.ReactNode, maxWidth?: string, variant?: 'default' | 'sharp' }> = ({ children, onClose, title, footer, maxWidth = 'max-w-lg', variant = 'default' }) => {
   return createPortal(
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-      <div className={`bg-white w-full ${maxWidth} max-h-[90vh] flex flex-col shadow-2xl animate-in fade-in zoom-in duration-200 rounded-2xl overflow-hidden`}>
-        <div className="px-6 py-5 flex justify-between items-center bg-white border-b border-neutral-100 flex-shrink-0">
-          <h3 className="text-lg font-black text-neutral-900 tracking-tight truncate pr-4">{title}</h3>
-          <button onClick={onClose} className="text-neutral-400 hover:text-neutral-600 transition-colors p-1 hover:bg-neutral-50 rounded-full">
-            <XCircle size={22} />
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-[2px] p-4 animate-in fade-in duration-200">
+      <div className={`bg-white w-full ${maxWidth} max-h-[90vh] flex flex-col shadow-2xl animate-in zoom-in-95 duration-200 rounded-xl overflow-hidden border border-neutral-200`}>
+        <div className="px-6 py-4 flex justify-between items-center bg-white border-b border-neutral-100 flex-shrink-0">
+          <h3 className="text-base font-bold text-neutral-900 tracking-tight truncate pr-4">{title}</h3>
+          <button onClick={onClose} className="text-neutral-400 hover:text-neutral-600 transition-colors p-1.5 hover:bg-neutral-100 rounded-lg">
+            <XCircle size={20} />
           </button>
         </div>
-        <div className="overflow-y-auto custom-scrollbar flex-1 p-6 md:p-8 bg-white">
+        <div className="overflow-y-auto custom-scrollbar flex-1 p-6 bg-white">
           {children}
         </div>
         {footer && (
-          <div className="px-6 py-4 bg-neutral-50/50 border-t border-neutral-100 flex-shrink-0">
+          <div className="px-6 py-4 bg-neutral-50/80 border-t border-neutral-100 flex-shrink-0">
             {footer}
           </div>
         )}
@@ -3024,27 +3228,27 @@ const ConfirmationModal: React.FC<{
 }> = ({ isOpen, onClose, title, message, onConfirm, confirmLabel = 'Confirm', variant = 'info' }) => {
   if (!isOpen) return null;
 
-  const colors = {
-    danger: 'bg-neutral-900 hover:bg-neutral-900 shadow-neutral-200',
-    warning: 'bg-neutral-800 hover:bg-neutral-900 shadow-neutral-200',
-    info: 'bg-neutral-600 hover:bg-neutral-700 shadow-neutral-200',
-    emerald: 'bg-neutral-900 hover:bg-neutral-800 shadow-neutral-200'
+  const colorStyles = {
+    danger: 'bg-rose-600 hover:bg-rose-700 shadow-rose-200',
+    warning: 'bg-amber-500 hover:bg-amber-600 shadow-amber-200',
+    info: 'bg-neutral-900 hover:bg-black shadow-neutral-200',
+    emerald: 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-200'
   };
 
   return createPortal(
-    <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-      <div className="bg-white rounded-md w-full max-w-md shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
-        <div className="p-6 sm:p-8 text-center space-y-4">
-          <div className={`w-12 h-12 sm:w-16 h-16 mx-auto rounded-full flex items-center justify-center bg-neutral-100 text-neutral-600`}>
-            <AlertTriangle size={28} className="sm:w-8 sm:h-8" />
+    <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/40 backdrop-blur-[2px] p-4 animate-in fade-in duration-200">
+      <div className="bg-white rounded-xl w-full max-w-md shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200 border border-neutral-200">
+        <div className="p-8 text-center space-y-6">
+          <div className={`w-16 h-16 mx-auto rounded-full flex items-center justify-center bg-neutral-50 text-neutral-400`}>
+            <AlertTriangle size={32} />
           </div>
-          <div>
-            <h3 className="text-lg sm:text-xl font-bold text-neutral-900">{title}</h3>
-            <p className="text-xs sm:text-sm text-neutral-500 mt-2">{message}</p>
+          <div className="space-y-2">
+            <h3 className="text-xl font-bold text-neutral-900">{title}</h3>
+            <p className="text-sm text-neutral-500 leading-relaxed">{message}</p>
           </div>
-          <div className="flex flex-col sm:flex-row gap-3 pt-4">
-            <button onClick={onClose} className="flex-1 px-4 py-3 rounded-sm text-xs sm:text-sm text-neutral-600 font-bold bg-neutral-50 hover:bg-neutral-100 transition-colors order-2 sm:order-1">Cancel</button>
-            <button onClick={() => { onConfirm(); onClose(); }} className={`flex-1 px-4 py-3 rounded-sm text-xs sm:text-sm text-white font-bold shadow-lg transition-all transform hover:-translate-y-0.5 order-1 sm:order-2 ${colors[variant || 'info']}`}>{confirmLabel}</button>
+          <div className="flex flex-col sm:flex-row gap-3 pt-2">
+            <button onClick={onClose} className="flex-1 px-6 py-2.5 rounded-lg text-sm text-neutral-600 font-semibold bg-neutral-50 hover:bg-neutral-100 transition-colors order-2 sm:order-1">Cancel</button>
+            <button onClick={() => { onConfirm(); onClose(); }} className={`flex-1 px-6 py-2.5 rounded-lg text-sm text-white font-semibold shadow-lg transition-all active:scale-95 order-1 sm:order-2 ${colorStyles[variant]}`}>{confirmLabel}</button>
           </div>
         </div>
       </div>
@@ -3055,18 +3259,28 @@ const ConfirmationModal: React.FC<{
 
 const StatusBadge: React.FC<{ status: ArtworkStatus }> = ({ status }) => {
   const styles: Record<string, string> = {
-    [ArtworkStatus.AVAILABLE]: 'bg-emerald-600 text-white border-emerald-600',
-    [ArtworkStatus.RESERVED]: 'bg-neutral-900 text-neutral-100 border-neutral-700',
-    [ArtworkStatus.SOLD]: 'bg-red-600 text-white border-red-600',
-    [ArtworkStatus.DELIVERED]: 'bg-white text-neutral-900 border-neutral-300',
-    [ArtworkStatus.CANCELLED]: 'bg-neutral-200 text-neutral-500 border-neutral-300',
-    [ArtworkStatus.FOR_RETOUCH]: 'bg-orange-100 text-orange-800 border-orange-200 border-dashed',
-    [ArtworkStatus.FOR_FRAMING]: 'bg-blue-100 text-blue-800 border-blue-200',
-    [ArtworkStatus.EXCLUSIVE_VIEW_ONLY]: 'bg-purple-900 text-white border-purple-700',
-    'RETURNED': 'bg-neutral-900 text-white border-neutral-900',
+    [ArtworkStatus.AVAILABLE]: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+    [ArtworkStatus.RESERVED]: 'bg-slate-100 text-slate-700 border-slate-300',
+    [ArtworkStatus.SOLD]: 'bg-rose-50 text-rose-700 border-rose-200',
+    [ArtworkStatus.DELIVERED]: 'bg-neutral-50 text-neutral-600 border-neutral-200',
+    [ArtworkStatus.CANCELLED]: 'bg-neutral-100 text-neutral-400 border-neutral-200',
+    [ArtworkStatus.FOR_RETOUCH]: 'bg-orange-50 text-orange-700 border-orange-200 border-dashed',
+    [ArtworkStatus.FOR_FRAMING]: 'bg-blue-50 text-blue-700 border-blue-200',
+    [ArtworkStatus.EXCLUSIVE_VIEW_ONLY]: 'bg-purple-50 text-purple-700 border-purple-200',
+    'RETURNED': 'bg-neutral-50 text-neutral-500 border-neutral-200',
   };
   const displayText = status === ArtworkStatus.EXCLUSIVE_VIEW_ONLY ? 'NOT FOR SALE' : status;
-  return <span className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest border shadow-sm whitespace-nowrap ${styles[status] || 'bg-neutral-100 text-neutral-900 border-neutral-200'}`}>{displayText}</span>;
+  return (
+    <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider border shadow-sm whitespace-nowrap transition-colors ${styles[status] || 'bg-neutral-50 text-neutral-600 border-neutral-200'}`}>
+      <span className={`w-1.5 h-1.5 rounded-full mr-1.5 opacity-70 ${
+        status === ArtworkStatus.AVAILABLE ? 'bg-emerald-500' :
+        status === ArtworkStatus.RESERVED ? 'bg-slate-500' :
+        status === ArtworkStatus.SOLD ? 'bg-rose-500' :
+        'bg-neutral-400'
+      }`} />
+      {displayText}
+    </span>
+  );
 };
 
 export default MasterView;

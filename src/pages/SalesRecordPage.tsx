@@ -64,19 +64,34 @@ const SaleDetailModal = ({
                     <span className="text-xs font-bold text-neutral-500 uppercase">Sale Price</span>
                     <span className="font-black text-neutral-900">₱{artwork.price.toLocaleString()}</span>
                 </div>
-                {sale.downpayment && (
-                    <>
-                    <div className="flex justify-between items-center text-sm">
-                        <span className="text-neutral-500">Downpayment</span>
-                        <span className="font-bold text-red-600">- ₱{sale.downpayment.toLocaleString()}</span>
-                    </div>
-                    <div className="border-t border-neutral-200 my-2"></div>
-                    <div className="flex justify-between items-center">
-                        <span className="text-xs font-bold text-neutral-500 uppercase">Balance</span>
-                        <span className="font-black text-neutral-900">₱{(artwork.price - sale.downpayment).toLocaleString()}</span>
-                    </div>
-                    </>
-                )}
+                {(() => {
+                    const price = artwork.price || 0;
+                    const downpayment = sale.downpayment || 0;
+                    const installmentsTotal = (sale.installments || []).filter(i => !i.isPending).reduce((sum, inst) => sum + inst.amount, 0);
+                    const totalPaid = downpayment + installmentsTotal;
+                    const balance = price - totalPaid;
+                    const isFullyPaid = balance <= 0 && totalPaid > 0;
+
+                    if (totalPaid === 0) return null;
+
+                    return (
+                        <>
+                            <div className="flex justify-between items-center text-sm">
+                                <span className="text-neutral-500">Total Paid</span>
+                                <span className="font-bold text-emerald-600">₱{totalPaid.toLocaleString()}</span>
+                            </div>
+                            <div className="border-t border-neutral-200 my-2"></div>
+                            <div className="flex justify-between items-center">
+                                <span className={`text-xs font-bold uppercase ${isFullyPaid ? 'text-emerald-600' : 'text-neutral-500'}`}>
+                                    {isFullyPaid ? 'Status' : 'Remaining Balance'}
+                                </span>
+                                <span className={`font-black ${isFullyPaid ? 'text-emerald-700' : 'text-red-700'}`}>
+                                    {isFullyPaid ? 'FULLY PAID' : `₱${balance.toLocaleString()}`}
+                                </span>
+                            </div>
+                        </>
+                    );
+                })()}
             </div>
 
             {/* Details Grid */}
@@ -98,6 +113,33 @@ const SaleDetailModal = ({
                     <span className="font-medium text-neutral-900">{new Date(sale.saleDate).toLocaleDateString()}</span>
                 </div>
             </div>
+
+            {/* Requested Re-uploads Alert */}
+            {sale.status === 'Declined' && sale.requestedAttachments && sale.requestedAttachments.length > 0 && (
+                <div className="bg-red-50 border border-red-200 rounded-md p-4 space-y-2">
+                    <div className="flex items-center gap-2 text-red-700">
+                        {ICONS.Warning}
+                        <h4 className="text-xs font-black uppercase tracking-wider">Re-upload Required</h4>
+                    </div>
+                    <p className="text-[10px] font-bold text-red-600 leading-normal">
+                        The admin has requested new uploads for the following documents:
+                    </p>
+                    <div className="flex flex-wrap gap-2 mt-1">
+                        {sale.requestedAttachments.map(f => (
+                            <span key={f} className="px-2 py-1 bg-red-100 text-red-700 rounded-sm text-[10px] font-black uppercase flex items-center gap-1">
+                                {ICONS.Refresh}
+                                {f === 'itdr' ? 'IT/DR' : f === 'rsa' ? 'RSA/AR' : 'OR/CR'}
+                            </span>
+                        ))}
+                    </div>
+                    {sale.declineReason && (
+                        <div className="mt-3 pt-3 border-t border-red-200/50">
+                            <span className="block text-[10px] font-black text-red-400 uppercase tracking-widest mb-1">Reason for Rejection</span>
+                            <p className="text-xs font-medium text-red-800 bg-white/50 p-2 rounded-sm italic border border-red-100">{sale.declineReason}</p>
+                        </div>
+                    )}
+                </div>
+            )}
             
             {/* Attachments */}
              {(sale.itdrUrl?.length || sale.rsaUrl?.length || sale.orCrUrl?.length) && (
@@ -631,16 +673,27 @@ const SalesRecordPage: React.FC<SalesRecordPageProps> = ({
                   </td>
                   <td className="px-6 py-4 text-right">
                     <p className="text-sm font-black text-neutral-900">₱{(displayArt?.price || 0).toLocaleString()}</p>
-                    {sale.downpayment && (
-                      <div className="mt-1 flex flex-col items-end space-y-0.5">
-                        <span className="text-[10px] text-red-600 font-bold">
-                          Down: ₱{sale.downpayment.toLocaleString()}
-                        </span>
-                        <span className="text-[10px] text-neutral-400 font-bold">
-                          Bal: ₱{((displayArt?.price || 0) - sale.downpayment).toLocaleString()}
-                        </span>
-                      </div>
-                    )}
+                    {(() => {
+                      const price = displayArt?.price || 0;
+                      const downpayment = sale.downpayment || 0;
+                      const installmentsTotal = (sale.installments || []).filter(i => !i.isPending).reduce((sum, inst) => sum + inst.amount, 0);
+                      const totalPaid = downpayment + installmentsTotal;
+                      const balance = price - totalPaid;
+                      const isFullyPaid = balance <= 0 && totalPaid > 0;
+                      
+                      if (totalPaid === 0) return null;
+                      
+                      return (
+                        <div className="mt-1 flex flex-col items-end space-y-0.5">
+                          <span className="text-[10px] text-neutral-400 font-bold">
+                            Paid: ₱{totalPaid.toLocaleString()}
+                          </span>
+                          <span className={`text-[10px] font-bold ${isFullyPaid ? 'text-emerald-600' : 'text-red-600'}`}>
+                            {isFullyPaid ? 'FULLY PAID' : `Bal: ₱${balance.toLocaleString()}`}
+                          </span>
+                        </div>
+                      );
+                    })()}
                   </td>
                   <td className="px-6 py-4 text-center">
                     <button 
@@ -754,18 +807,31 @@ const SalesRecordPage: React.FC<SalesRecordPageProps> = ({
                         </div>
                       </div>
 
-                      {sale.downpayment && (
-                        <div className="flex justify-between items-center bg-neutral-50 p-2 rounded-md">
-                          <div className="text-[10px]">
-                            <span className="text-neutral-400 font-bold uppercase block">Down</span>
-                            <span className="font-bold text-red-600">₱{sale.downpayment.toLocaleString()}</span>
+                      {(() => {
+                        const price = displayArt?.price || 0;
+                        const downpayment = sale.downpayment || 0;
+                        const installmentsTotal = (sale.installments || []).filter(i => !i.isPending).reduce((sum, inst) => sum + inst.amount, 0);
+                        const totalPaid = downpayment + installmentsTotal;
+                        const balance = price - totalPaid;
+                        const isFullyPaid = balance <= 0 && totalPaid > 0;
+
+                        if (totalPaid === 0) return null;
+
+                        return (
+                          <div className="flex justify-between items-center bg-neutral-50 p-2 rounded-md">
+                            <div className="text-[10px]">
+                              <span className="text-neutral-400 font-bold uppercase block">Paid</span>
+                              <span className="font-bold text-neutral-700">₱{totalPaid.toLocaleString()}</span>
+                            </div>
+                            <div className="text-[10px] text-right">
+                              <span className="text-neutral-400 font-bold uppercase block">{isFullyPaid ? 'Status' : 'Balance'}</span>
+                              <span className={`font-bold ${isFullyPaid ? 'text-emerald-600' : 'text-red-600'}`}>
+                                {isFullyPaid ? 'FULLY PAID' : `₱${balance.toLocaleString()}`}
+                              </span>
+                            </div>
                           </div>
-                          <div className="text-[10px] text-right">
-                            <span className="text-neutral-400 font-bold uppercase block">Balance</span>
-                            <span className="font-bold text-neutral-700">₱{((displayArt?.price || 0) - sale.downpayment).toLocaleString()}</span>
-                          </div>
-                        </div>
-                      )}
+                        );
+                      })()}
 
                       <div className="flex items-center justify-between pt-2 border-t border-neutral-100">
                         <div className="flex items-center space-x-1.5">

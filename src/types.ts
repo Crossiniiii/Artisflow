@@ -123,6 +123,17 @@ export interface InstallmentRecord {
   date: string;
   recordedBy: string;
   reference?: string;
+  proofImage?: string | string[]; // Added for mandatory payment proof
+  createdAt?: string; // To track "New" vs "Old"
+  isPending?: boolean; // For overpayments needing approval
+  pendingEdit?: {
+    amount: number;
+    date: string;
+    reference?: string;
+    requestedAt: string;
+    requestedBy: string;
+    status: 'Pending' | 'Approved' | 'Declined';
+  };
 }
 
 export interface SaleRecord {
@@ -139,6 +150,7 @@ export interface SaleRecord {
   isCancelled?: boolean;
   status?: SaleStatus;
   declineReason?: string; // Reason for rejection
+  requestedAttachments?: ('itdr' | 'rsa' | 'orcr')[]; // Files requested for re-upload
   attachmentUrl?: string; // Legacy generic attachment
   itdrUrl?: string[];     // IT/DR attachments
   rsaUrl?: string[];      // RSA/AR attachments
@@ -146,6 +158,14 @@ export interface SaleRecord {
   soldAtEventId?: string; // ID of the event/auction where it was sold
   soldAtEventName?: string; // Name of the event/auction where it was sold
   downpayment?: number;
+  downpaymentRecordedAt?: string; // To track "New" vs "Old"
+  pendingDownpaymentEdit?: {
+    amount: number;
+    requestedAt: string;
+    requestedBy: string;
+    status: 'Pending' | 'Approved' | 'Declined';
+  };
+  installments?: InstallmentRecord[];
   artworkSnapshot?: {
     title: string;
     artist: string;
@@ -157,7 +177,6 @@ export interface SaleRecord {
     dimensions?: string;
     year?: string;
   };
-  installments?: InstallmentRecord[];
 }
 
 export interface TransferRecord {

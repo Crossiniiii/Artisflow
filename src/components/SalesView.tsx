@@ -10,7 +10,7 @@ interface SalesViewProps {
   artworks: Artwork[];
   branches: string[];
   permissions?: UserPermissions;
-  onAddInstallment?: (saleId: string, amount: number, date: string, reference?: string, proofImage?: string | string[]) => void;
+  onAddInstallment?: (saleId: string, amount: number, date: string, reference?: string) => void;
   onDeleteSale?: (saleId: string) => void | Promise<boolean | void>;
 }
 
@@ -24,7 +24,6 @@ const SalesView: React.FC<SalesViewProps> = ({ sales, artworks, branches, onAddI
   const [installmentAmount, setInstallmentAmount] = useState('');
   const [installmentDate, setInstallmentDate] = useState(new Date().toISOString().split('T')[0]);
   const [installmentReference, setInstallmentReference] = useState('');
-  const [installmentProof, setInstallmentProof] = useState<string[]>([]);
   const [imageOverrides, setImageOverrides] = useState<Record<string, string>>({});
 
   const validSales = sales.filter(s => {
@@ -110,7 +109,7 @@ const SalesView: React.FC<SalesViewProps> = ({ sales, artworks, branches, onAddI
     validSales.forEach(sale => {
       const art = getDisplayArtwork(sale);
       if (!art) return;
-      
+
       const price = art.price || 0;
       const totalInstallments = (sale.installments || []).filter(i => !i.isPending).reduce((sum, inst) => sum + inst.amount, 0);
       const totalPaid = (sale.downpayment || 0) + totalInstallments;
@@ -132,14 +131,14 @@ const SalesView: React.FC<SalesViewProps> = ({ sales, artworks, branches, onAddI
       }
     });
 
-    return { 
-      totalSalesCount, 
-      totalGrossAmount, 
-      totalCollectedRevenue, 
-      fullPaymentsRevenue, 
-      installmentRevenue, 
-      pendingBalance, 
-      downpaymentCount 
+    return {
+      totalSalesCount,
+      totalGrossAmount,
+      totalCollectedRevenue,
+      fullPaymentsRevenue,
+      installmentRevenue,
+      pendingBalance,
+      downpaymentCount
     };
   }, [validSales, artworks]);
 
@@ -147,7 +146,7 @@ const SalesView: React.FC<SalesViewProps> = ({ sales, artworks, branches, onAddI
     const art = getDisplayArtwork(sale);
     if (!art) return false;
 
-    const matchesSearch = 
+    const matchesSearch =
       (art.title || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
       (art.artist || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
       (sale.clientName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -170,7 +169,7 @@ const SalesView: React.FC<SalesViewProps> = ({ sales, artworks, branches, onAddI
 
   return (
     <div className="space-y-8 animate-in fade-in duration-500">
-      
+
       {/* Dashboard Stats */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="bg-white p-5 rounded-2xl border border-neutral-100 shadow-sm hover:shadow-md transition-shadow group">
@@ -229,21 +228,19 @@ const SalesView: React.FC<SalesViewProps> = ({ sales, artworks, branches, onAddI
       <div className="flex items-center gap-2 p-1 bg-neutral-100 rounded-2xl inline-flex">
         <button
           onClick={() => setPaymentStatus('Fully Paid')}
-          className={`flex items-center gap-2 px-6 py-2.5 rounded-xl font-bold text-sm transition-all ${
-            paymentStatus === 'Fully Paid'
+          className={`flex items-center gap-2 px-6 py-2.5 rounded-xl font-bold text-sm transition-all ${paymentStatus === 'Fully Paid'
               ? 'bg-white text-emerald-700 shadow-sm ring-1 ring-black/5'
               : 'text-neutral-500 hover:text-neutral-700 hover:bg-neutral-200/50'
-          }`}
+            }`}
         >
           Fully Paid Artworks
         </button>
         <button
           onClick={() => setPaymentStatus('Partially Paid')}
-          className={`flex items-center gap-2 px-6 py-2.5 rounded-xl font-bold text-sm transition-all ${
-            paymentStatus === 'Partially Paid'
+          className={`flex items-center gap-2 px-6 py-2.5 rounded-xl font-bold text-sm transition-all ${paymentStatus === 'Partially Paid'
               ? 'bg-white text-orange-700 shadow-sm ring-1 ring-black/5'
               : 'text-neutral-500 hover:text-neutral-700 hover:bg-neutral-200/50'
-          }`}
+            }`}
         >
           Partially Paid (Installments)
         </button>
@@ -315,21 +312,21 @@ const SalesView: React.FC<SalesViewProps> = ({ sales, artworks, branches, onAddI
               >
                 <div className="flex items-stretch flex-1 overflow-hidden">
                   <div className="w-1/3 min-h-[160px] bg-neutral-100 relative shrink-0">
-                     {displayImage && !displayImage.includes('picsum.photos') ? (
-                        <OptimizedImage
-                          src={displayImage || undefined}
-                          alt={art.title}
-                          containerClassName="absolute inset-0 h-full w-full"
-                          className="h-full w-full object-cover"
-                        />
-                     ) : (
-                       <div className="w-full h-full flex flex-col items-center justify-center text-neutral-300">
-                         <Package size={24} className="mb-2 opacity-50"/>
-                         <span className="text-[10px] font-bold uppercase tracking-wider text-neutral-400 text-center px-2">No Image</span>
-                       </div>
+                    {displayImage && !displayImage.includes('picsum.photos') ? (
+                      <OptimizedImage
+                        src={displayImage || undefined}
+                        alt={art.title}
+                        containerClassName="absolute inset-0 h-full w-full"
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      <div className="w-full h-full flex flex-col items-center justify-center text-neutral-300">
+                        <Package size={24} className="mb-2 opacity-50" />
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-neutral-400 text-center px-2">No Image</span>
+                      </div>
                     )}
                   </div>
-                  
+
                   <div className="flex-1 p-5 flex flex-col justify-between ml-2">
                     <div>
                       <div className="flex items-start justify-between mb-2">
@@ -341,15 +338,15 @@ const SalesView: React.FC<SalesViewProps> = ({ sales, artworks, branches, onAddI
                             <span className="text-[10px] bg-emerald-100 text-emerald-700 px-2 py-1 rounded-md font-bold uppercase tracking-wider">Fully Paid</span>
                           )}
                           {onDeleteSale && (
-                             <button
-                               type="button"
-                               onClick={(e) => {
-                                 e.stopPropagation();
-                                 void onDeleteSale(sale.id);
-                               }}
-                               className="h-8 w-8 shrink-0 rounded-lg border border-red-200 bg-red-50 text-red-600 transition-colors hover:bg-red-100 hover:text-red-700"
-                               aria-label={`Delete sale record for ${art.title}`}
-                               title="Delete sale record"
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                void onDeleteSale(sale.id);
+                              }}
+                              className="h-8 w-8 shrink-0 rounded-lg border border-red-200 bg-red-50 text-red-600 transition-colors hover:bg-red-100 hover:text-red-700"
+                              aria-label={`Delete sale record for ${art.title}`}
+                              title="Delete sale record"
                             >
                               <Trash2 size={14} className="mx-auto" />
                             </button>
@@ -358,7 +355,7 @@ const SalesView: React.FC<SalesViewProps> = ({ sales, artworks, branches, onAddI
                       </div>
                       <h4 className="text-base font-bold text-neutral-900 leading-tight mb-1 line-clamp-1">{art.title}</h4>
                       <p className="text-xs text-neutral-500 font-medium line-clamp-1 mb-3">by {art.artist}</p>
-                      
+
                       <div className="flex items-center gap-2 mb-1">
                         <User size={14} className="text-neutral-400" />
                         <span className="text-sm font-semibold text-neutral-700 line-clamp-1">{sale.clientName}</span>
@@ -385,26 +382,26 @@ const SalesView: React.FC<SalesViewProps> = ({ sales, artworks, branches, onAddI
                             <span className="text-orange-700">₱{(price - ((sale.downpayment || 0) + (sale.installments || []).reduce((s, i) => s + i.amount, 0))).toLocaleString()}</span>
                           </div>
                           {onAddInstallment && (
-                             <button
-                               type="button"
-                               onClick={(e) => {
-                                 e.stopPropagation();
-                                 setSelectedPartialSale(sale);
-                                 setInstallmentAmount('');
-                                 setInstallmentDate(new Date().toISOString().split('T')[0]);
-                                 setInstallmentReference('');
-                                 setIsInstallmentModalOpen(true);
-                               }}
-                               className="mt-3 w-full py-2 bg-neutral-100 hover:bg-neutral-200 text-neutral-700 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-colors"
-                             >
-                               <PlusCircle size={14} /> Add Installment
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedPartialSale(sale);
+                                setInstallmentAmount('');
+                                setInstallmentDate(new Date().toISOString().split('T')[0]);
+                                setInstallmentReference('');
+                                setIsInstallmentModalOpen(true);
+                              }}
+                              className="mt-3 w-full py-2 bg-neutral-100 hover:bg-neutral-200 text-neutral-700 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-colors"
+                            >
+                              <PlusCircle size={14} /> Add Installment
                             </button>
                           )}
                         </div>
                       ) : (
                         <div className="flex items-center justify-between">
-                           <span className="text-xs text-neutral-500 font-bold uppercase tracking-wider">Total Value</span>
-                           <span className="text-lg font-black text-emerald-600">₱{price.toLocaleString()}</span>
+                          <span className="text-xs text-neutral-500 font-bold uppercase tracking-wider">Total Value</span>
+                          <span className="text-lg font-black text-emerald-600">₱{price.toLocaleString()}</span>
                         </div>
                       )}
                     </div>
@@ -604,7 +601,7 @@ const SalesView: React.FC<SalesViewProps> = ({ sales, artworks, branches, onAddI
                 <X size={20} />
               </button>
             </div>
-            
+
             <div className="p-6 overflow-y-auto flex-1 space-y-5">
               <div className="space-y-2">
                 <label className="text-xs font-bold text-neutral-500 uppercase tracking-widest">Amount (PHP)</label>
@@ -659,14 +656,13 @@ const SalesView: React.FC<SalesViewProps> = ({ sales, artworks, branches, onAddI
                 onClick={() => {
                   const amt = parseFloat(installmentAmount);
                   if (isNaN(amt) || amt <= 0) return alert('Enter a valid amount.');
-                  
-                  if (onAddInstallment && selectedPartialSale) {
-                    onAddInstallment(selectedPartialSale.id, amt, installmentDate, installmentReference, installmentProof);
+
+                  if (onAddInstallment) {
+                    onAddInstallment(selectedPartialSale.id, amt, installmentDate, installmentReference);
                   }
                   setIsInstallmentModalOpen(false);
-                  setInstallmentProof([]);
                 }}
-                disabled={!installmentAmount || !installmentDate || installmentProof.length === 0}
+                disabled={!installmentAmount || !installmentDate}
                 className="px-6 py-2.5 rounded-xl font-bold text-sm bg-neutral-900 text-white hover:bg-black disabled:opacity-50 transition-all flex items-center gap-2"
               >
                 <PlusCircle size={16} /> Save Installment

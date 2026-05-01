@@ -33,8 +33,8 @@ export const useArtworkOperations = () => {
   // Helper to find artwork across BOTH active and deleted lists
   const findArtwork = (id: string) => {
     const artworkId = String(id);
-    return artworks.find(a => String(a.id) === artworkId) || 
-           allArtworksIncludingDeleted.find(a => String(a.id) === artworkId);
+    return artworks.find(a => String(a.id) === artworkId) ||
+      allArtworksIncludingDeleted.find(a => String(a.id) === artworkId);
   };
 
   const { currentUser } = useAuth();
@@ -220,9 +220,9 @@ export const useArtworkOperations = () => {
       // Check for re-submission of requested attachments
       const isReupload = updates.itdrImageUrl || updates.rsaImageUrl || updates.orCrImageUrl;
       if (isReupload) {
-        const declinedSale = sales.find(s => 
-          String(s.artworkId) === String(id) && 
-          s.status === SaleStatus.DECLINED && 
+        const declinedSale = sales.find(s =>
+          String(s.artworkId) === String(id) &&
+          s.status === SaleStatus.DECLINED &&
           s.requestedAttachments && s.requestedAttachments.length > 0
         );
 
@@ -235,7 +235,7 @@ export const useArtworkOperations = () => {
           };
 
           setSales(prev => prev.map(s => s.id === declinedSale.id ? { ...s, ...saleUpdate } : s));
-          
+
           if (!IS_DEMO_MODE) {
             const dbSaleUpdate = {
               status: SaleStatus.FOR_SALE_APPROVAL,
@@ -352,9 +352,9 @@ export const useArtworkOperations = () => {
   const handleCancelReservation = async (id: string) => {
     const art = artworks.find(a => String(a.id) === String(id));
     if (!art) return;
-    const updates = { 
-      status: ArtworkStatus.AVAILABLE, 
-      remarks: '', 
+    const updates = {
+      status: ArtworkStatus.AVAILABLE,
+      remarks: '',
       reservationExpiry: undefined,
       reservedForEventId: undefined,
       reservedForEventName: undefined
@@ -372,9 +372,9 @@ export const useArtworkOperations = () => {
   };
 
   const handleBulkCancelReservation = async (ids: string[]) => {
-    const updates = { 
-      status: ArtworkStatus.AVAILABLE, 
-      remarks: '', 
+    const updates = {
+      status: ArtworkStatus.AVAILABLE,
+      remarks: '',
       reservationExpiry: undefined,
       reservedForEventId: undefined,
       reservedForEventName: undefined
@@ -412,7 +412,7 @@ export const useArtworkOperations = () => {
     const secureOrcr = await uploadAttachmentsToStorage(orcr, 'images', 'attachments') as string[] | undefined;
 
     // Guard: Only allow sale if currently AVAILABLE
-    const success = await syncArtwork(id, { 
+    const success = await syncArtwork(id, {
       status: ArtworkStatus.FOR_SALE_APPROVAL,
       itdrImageUrl: secureItdr ? JSON.stringify(secureItdr) : undefined,
       rsaImageUrl: secureRsa ? JSON.stringify(secureRsa) : undefined,
@@ -524,7 +524,7 @@ export const useArtworkOperations = () => {
     setAllArtworksIncludingDeleted(updatedArtworks);
     setSales(updatedSales);
     const sale = updatedSales.find(s => String(s.artworkId) === String(artworkId) && s.isCancelled);
-    
+
     // Audit Logging
     logActivity(artworkId, 'Sale Cancelled', `Sale to ${sale?.clientName || 'Unknown'} was cancelled`, updatedArtworks.find(a => String(a.id) === String(artworkId)));
 
@@ -585,11 +585,11 @@ export const useArtworkOperations = () => {
       const siblingPendingSaleIds = siblingPendingSales.map(s => s.id);
 
       // 1. Optimistic UI Updates
-      const updatedSale = { 
-        ...sale, 
-        status: SaleStatus.APPROVED, 
-        requestedAttachments: undefined, 
-        declineReason: undefined 
+      const updatedSale = {
+        ...sale,
+        status: SaleStatus.APPROVED,
+        requestedAttachments: undefined,
+        declineReason: undefined
       };
       setSales(prev => prev.map(s => {
         if (String(s.id) === String(saleId)) return updatedSale;
@@ -617,7 +617,7 @@ export const useArtworkOperations = () => {
 
       if (!IS_DEMO_MODE) {
         // 2. Database Updates
-        const { error: saleError } = await supabase.from('sales').update(mapToSnakeCase({ 
+        const { error: saleError } = await supabase.from('sales').update(mapToSnakeCase({
           status: SaleStatus.APPROVED,
           requestedAttachments: null,
           declineReason: null
@@ -655,7 +655,7 @@ export const useArtworkOperations = () => {
     }
   };
 
-  const handleAddInstallment = async (saleId: string, amount: number, date: string, reference?: string, proofImage?: string | string[]) => {
+  const handleAddInstallment = async (saleId: string, amount: number, date: string, reference?: string) => {
     const sale = sales.find(s => s.id === saleId);
     if (!sale) return;
 
@@ -671,22 +671,14 @@ export const useArtworkOperations = () => {
       const totalPaid = (sale.downpayment || 0) + (sale.installments || []).reduce((sum, inst) => sum + inst.amount, 0);
       const isOverpayment = (totalPaid + amount) > (art?.price || 0) + 0.01;
 
-      // Handle Proof Upload first if not demo
-      let secureProof: string | string[] | undefined = proofImage;
-      if (!IS_DEMO_MODE && proofImage) {
-        setImportStatus(prev => ({ ...prev, message: 'Uploading receipt proof...' }));
-        secureProof = (await uploadAttachmentsToStorage(proofImage, 'images', 'attachments')) as string | string[] | undefined;
-      }
-
       const installment = {
         id: generateId(),
         amount,
         date,
         recordedBy: currentUser?.name || 'Unknown',
         reference,
-        proofImage: secureProof,
         createdAt: new Date().toISOString(),
-        isPending: userRole !== UserRole.ADMIN // Every installment needs approval unless added by admin
+        isPending: isOverpayment // Overpayments need approval
       };
 
       const updatedInstallments = [...(sale.installments || []), installment];
@@ -701,18 +693,18 @@ export const useArtworkOperations = () => {
           .from('sales')
           .update(mapToSnakeCase({ installments: updatedInstallments }))
           .eq('id', saleId);
-        
+
         if (error) throw error;
       }
 
       setImportStatus(prev => ({ ...prev, progress: { current: 100, total: 100 }, message: 'Payment recorded successfully!' }));
-      
+
       // Audit Logging
       logActivity(sale.artworkId, 'Payment Recorded', `₱${amount.toLocaleString()} payment received (Ref: ${reference || 'N/A'})`, findArtwork(sale.artworkId));
 
       setTimeout(() => setImportStatus({ isVisible: false }), 800);
       pushNotification('Payment Recorded', `₱${amount.toLocaleString()} has been added to the payment history for ${sale.clientName}.`, 'system');
-      
+
     } catch (err: any) {
       console.error('Error recording installment:', err);
       // Rollback
@@ -728,12 +720,12 @@ export const useArtworkOperations = () => {
 
     const isDownpayment = paymentId === 'downpayment';
     const createdAt = isDownpayment ? sale.downpaymentRecordedAt : sale.installments?.find(i => i.id === paymentId)?.createdAt;
-    
+
     const isNew = createdAt && (new Date().getTime() - new Date(createdAt).getTime() < 24 * 60 * 60 * 1000);
     const isAdmin = userRole === UserRole.ADMIN;
 
     const art = findArtwork(sale.artworkId);
-    const totalOthers = isDownpayment 
+    const totalOthers = isDownpayment
       ? (sale.installments || []).filter(i => !i.isPending).reduce((sum, inst) => sum + inst.amount, 0)
       : (sale.downpayment || 0) + (sale.installments || []).filter(i => i.id !== paymentId && !i.isPending).reduce((sum, inst) => sum + inst.amount, 0);
     const isOverpayment = (totalOthers + updates.amount) > (art?.price || 0) + 0.01;
@@ -745,7 +737,7 @@ export const useArtworkOperations = () => {
       if (isDownpayment) {
         updatedSale = { ...sale, downpayment: updates.amount };
       } else {
-        const updatedInstallments = (sale.installments || []).map(i => 
+        const updatedInstallments = (sale.installments || []).map(i =>
           i.id === paymentId ? { ...i, amount: updates.amount, date: updates.date || i.date, reference: updates.reference || i.reference } : i
         );
         updatedSale = { ...sale, installments: updatedInstallments };
@@ -776,7 +768,7 @@ export const useArtworkOperations = () => {
       if (isDownpayment) {
         updatedSale = { ...sale, pendingDownpaymentEdit: pendingEdit };
       } else {
-        const updatedInstallments = (sale.installments || []).map(i => 
+        const updatedInstallments = (sale.installments || []).map(i =>
           i.id === paymentId ? { ...i, pendingEdit } : i
         );
         updatedSale = { ...sale, installments: updatedInstallments };
@@ -803,22 +795,22 @@ export const useArtworkOperations = () => {
     const isDownpayment = paymentId === 'downpayment';
 
     if (isDownpayment && sale.pendingDownpaymentEdit) {
-      updatedSale = { 
-        ...sale, 
+      updatedSale = {
+        ...sale,
         downpayment: sale.pendingDownpaymentEdit.amount,
-        pendingDownpaymentEdit: undefined 
+        pendingDownpaymentEdit: undefined
       };
     } else {
       const updatedInstallments = (sale.installments || []).map(i => {
         if (i.id === paymentId) {
           if (i.isPending) return { ...i, isPending: false };
           if (i.pendingEdit) {
-            return { 
-              ...i, 
+            return {
+              ...i,
               amount: i.pendingEdit.amount,
               date: i.pendingEdit.date || i.date,
               reference: i.pendingEdit.reference || i.reference,
-              pendingEdit: undefined 
+              pendingEdit: undefined
             };
           }
         }
@@ -853,7 +845,7 @@ export const useArtworkOperations = () => {
       const updatedInstallments = (sale.installments || []).filter(i => {
         if (i.id === paymentId && i.isPending) return false; // Remove pending new installment
         return true;
-      }).map(i => 
+      }).map(i =>
         i.id === paymentId ? { ...i, pendingEdit: undefined } : i
       );
       updatedSale = { ...sale, installments: updatedInstallments };
@@ -908,27 +900,27 @@ export const useArtworkOperations = () => {
         console.log('[handleDeclineSale] Updating specific sale to DECLINED:', saleId);
         const { error: saleError } = await supabase
           .from('sales')
-          .update(mapToSnakeCase({ 
-            status: SaleStatus.DECLINED, 
+          .update(mapToSnakeCase({
+            status: SaleStatus.DECLINED,
             declineReason: reason,
             requestedAttachments: requestedFiles
           }))
           .eq('id', saleId);
-        
+
         if (saleError) {
           console.error('[handleDeclineSale] Supabase Sale Update Error:', saleError);
           throw saleError;
         }
-        
+
         if (artworkShouldBeAvailable) {
           console.log('[handleDeclineSale] No other pending sales. Updating artwork to AVAILABLE:', sale.artworkId);
           // Sync Artwork Status (Concurrency Guard)
-          const success = await syncArtwork(sale.artworkId, { 
-            status: ArtworkStatus.AVAILABLE 
+          const success = await syncArtwork(sale.artworkId, {
+            status: ArtworkStatus.AVAILABLE
           }, ArtworkStatus.FOR_SALE_APPROVAL);
-          
+
           if (!success) {
-             console.warn('[handleDeclineSale] Artwork status sync skipped or failed (possibly already updated).');
+            console.warn('[handleDeclineSale] Artwork status sync skipped or failed (possibly already updated).');
           }
         } else {
           console.log(`[handleDeclineSale] ${otherPendingSales.length} other pending sales remain. Artwork stays in FOR_SALE_APPROVAL.`);
@@ -970,7 +962,7 @@ export const useArtworkOperations = () => {
     const itdrStrFinal = serializeAttachmentLocal(secureItdrArr);
     const rsaStrFinal = serializeAttachmentLocal(secureRsaArr);
     const orcrStrFinal = serializeAttachmentLocal(secureOrcrArr);
-    
+
     const { updatedArtworks, updatedSales } = applyDelivery(artworks, sales, id, itdrStrFinal, rsaStrFinal, orcrStrFinal);
     setArtworks(updatedArtworks);
     setSales(updatedSales);
@@ -979,11 +971,11 @@ export const useArtworkOperations = () => {
     if (IS_DEMO_MODE) return true;
     if (!art || !sale) return false;
 
-    await supabase.from('artworks').update(mapToSnakeCase({ 
-      status: art.status, 
-      itdrImageUrl: itdrStrFinal, 
-      rsaImageUrl: rsaStrFinal, 
-      orCrImageUrl: orcrStrFinal 
+    await supabase.from('artworks').update(mapToSnakeCase({
+      status: art.status,
+      itdrImageUrl: itdrStrFinal,
+      rsaImageUrl: rsaStrFinal,
+      orCrImageUrl: orcrStrFinal
     })).eq('id', id);
     await supabase.from('sales').update(mapToSnakeCase(sale)).eq('id', sale.id);
   };
@@ -1048,9 +1040,9 @@ export const useArtworkOperations = () => {
       referenceNumber, proofImage, remarks
     };
     setReturnRecords(prev => [...prev, record]);
-    const updatedArt = { 
-      ...art, 
-      status, 
+    const updatedArt = {
+      ...art,
+      status,
       deletedAt: type === 'Artist Reclaim' ? new Date().toISOString() : art.deletedAt,
       remarks: '',
       reservedForEventId: undefined,
@@ -1110,7 +1102,7 @@ export const useArtworkOperations = () => {
 
     const timestamp = new Date().toISOString();
     const status = type === 'Artist Reclaim' ? ArtworkStatus.RETURNED : ArtworkStatus.FOR_RETOUCH;
-    
+
     const records: ReturnRecord[] = validArtworks.map(art => ({
       id: generateId(),
       artworkId: art.id,
@@ -1128,8 +1120,8 @@ export const useArtworkOperations = () => {
     // Optimistic Update
     setReturnRecords(prev => [...records, ...prev]);
     const updatedArtworks = validArtworks.map(art => ({
-      ...art, 
-      status, 
+      ...art,
+      status,
       deletedAt: type === 'Artist Reclaim' ? timestamp : art.deletedAt,
       updatedAt: timestamp,
       remarks: '',
@@ -1146,7 +1138,7 @@ export const useArtworkOperations = () => {
       const updated = updatedArtworks.find(ua => String(ua.id) === String(a.id));
       return updated ? updated : a;
     }));
-    
+
     if (type === 'Artist Reclaim') {
       // Handled by the bulk update above for allArtworksIncludingDeleted
     }
@@ -1181,7 +1173,7 @@ export const useArtworkOperations = () => {
     } catch (error: any) {
       console.error('Batch Return Error:', error);
       alert(`Batch Return Failed: ${error.message}`);
-      
+
       // Revert local state
       setReturnRecords(prev => prev.filter(r => !records.some(nr => nr.id === r.id)));
       setArtworks(prev => prev.map(a => {
@@ -1250,7 +1242,7 @@ export const useArtworkOperations = () => {
     const targetIds = ids.map(String);
     setArtworks(prev => prev.map(a => targetIds.includes(String(a.id)) ? { ...a, status: ArtworkStatus.FOR_FRAMING } : a));
     setAllArtworksIncludingDeleted(prev => prev.map(a => targetIds.includes(String(a.id)) ? { ...a, status: ArtworkStatus.FOR_FRAMING } : a));
-    
+
     // Log Activity for each
     validArtworks.forEach(art => logActivity(art.id, 'Sent to Framer', details, { ...art, status: ArtworkStatus.FOR_FRAMING }));
 
@@ -1282,7 +1274,7 @@ export const useArtworkOperations = () => {
     } catch (error: any) {
       console.error('Batch Framing Error:', error);
       alert(`Batch Framing Failed: ${error.message}`);
-      
+
       // Revert local state
       setFramerRecords(prev => prev.filter(r => !records.some(nr => nr.id === r.id)));
       setArtworks(prev => prev.map(a => {
@@ -1317,9 +1309,9 @@ export const useArtworkOperations = () => {
     }
 
     setArtworks(prev =>
-      prev.map(a => String(a.id) === String(artworkId) ? { 
-        ...a, 
-        status: ArtworkStatus.AVAILABLE, 
+      prev.map(a => String(a.id) === String(artworkId) ? {
+        ...a,
+        status: ArtworkStatus.AVAILABLE,
         currentBranch: branch,
         remarks: '',
         reservedForEventId: undefined,
@@ -1328,9 +1320,9 @@ export const useArtworkOperations = () => {
       } : a)
     );
     setAllArtworksIncludingDeleted(prev =>
-      prev.map(a => String(a.id) === String(artworkId) ? { 
-        ...a, 
-        status: ArtworkStatus.AVAILABLE, 
+      prev.map(a => String(a.id) === String(artworkId) ? {
+        ...a,
+        status: ArtworkStatus.AVAILABLE,
         currentBranch: branch,
         remarks: '',
         reservedForEventId: undefined,
@@ -1338,8 +1330,8 @@ export const useArtworkOperations = () => {
         reservationExpiry: undefined
       } : a)
     );
-    logActivity(artworkId, 'Returned from Framer', `Returned to ${branch}`, { 
-      status: ArtworkStatus.AVAILABLE, 
+    logActivity(artworkId, 'Returned from Framer', `Returned to ${branch}`, {
+      status: ArtworkStatus.AVAILABLE,
       currentBranch: branch,
       remarks: '',
       reservedForEventId: undefined,
@@ -1415,17 +1407,17 @@ export const useArtworkOperations = () => {
 
     // 2. Update Artwork Status & Branch (Both Lists)
     const prevArtState = { ...art };
-    const updatedArt = { 
-      ...art, 
-      status: ArtworkStatus.AVAILABLE, 
-      currentBranch: branch, 
+    const updatedArt = {
+      ...art,
+      status: ArtworkStatus.AVAILABLE,
+      currentBranch: branch,
       deletedAt: undefined,
       remarks: '',
       reservedForEventId: undefined,
       reservedForEventName: undefined,
       reservationExpiry: undefined
     };
-    
+
     setArtworks(prev => {
       const idStr = String(artworkId);
       const exists = prev.some(a => String(a.id) === idStr);
@@ -1433,7 +1425,7 @@ export const useArtworkOperations = () => {
       return [...prev, updatedArt];
     });
     setAllArtworksIncludingDeleted(prev => prev.map(a => String(a.id) === String(artworkId) ? updatedArt : a));
-    
+
     logActivity(artworkId, 'Returned to Gallery', `Returned to ${branch}`, { status: ArtworkStatus.AVAILABLE, currentBranch: branch }, finalDate);
 
     if (IS_DEMO_MODE) return true;
@@ -1441,7 +1433,7 @@ export const useArtworkOperations = () => {
     // Use relaxed status guard: can return from FOR_RETOUCH or RETURNED
     // We pass null for deleted_at to explicitly clear it in the DB
     const artworkOk = await syncArtwork(artworkId, { status: ArtworkStatus.AVAILABLE, currentBranch: branch, deletedAt: null } as any, [ArtworkStatus.FOR_RETOUCH, ArtworkStatus.RETURNED]);
-    
+
     if (!artworkOk) {
       alert("Inventory Sync Failure: The artwork status in the database doesn't match 'For Retouch' or 'Returned'. It might have been updated by another user.");
       setArtworks(prev => prev.map(a => String(a.id) === String(artworkId) ? prevArtState : a));
@@ -1564,7 +1556,7 @@ export const useArtworkOperations = () => {
 
               const { error } = await supabase.from('artworks').insert(chunk.map(mapToSnakeCase));
               if (error) throw error;
-              
+
               totalSuccessfullyImported += chunk.length;
 
               // Update Import Record Progress in DB
@@ -1581,10 +1573,10 @@ export const useArtworkOperations = () => {
                 .eq('id', importRecord.id);
             } catch (chunkError) {
               console.warn(`Chunk import error at index ${i}, attempting item-by-item fallback:`, chunkError);
-              
+
               let chunkSuccessCount = 0;
               const newFailedItems: ImportFailedItem[] = [];
-              
+
               // Fallback: Try inserting one by one to save the valid ones in this chunk
               for (let j = 0; j < chunk.length; j++) {
                 const singleArt = chunk[j];
@@ -1602,10 +1594,10 @@ export const useArtworkOperations = () => {
                   setArtworks(prev => prev.filter(a => a.id !== singleArt.id));
                 }
               }
-              
+
               totalSuccessfullyImported += chunkSuccessCount;
               combinedFailedItems.push(...newFailedItems);
-               
+
               const importedCount = Math.min(i + CHUNK_SIZE, artworksToImport.length);
               finalStatus = importedCount >= artworksToImport.length
                 ? (combinedFailedItems.length > 0 ? 'Partial' : 'Success')
@@ -1639,7 +1631,7 @@ export const useArtworkOperations = () => {
         if (!IS_DEMO_MODE) {
           await supabase.from('import_records').update({ status: 'Failed' }).eq('id', importRecord.id);
         }
-        
+
         // Rollback EVERYTHING if it failed before the loop
         const allPendingIds = artworksToImport.map(a => a.id);
         setArtworks(prev => prev.filter(a => !allPendingIds.includes(a.id)));

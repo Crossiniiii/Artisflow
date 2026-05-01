@@ -123,7 +123,6 @@ export interface InstallmentRecord {
   date: string;
   recordedBy: string;
   reference?: string;
-  proofImage?: string | string[]; // Added for mandatory payment proof
   createdAt?: string; // To track "New" vs "Old"
   isPending?: boolean; // For overpayments needing approval
   pendingEdit?: {

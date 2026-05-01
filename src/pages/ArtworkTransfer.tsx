@@ -266,74 +266,74 @@ const ArtworkTransfer: React.FC<ArtworkTransferProps> = ({
                           <div className="text-xs text-neutral-500 mt-1 italic max-w-[200px] truncate">{req.notes}</div>
                         )}
                       </td>
-                    <td className="px-6 py-4">
-                      <div className="text-sm text-neutral-600">
-                        {new Date(req.requestedAt).toLocaleDateString()}
-                      </div>
-                      <div className="text-xs text-neutral-400">
-                        {new Date(req.requestedAt).toLocaleTimeString()}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-sm text-xs font-medium border ${getStatusColor(req.status)}`}>
-                        {req.status}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 text-right">
-                      {(activeTab === 'incoming' || activeTab === 'on-hold') && req.status !== 'Accepted' && req.status !== 'Declined' && (currentUser.role === UserRole.ADMIN || req.toBranch === currentUser.branch) && (
-                        <div className="flex justify-end space-x-2">
-                          <button
-                            onClick={() => setConfirmationModal({ type: 'accept', request: req })}
-                            className="p-2 text-neutral-900 hover:bg-neutral-100 rounded-sm transition-colors"
-                            title="Accept Transfer"
-                          >
-                            <CheckCircle2 size={20} />
-                          </button>
-                          {req.status !== 'On Hold' && (
-                            <button
-                              onClick={() => setConfirmationModal({ type: 'hold', request: req })}
-                              className="p-2 text-neutral-600 hover:bg-neutral-100 rounded-lg transition-colors"
-                              title="Put On Hold"
-                            >
-                              <PauseCircle size={20} />
-                            </button>
-                          )}
-                          <button
-                            onClick={() => setConfirmationModal({ type: 'decline', request: req })}
-                            className="p-2 text-rose-500 hover:bg-rose-50 rounded-lg transition-colors"
-                            title="Decline Transfer"
-                          >
-                            <XCircle size={20} />
-                          </button>
+                      <td className="px-6 py-4">
+                        <div className="text-sm text-neutral-600">
+                          {new Date(req.requestedAt).toLocaleDateString()}
                         </div>
-                      )}
-                      {req.status !== 'Pending' && req.status !== 'On Hold' && (
-                        <div className="flex items-center justify-end gap-3">
-                          <div className="text-xs text-neutral-400">
-                            {req.respondedBy ? `Processed by ${req.respondedBy}` : '-'}
+                        <div className="text-xs text-neutral-400">
+                          {new Date(req.requestedAt).toLocaleTimeString()}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-sm text-xs font-medium border ${getStatusColor(req.status)}`}>
+                          {req.status}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        {(activeTab === 'incoming' || activeTab === 'on-hold') && req.status !== 'Accepted' && req.status !== 'Declined' && (currentUser.role === UserRole.ADMIN || req.toBranch === currentUser.branch) && (
+                          <div className="flex justify-end space-x-2">
+                            <button
+                              onClick={() => setConfirmationModal({ type: 'accept', request: req })}
+                              className="p-2 text-neutral-900 hover:bg-neutral-100 rounded-sm transition-colors"
+                              title="Accept Transfer"
+                            >
+                              <CheckCircle2 size={20} />
+                            </button>
+                            {req.status !== 'On Hold' && (
+                              <button
+                                onClick={() => setConfirmationModal({ type: 'hold', request: req })}
+                                className="p-2 text-neutral-600 hover:bg-neutral-100 rounded-lg transition-colors"
+                                title="Put On Hold"
+                              >
+                                <PauseCircle size={20} />
+                              </button>
+                            )}
+                            <button
+                              onClick={() => setConfirmationModal({ type: 'decline', request: req })}
+                              className="p-2 text-neutral-400 hover:bg-neutral-100 rounded-lg transition-colors"
+                              title="Decline Transfer"
+                            >
+                              <XCircle size={20} />
+                            </button>
                           </div>
-                          <button
-                            onClick={() => setDetailsModal(req)}
-                            className="p-2 text-neutral-400 hover:text-neutral-600 hover:bg-neutral-100 rounded-lg transition-colors"
-                            title="View Details"
-                          >
-                            <Eye size={20} />
-                          </button>
-                          {onDelete && (
+                        )}
+                        {req.status !== 'Pending' && req.status !== 'On Hold' && (
+                          <div className="flex items-center justify-end gap-3">
+                            <div className="text-xs text-neutral-400">
+                              {req.respondedBy ? `Processed by ${req.respondedBy}` : '-'}
+                            </div>
                             <button
-                              onClick={() => setConfirmationModal({ type: 'delete', request: req })}
-                              className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                              title="Delete Record"
+                              onClick={() => setDetailsModal(req)}
+                              className="p-2 text-neutral-400 hover:text-neutral-600 hover:bg-neutral-100 rounded-lg transition-colors"
+                              title="View Details"
                             >
-                              <Trash2 size={20} />
+                              <Eye size={20} />
                             </button>
-                          )}
-                        </div>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
+                            {onDelete && (
+                              <button
+                                onClick={() => setConfirmationModal({ type: 'delete', request: req })}
+                                className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                title="Delete Record"
+                              >
+                                <Trash2 size={20} />
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -519,7 +519,7 @@ const ArtworkTransfer: React.FC<ArtworkTransferProps> = ({
                 onClick={async () => {
                   const req = confirmationModal.request;
                   const type = confirmationModal.type;
-                  
+
                   await wrapAction(async () => {
                     if (type === 'accept') {
                       await Promise.resolve(onAccept(req));
@@ -530,22 +530,21 @@ const ArtworkTransfer: React.FC<ArtworkTransferProps> = ({
                     } else if (type === 'delete') {
                       await Promise.resolve(onDelete?.(req));
                     }
-                  }, type === 'accept' ? 'Processing Transfer Acceptance...' : 
-                     type === 'decline' ? 'Declining Transfer Request...' :
-                     type === 'hold' ? 'Suspending Request...' : 'Decommissioning Transfer Record...');
-                  
+                  }, type === 'accept' ? 'Processing Transfer Acceptance...' :
+                    type === 'decline' ? 'Declining Transfer Request...' :
+                      type === 'hold' ? 'Suspending Request...' : 'Decommissioning Transfer Record...');
+
                   setConfirmationModal(null);
                 }}
                 disabled={isProcessing}
-                className={`px-4 py-2 rounded-md transition-colors font-medium shadow-sm ${
-                  confirmationModal.type === 'accept'
-                    ? 'bg-neutral-900 hover:bg-black text-white'
-                    : confirmationModal.type === 'hold'
-                    ? 'bg-neutral-500 hover:bg-neutral-600 text-white'
+                className={`px-4 py-2 text-white rounded-md transition-colors font-medium shadow-sm ${confirmationModal.type === 'accept'
+                  ? 'bg-neutral-900 hover:bg-black'
+                  : confirmationModal.type === 'hold'
+                    ? 'bg-neutral-500 hover:bg-neutral-600'
                     : confirmationModal.type === 'delete'
-                    ? 'bg-red-600 hover:bg-red-700 text-white'
-                    : 'bg-white text-neutral-700 border border-neutral-300 hover:bg-neutral-50'
-                }`}
+                      ? 'bg-red-600 hover:bg-red-700'
+                      : 'bg-white text-neutral-700 border border-neutral-300 hover:bg-neutral-50'
+                  }`}
               >
                 Confirm {confirmationModal.type === 'hold' ? 'On Hold' : confirmationModal.type === 'delete' ? 'Delete' : (confirmationModal.type.charAt(0).toUpperCase() + confirmationModal.type.slice(1))}
               </button>
@@ -554,7 +553,7 @@ const ArtworkTransfer: React.FC<ArtworkTransferProps> = ({
         </div>
       )}
 
-      <LoadingOverlay 
+      <LoadingOverlay
         isVisible={isProcessing}
         title={processMessage}
         progress={{ current: processProgress, total: 100 }}

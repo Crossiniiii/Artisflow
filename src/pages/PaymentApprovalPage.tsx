@@ -19,9 +19,9 @@ const PaymentApprovalPage: React.FC<PaymentApprovalPageProps> = ({
   onApprovePaymentEdit,
   onDeclinePaymentEdit
 }) => {
-  const { isProcessing, processMessage, wrapAction } = useActionProcessing({ 
-    itemTitle: 'Payment Approval', 
-    itemCode: 'PAY' 
+  const { isProcessing, processMessage, wrapAction } = useActionProcessing({
+    itemTitle: 'Payment Approval',
+    itemCode: 'PAY'
   });
 
   // Extract pending payments
@@ -29,7 +29,7 @@ const PaymentApprovalPage: React.FC<PaymentApprovalPageProps> = ({
     const list: any[] = [];
     sales.forEach(sale => {
       const art = artworks.find(a => a.id === sale.artworkId);
-      
+
       // 1. Pending Downpayment Edits
       if (sale.pendingDownpaymentEdit) {
         const totalOthers = (sale.installments || []).filter(i => !i.isPending).reduce((sum, inst) => sum + inst.amount, 0);
@@ -66,7 +66,6 @@ const PaymentApprovalPage: React.FC<PaymentApprovalPageProps> = ({
             newAmount: inst.amount,
             requestedBy: inst.recordedBy,
             requestedAt: inst.createdAt || new Date().toISOString(),
-            proofImage: inst.proofImage,
             isOverpayment,
             isNewPayment: true
           });
@@ -139,9 +138,8 @@ const PaymentApprovalPage: React.FC<PaymentApprovalPageProps> = ({
                     </div>
                     <div className="min-w-0">
                       <div className="flex items-center gap-2 mb-1">
-                        <span className={`px-2 py-0.5 rounded-md text-[9px] font-black uppercase tracking-widest ${
-                          item.type === 'downpayment' ? 'bg-indigo-100 text-indigo-700' : 'bg-emerald-100 text-emerald-700'
-                        }`}>
+                        <span className={`px-2 py-0.5 rounded-md text-[9px] font-black uppercase tracking-widest ${item.type === 'downpayment' ? 'bg-indigo-100 text-indigo-700' : 'bg-emerald-100 text-emerald-700'
+                          }`}>
                           {item.type}
                         </span>
                         {item.isOverpayment && (
@@ -165,15 +163,6 @@ const PaymentApprovalPage: React.FC<PaymentApprovalPageProps> = ({
                       <Calendar size={14} />
                       <span className="font-medium">{new Date(item.requestedAt).toLocaleDateString()}</span>
                     </div>
-                    {item.proofImage && (
-                      <button 
-                        onClick={() => window.open(Array.isArray(item.proofImage) ? item.proofImage[0] : item.proofImage, '_blank')}
-                        className="flex items-center gap-2 text-blue-600 hover:text-blue-700 font-bold bg-blue-50 px-2 py-1 rounded-md transition-colors"
-                      >
-                        <ExternalLink size={14} />
-                        View Receipt
-                      </button>
-                    )}
                   </div>
                 </div>
 
@@ -204,7 +193,7 @@ const PaymentApprovalPage: React.FC<PaymentApprovalPageProps> = ({
                   </button>
                   <button
                     onClick={() => wrapAction(() => onDeclinePaymentEdit(item.saleId, item.paymentId), 'Declining Payment...')}
-                    className="flex-1 md:w-32 py-3 bg-white hover:bg-red-50 text-red-500 hover:text-red-700 border border-red-100 hover:border-red-200 rounded-xl font-black text-[11px] uppercase tracking-widest transition-all active:scale-95 flex items-center justify-center gap-2"
+                    className="flex-1 md:w-32 py-3 bg-white hover:bg-red-50 text-neutral-400 hover:text-red-600 border border-neutral-100 hover:border-red-100 rounded-xl font-black text-[11px] uppercase tracking-widest transition-all active:scale-95 flex items-center justify-center gap-2"
                   >
                     <XCircle size={14} />
                     Decline

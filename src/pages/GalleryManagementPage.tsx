@@ -49,7 +49,7 @@ interface GalleryManagementPageProps {
   onBulkDeleteReturnRecords?: (ids: string[]) => void;
   onReturnToGallery?: (id: string, branch: string) => Promise<boolean | void>;
   onReturnFromFramer?: (id: string, branch: string) => void;
-  onAddInstallment?: (saleId: string, amount: number, date: string, reference?: string, proofImage?: string | string[]) => void;
+  onAddInstallment?: (saleId: string, amount: number, date: string, reference?: string) => void;
   onDeleteSale?: (saleId: string) => void | Promise<boolean | void>;
   onBulkSendToFramer?: (ids: string[], damageDetails: string, attachmentUrl?: string | string[]) => void;
   onBulkReturnArtwork?: (ids: string[], reason: string, returnType: ReturnType, referenceNumber?: string, proofImage?: string | string[], remarks?: string) => void;
@@ -81,8 +81,8 @@ const GalleryManagementPage: React.FC<GalleryManagementPageProps> = (props) => {
   // Redirect to inventory if activeTab is restricted
   React.useEffect(() => {
     if (!props.userPermissions) return;
-    
-    const isRestricted = 
+
+    const isRestricted =
       (activeTab === 'branches' && !props.userPermissions.canManageEvents && !props.userPermissions.canAddArtwork) ||
       ((activeTab === 'events' || activeTab === 'auctions') && !props.userPermissions.canManageEvents) ||
       (activeTab === 'sales' && !props.userPermissions.canViewSalesHistory) ||

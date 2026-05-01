@@ -49,7 +49,7 @@ interface GalleryManagementPageProps {
   onBulkDeleteReturnRecords?: (ids: string[]) => void;
   onReturnToGallery?: (id: string, branch: string) => Promise<boolean | void>;
   onReturnFromFramer?: (id: string, branch: string) => void;
-  onAddInstallment?: (saleId: string, amount: number, date: string, reference?: string) => void;
+  onAddInstallment?: (saleId: string, amount: number, date: string, reference?: string, proofImage?: string | string[]) => void;
   onDeleteSale?: (saleId: string) => void | Promise<boolean | void>;
   onBulkSendToFramer?: (ids: string[], damageDetails: string, attachmentUrl?: string | string[]) => void;
   onBulkReturnArtwork?: (ids: string[], reason: string, returnType: ReturnType, referenceNumber?: string, proofImage?: string | string[], remarks?: string) => void;

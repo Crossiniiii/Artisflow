@@ -1,4 +1,4 @@
-import { Artwork, ArtworkStatus, SaleRecord, SaleStatus } from '../types';
+import { Artwork, ArtworkStatus, SaleRecord, SaleStatus, DeliveryRequestStatus } from '../types';
 import { generateUUID } from '../utils/idUtils';
 
 export const buildBulkSale = (
@@ -94,7 +94,7 @@ export const buildBulkSale = (
       rsaUrl: normalizedRsaUrls,
       orCrUrl: normalizedOrCrUrls,
       downpayment: itemDownpayment,
-      isDownpayment: isDownpayment,
+      isDownpayment: isDownpayment && (itemDownpayment && art && art.price ? itemDownpayment < art.price : true),
       downpaymentRecordedAt: itemDownpayment ? now : undefined,
       artworkSnapshot: art ? {
         title: art.title,
@@ -166,9 +166,9 @@ export const applySingleSale = (
     itdrUrl: itdrUrls,
     rsaUrl: rsaUrls,
     orCrUrl: orCrUrls,
-    downpayment,
-    isDownpayment: isDownpayment,
-    downpaymentRecordedAt: downpayment ? now : undefined,
+    downpayment: isDownpayment ? downpayment : art.price,
+    isDownpayment: !!isDownpayment,
+    downpaymentRecordedAt: now,
     artworkSnapshot: {
       title: art.title,
       artist: art.artist,
@@ -195,6 +195,7 @@ export const applySingleSale = (
   return { updatedArtworks, newSale };
 };
 
+
 export const applyCancelSale = (
   artworks: Artwork[],
   sales: SaleRecord[],
@@ -211,13 +212,38 @@ export const applyCancelSale = (
   return { updatedArtworks, updatedSales };
 };
 
+export const applyDispatch = (
+  sales: SaleRecord[],
+  artworkId: string,
+  user: string
+): { updatedSales: SaleRecord[] } => {
+  const now = new Date().toISOString();
+  const updatedSales = sales.map(s =>
+    String(s.artworkId) === String(artworkId)
+      ? {
+        ...s,
+        deliveryRequest: s.deliveryRequest ? {
+          ...s.deliveryRequest,
+          status: DeliveryRequestStatus.DISPATCHED,
+          dispatchedAt: now,
+          dispatchedBy: user
+        } : undefined
+      }
+      : s
+  );
+
+  return { updatedSales };
+};
+
 export const applyDelivery = (
   artworks: Artwork[],
   sales: SaleRecord[],
   artworkId: string,
   itdr?: string,
   rsa?: string,
-  orcr?: string
+  orcr?: string,
+  carrier?: string,
+  referenceNumber?: string
 ): { updatedArtworks: Artwork[]; updatedSales: SaleRecord[] } => {
   const now = new Date().toISOString();
 
@@ -239,7 +265,12 @@ export const applyDelivery = (
         deliveryDate: now,
         itdrUrl: itdr ? [...(s.itdrUrl || []), itdr] : s.itdrUrl,
         rsaUrl: rsa ? [...(s.rsaUrl || []), rsa] : s.rsaUrl,
-        orCrUrl: orcr ? [...(s.orCrUrl || []), orcr] : s.orCrUrl
+        orCrUrl: orcr ? [...(s.orCrUrl || []), orcr] : s.orCrUrl,
+        deliveryRequest: s.deliveryRequest ? {
+          ...s.deliveryRequest,
+          carrier,
+          referenceNumber
+        } : undefined
       }
       : s
   );

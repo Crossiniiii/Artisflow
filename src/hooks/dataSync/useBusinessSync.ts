@@ -30,17 +30,17 @@ export const useBusinessSync = ({
       const queries = shouldLoadFullBusinessData
         ? [
             () => supabase.from('sales').select('*'),
-            () => supabase.from('sales').select('id, artwork_id, client_name, client_email, client_contact, agent_name, sale_date, delivery_date, is_delivered, is_cancelled, status, downpayment, artwork_snapshot')
+            () => supabase.from('sales').select('id, artwork_id, client_name, client_email, client_contact, agent_name, agent_id, sale_date, delivery_date, is_delivered, is_cancelled, status, sold_at_event_id, sold_at_event_name, downpayment, is_downpayment, installments, artwork_snapshot, requested_attachments, decline_reason, itdr_url, rsa_url, or_cr_url, delivery_request')
           ]
         : [
             () => supabase
               .from('sales')
-              .select('id, artwork_id, client_name, client_email, client_contact, agent_name, agent_id, sale_date, delivery_date, is_delivered, is_cancelled, status, sold_at_event_id, sold_at_event_name, downpayment, artwork_snapshot')
+              .select('id, artwork_id, client_name, client_email, client_contact, agent_name, agent_id, sale_date, delivery_date, is_delivered, is_cancelled, status, sold_at_event_id, sold_at_event_name, downpayment, is_downpayment, installments, artwork_snapshot, requested_attachments, decline_reason, itdr_url, rsa_url, or_cr_url, delivery_request')
               .order('sale_date', { ascending: false })
               .limit(80),
             () => supabase
               .from('sales')
-              .select('id, artwork_id, client_name, client_email, client_contact, agent_name, sale_date, delivery_date, is_delivered, is_cancelled, status, downpayment, artwork_snapshot')
+              .select('id, artwork_id, client_name, client_email, client_contact, agent_name, agent_id, sale_date, delivery_date, is_delivered, is_cancelled, status, sold_at_event_id, sold_at_event_name, downpayment, is_downpayment, installments, artwork_snapshot, requested_attachments, decline_reason, itdr_url, rsa_url, or_cr_url, delivery_request')
               .order('sale_date', { ascending: false })
               .limit(80)
           ];
@@ -54,6 +54,21 @@ export const useBusinessSync = ({
       }
 
       return lastResponse;
+    };
+
+    const parseSaleRecord = (sale: any): SaleRecord => {
+      const s = mapFromSnakeCase(sale);
+      return {
+        ...s,
+        installments: typeof s.installments === 'string' ? JSON.parse(s.installments) : (s.installments || []),
+        artworkSnapshot: typeof s.artworkSnapshot === 'string' ? JSON.parse(s.artworkSnapshot) : s.artworkSnapshot,
+        requestedAttachments: typeof s.requestedAttachments === 'string' ? JSON.parse(s.requestedAttachments) : (s.requestedAttachments || []),
+        itdrUrl: typeof s.itdrUrl === 'string' ? JSON.parse(s.itdrUrl) : (s.itdrUrl || []),
+        rsaUrl: typeof s.rsaUrl === 'string' ? JSON.parse(s.rsaUrl) : (s.rsaUrl || []),
+        orCrUrl: typeof s.orCrUrl === 'string' ? JSON.parse(s.orCrUrl) : (s.orCrUrl || []),
+        pendingDownpaymentEdit: typeof s.pendingDownpaymentEdit === 'string' ? JSON.parse(s.pendingDownpaymentEdit) : s.pendingDownpaymentEdit,
+        deliveryRequest: typeof s.deliveryRequest === 'string' ? JSON.parse(s.deliveryRequest) : s.deliveryRequest
+      };
     };
 
     const syncBusinessData = async () => {
@@ -75,7 +90,9 @@ export const useBusinessSync = ({
         if (salesRes.error && !isSupabaseMissingRelationError(salesRes.error)) {
           console.warn('[Business Sync] Sales query failed:', salesRes.error.message);
         }
-        if (salesRes.data) setSales(mapFromSnakeCase(salesRes.data) as SaleRecord[]);
+        if (salesRes.data) {
+          setSales(salesRes.data.map(parseSaleRecord));
+        }
         if (eventsRes.data) {
           setEvents((mapFromSnakeCase(eventsRes.data) as ExhibitionEvent[]).map(e => ({
             ...e,
@@ -94,7 +111,7 @@ export const useBusinessSync = ({
         return;
       }
 
-      const mappedSale = mapFromSnakeCase(payload.new) as SaleRecord;
+      const mappedSale = parseSaleRecord(payload.new);
       if (payload.eventType === 'INSERT') {
         setSales(prev => upsertRealtimeRecord(prev, mappedSale));
         return;

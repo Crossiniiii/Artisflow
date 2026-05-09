@@ -274,7 +274,7 @@ const AuditLogsPage: React.FC<AuditLogsPageProps> = ({ logs, artworks, onViewArt
                       id: log.artworkId,
                       title: log.artworkSnapshot.title || 'Unknown',
                       code: log.artworkSnapshot.code || 'UNKNOWN',
-                      imageUrl: log.artworkSnapshot.imageUrl || 'https://via.placeholder.com/150',
+                      imageUrl: log.artworkSnapshot.imageUrl || 'https://placehold.co/150',
                     } : null);
                     return (
                       <tr key={log.id} className="hover:bg-neutral-50">

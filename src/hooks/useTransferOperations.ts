@@ -120,8 +120,11 @@ export const useTransferOperations = () => {
       const timestamp = new Date().toISOString();
       const artwork = artworks.find(a => String(a.id) === String(request.artworkId));
       let newStatus = artwork?.status || ArtworkStatus.AVAILABLE;
-      const isDestExclusive = exclusiveBranches.includes(request.toBranch);
-
+      const isDestExclusive = exclusiveBranches.some(ex => 
+        request.toBranch.toLowerCase().includes(ex.toLowerCase()) || 
+        ex.toLowerCase().includes(request.toBranch.toLowerCase())
+      );
+      
       if (isDestExclusive) {
         newStatus = ArtworkStatus.EXCLUSIVE_VIEW_ONLY;
       } else if (artwork?.status === ArtworkStatus.EXCLUSIVE_VIEW_ONLY) {
@@ -131,24 +134,48 @@ export const useTransferOperations = () => {
       const updatedArtwork = artwork ? {
         ...artwork,
         currentBranch: request.toBranch,
-        status: newStatus
+        status: newStatus,
+        // Clear any old reservation data if transferring to a new branch
+        reservedForEventId: undefined,
+        reservedForEventName: undefined,
+        reservationExpiry: undefined
       } as Artwork : null;
 
       if (!IS_DEMO_MODE) {
         // 1. Update transfer_request status
         const { error: reqError } = await supabase.from('transfer_requests').update(mapToSnakeCase({
           status: 'Accepted',
-          respondedBy: currentUser.name,
+          respondedBy: currentUser.name || currentUser.email,
           respondedAt: timestamp
         })).eq('id', request.id);
-        if (reqError) throw reqError;
+        
+        if (reqError) {
+          console.error('Failed to update transfer request:', reqError);
+          throw reqError;
+        }
 
         // 2. Update artwork location and status
-        const { error: artError } = await supabase.from('artworks').update(mapToSnakeCase({
+        const { data: updateData, error: artError } = await supabase.from('artworks').update(mapToSnakeCase({
           currentBranch: request.toBranch,
-          status: newStatus
-        })).eq('id', request.artworkId);
-        if (artError) throw artError;
+          status: newStatus,
+          // Explicitly clear reservation fields in DB
+          reservedForEventId: null,
+          reservedForEventName: null,
+          reservationExpiry: null
+        })).eq('id', request.artworkId).select();
+        
+        if (artError) {
+          console.error('Failed to update artwork:', artError);
+          throw artError;
+        }
+
+        if (!updateData || updateData.length === 0) {
+          const errMsg = `Critical Error: Artwork record (ID: ${request.artworkId}) was not found in the database during transfer acceptance. The transfer will be logged but the artwork location remains unchanged.`;
+          console.error(errMsg);
+          pushNotification('Sync Error', 'Artwork location could not be updated in the database.', 'system');
+        } else {
+          console.log(`[Transfer] Successfully updated artwork ${request.artworkId} in DB to ${request.toBranch}`);
+        }
 
         // 3. Create completed transfer record
         const { error: transError } = await supabase.from('transfers').insert(mapToSnakeCase({
@@ -159,10 +186,14 @@ export const useTransferOperations = () => {
           destination: request.toBranch,
           timestamp: timestamp,
           performedBy: request.requestedBy,
-          approvedBy: currentUser.name,
+          approvedBy: currentUser.name || currentUser.email,
           notes: 'Accepted'
         }));
-        if (transError) throw transError;
+        
+        if (transError) {
+          console.error('Failed to create transfer record:', transError);
+          // Non-fatal, we continue
+        }
       }
 
       setTransferRequests(prev => prev.map(r => String(r.id) === String(request.id) ? { ...r, status: 'Accepted' as TransferStatus } : r));
@@ -180,8 +211,10 @@ export const useTransferOperations = () => {
   };
 
   // 3. handleDeclineTransfer
-  const handleDeclineTransfer = async (request: TransferRequest) => {
+  const handleDeclineTransfer = async (request: TransferRequest, reason?: string) => {
     if (!currentUser) return;
+    const timestamp = new Date().toISOString();
+    const declineNote = reason ? `Resubmission requested: ${reason}` : request.notes;
     
     setImportStatus({
       isVisible: true,
@@ -194,12 +227,20 @@ export const useTransferOperations = () => {
         const { error } = await supabase.from('transfer_requests').update(mapToSnakeCase({
             status: 'Declined',
             respondedBy: currentUser.name,
-            respondedAt: new Date().toISOString()
+            respondedAt: timestamp,
+            notes: declineNote
         })).eq('id', request.id);
         if (error) throw error;
       }
       
-      setTransferRequests(prev => prev.map(r => String(r.id) === String(request.id) ? { ...r, status: 'Declined' as TransferStatus } : r));
+      setTransferRequests(prev => prev.map(r => String(r.id) === String(request.id) ? {
+        ...r,
+        status: 'Declined' as TransferStatus,
+        respondedBy: currentUser.name,
+        respondedAt: timestamp,
+        notes: declineNote
+      } : r));
+      logActivity(request.artworkId, 'Transfer Declined', declineNote || 'Transfer request declined.', artworks.find(a => String(a.id) === String(request.artworkId)));
       pushNotification('Transfer Declined', request.artworkTitle, 'inventory');
     } catch (error) {
       console.error('Decline Transfer Error:', error);
@@ -264,11 +305,38 @@ export const useTransferOperations = () => {
     }
   };
 
+  const handleBulkDeleteTransfers = async (ids: string[]) => {
+    if (!currentUser || ids.length === 0) return;
+    if (!window.confirm(`Permanently delete ${ids.length} transfer record(s)?`)) return;
+
+    setImportStatus({
+      isVisible: true,
+      title: 'Deleting Transfers',
+      message: `Removing ${ids.length} records...`,
+      progress: { current: 0, total: ids.length }
+    });
+
+    try {
+      if (!IS_DEMO_MODE) {
+        const { error } = await supabase.from('transfer_requests').delete().in('id', ids);
+        if (error) throw error;
+      }
+      setTransferRequests(prev => prev.filter(r => !ids.includes(String(r.id))));
+      pushNotification('Bulk Delete Complete', `Successfully removed ${ids.length} transfer records.`, 'inventory');
+    } catch (error: any) {
+      console.error('Bulk Delete Transfers Error:', error);
+      pushNotification('Action Failed', `Failed to delete records: ${error.message || 'Unknown error'}`, 'system');
+    } finally {
+      setTimeout(() => setImportStatus({ isVisible: false }), 500);
+    }
+  };
+
   return {
     handleCreateTransferRequest,
     handleAcceptTransfer,
     handleDeclineTransfer,
     handleHoldTransfer,
-    handleDeleteTransfer
+    handleDeleteTransfer,
+    handleBulkDeleteTransfers
   };
 };

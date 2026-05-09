@@ -10,6 +10,7 @@ import { BRANCH_CATEGORIES } from '../constants';
 import { OptimizedImage } from '../components/OptimizedImage';
 import { useActionProcessing } from '../hooks/useActionProcessing';
 import LoadingOverlay from '../components/LoadingOverlay';
+import { OptimizedTextarea } from '../components/OptimizedTextarea';
 
 interface BranchManagementProps {
   branches: string[];
@@ -24,7 +25,7 @@ interface BranchManagementProps {
   onUpdateBranchAddress?: (name: string, address: string) => void;
   onViewArtwork?: (id: string) => void;
   events?: ExhibitionEvent[];
-  onBulkSale?: (ids: string[], client: string, delivered: boolean, eventInfo?: { id: string; name: string }, attachments?: { itdrUrl?: string[]; rsaUrl?: string[]; orCrUrl?: string[] }, totalDownpayment?: number, clientEmail?: string, clientContact?: string, perArtworkDownpayments?: Record<string, number>) => void;
+  onBulkSale?: (ids: string[], client: string, delivered: boolean, eventInfo?: { id: string; name: string }, attachments?: { itdrUrl?: string[]; rsaUrl?: string[]; orCrUrl?: string[] }, totalDownpayment?: number, clientEmail?: string, clientContact?: string, perArtworkDownpayments?: Record<string, number>, installmentsEnabled?: boolean) => void;
   onBulkReserve?: (ids: string[], details: string, expiryDate?: string, eventId?: string, eventName?: string) => void;
   onBulkTransferRequest?: (ids: string[], targetBranch: string, attachments?: { itdrUrl?: string }) => void;
   onBulkDeleteArtworks?: (ids: string[]) => void;
@@ -147,10 +148,20 @@ const BranchManagement: React.FC<BranchManagementProps> = ({
   const [bulkActionValue, setBulkActionValue] = useState('');
   const [bulkClientEmail, setBulkClientEmail] = useState('');
   const [bulkClientContact, setBulkClientContact] = useState('');
+  
+  const existingCategories = useMemo(() => {
+    const cats = new Set<string>();
+    // Add predefined categories
+    BRANCH_CATEGORIES.forEach(c => cats.add(c));
+    // Add categories currently in use by branches
+    Object.values(branchCategories || {}).forEach(c => {
+      if (c) cats.add(c);
+    });
+    return Array.from(cats).sort();
+  }, [branchCategories]);
   const [bulkDownpayment, setBulkDownpayment] = useState('');
   const [bulkSaleDownpayments, setBulkSaleDownpayments] = useState<Record<string, string>>({});
   const [bulkSaleInstallmentsEnabled, setBulkSaleInstallmentsEnabled] = useState<Record<string, boolean>>({});
-  const [bulkActionExtra, setBulkActionExtra] = useState(false);
   const [bulkSaleEventId, setBulkSaleEventId] = useState('');
   const [bulkTempItdr, setBulkTempItdr] = useState<string | string[] | null>(null);
   const [bulkTempRsa, setBulkTempRsa] = useState<string | string[] | null>(null);
@@ -345,7 +356,6 @@ const BranchManagement: React.FC<BranchManagementProps> = ({
     setBulkDownpayment('');
     setBulkSaleDownpayments({});
     setBulkSaleInstallmentsEnabled({});
-    setBulkActionExtra(false);
     setReservationDetails('');
     setArtistFilter('All');
     setMediumFilter('All');
@@ -366,7 +376,6 @@ const BranchManagement: React.FC<BranchManagementProps> = ({
     setBulkDownpayment('');
     setBulkSaleDownpayments({});
     setBulkSaleInstallmentsEnabled({});
-    setBulkActionExtra(false);
     setBulkTempItdr(null);
     setBulkTempRsa(null);
     setBulkTempOrCr(null);
@@ -448,7 +457,6 @@ const BranchManagement: React.FC<BranchManagementProps> = ({
         onConfirm: () => {
           setErrorModal(null);
           setBulkActionValue('');
-          setBulkActionExtra(false);
           setReservationDetails('');
           setBulkFramerDamage('');
           setBulkReturnReason('');
@@ -474,7 +482,6 @@ const BranchManagement: React.FC<BranchManagementProps> = ({
     setBulkDownpayment('');
     setBulkSaleDownpayments({});
     setBulkSaleInstallmentsEnabled({});
-    setBulkActionExtra(false);
     setReservationDetails('');
     setBulkFramerDamage('');
     setBulkReturnReason('');
@@ -523,7 +530,7 @@ const BranchManagement: React.FC<BranchManagementProps> = ({
                 .filter(([, value]) => !Number.isNaN(value) && value > 0)
             );
 
-            await Promise.resolve(onBulkSale(selectedArtworkIds, bulkActionValue, bulkActionExtra,
+            await Promise.resolve(onBulkSale(selectedArtworkIds, bulkActionValue, false,
               selectedEvent ? { id: selectedEvent.id, name: selectedEvent.title } : undefined,
               {
                 itdrUrl: bulkItdrList.length > 0 ? bulkItdrList : undefined,
@@ -533,7 +540,8 @@ const BranchManagement: React.FC<BranchManagementProps> = ({
               downpaymentAmount,
               bulkClientEmail || undefined,
               bulkClientContact || undefined,
-              Object.keys(perArtworkDownpayments).length > 0 ? perArtworkDownpayments : undefined
+              Object.keys(perArtworkDownpayments).length > 0 ? perArtworkDownpayments : undefined,
+              Object.values(bulkSaleInstallmentsEnabled).some(v => v)
             ));
             setBulkTempItdr(null);
             setBulkTempRsa(null);
@@ -619,7 +627,6 @@ const BranchManagement: React.FC<BranchManagementProps> = ({
       setBulkDownpayment('');
       setBulkSaleDownpayments({});
       setBulkSaleInstallmentsEnabled?.({});
-      setBulkActionExtra(false);
       setReservationDetails('');
       setReservationTab('person');
       setReservationClient('');
@@ -1828,818 +1835,9 @@ const BranchManagement: React.FC<BranchManagementProps> = ({
                 </button>
               </div>
             </div>
-            {bulkActionModal ? (
-              <div className="flex-1 flex flex-col">
-                <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4">
-                  <div className="space-y-4">
-                    {!(bulkActionModal.type === 'framer' || bulkActionModal.type === 'return') && (
-                      <p className="text-neutral-600 text-sm">
-                        You are about to {bulkActionModal.type === 'delete' ? 'delete' : bulkActionModal.type}{' '}
-                        <strong>{selectedArtworkIds.length}</strong> selected artworks.
-                      </p>
-                    )}
+            {/* Unified Workflow Injection */}
+            {/* Cart View Content */}
 
-                    {bulkActionModal.type === 'sale' && (
-                      <div className="space-y-6">
-                        {/* Sale Info Section */}
-                        <div className="space-y-4">
-                          <div>
-                            <label className="block text-xs font-bold text-neutral-500 uppercase mb-1">
-                              Client Name
-                            </label>
-                            <input
-                              autoFocus
-                              type="text"
-                              value={bulkActionValue}
-                              onChange={e => setBulkActionValue(e.target.value)}
-                              className="w-full px-4 py-2 bg-neutral-50 border border-neutral-200 rounded-lg text-sm"
-                              placeholder="Enter client name..."
-                            />
-                          </div>
-
-                          <div>
-                            <label className="block text-xs font-bold text-neutral-500 uppercase mb-1">
-                              Event / Auction (Optional)
-                            </label>
-                            <select
-                              className="w-full px-4 py-2 bg-neutral-50 border border-neutral-200 rounded-lg text-sm focus:ring-2 focus:ring-neutral-500/20 focus:border-neutral-500 transition-all"
-                              value={bulkSaleEventId}
-                              onChange={(e) => setBulkSaleEventId(e.target.value)}
-                            >
-                              <option value="">Direct Sale (No Event)</option>
-                              {events?.filter(e => {
-                                if (e.status === 'Recent' || e.status === 'Closed') return false;
-                                if (e.isStrictDuration && e.endDate) {
-                                  const end = new Date(e.endDate);
-                                  end.setHours(23, 59, 59, 999);
-                                  if (end.getTime() < Date.now()) return false;
-                                }
-                                return true;
-                              }).map(e => <option key={e.id} value={e.id}>{e.title}</option>)}
-                            </select>
-                          </div>
-
-                          <div>
-                            <label className="block text-xs font-bold text-neutral-500 uppercase mb-1">
-                              Downpayment (Optional)
-                            </label>
-                            <div className="relative">
-                              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-neutral-400">₱</span>
-                              <input
-                                type="text"
-                                value={bulkDownpayment}
-                                onChange={(e) => {
-                                  const val = e.target.value.replace(/[^0-9.]/g, '');
-                                  if (val === '' || /^\d*\.?\d{0,2}$/.test(val)) {
-                                    setBulkDownpayment(val);
-                                  }
-                                }}
-                                onBlur={() => {
-                                  if (bulkDownpayment) {
-                                    const num = parseFloat(bulkDownpayment);
-                                    if (!isNaN(num)) {
-                                      setBulkDownpayment(num.toFixed(2));
-                                    }
-                                  }
-                                }}
-                                className="w-full pl-8 pr-4 py-2 bg-neutral-50 border border-neutral-200 rounded-lg text-sm focus:ring-2 focus:ring-neutral-500/20 focus:border-neutral-500 transition-all"
-                                placeholder="0.00"
-                              />
-                            </div>
-                            {bulkDownpayment && !isNaN(parseFloat(bulkDownpayment)) && parseFloat(bulkDownpayment) > 0 && (
-                              <div className="mt-2 p-3 bg-red-50 rounded-lg border border-red-100 flex flex-col gap-1">
-                                <div className="flex justify-between text-xs">
-                                  <span className="text-neutral-500">Total Price:</span>
-                                  <span className="font-bold text-neutral-900">
-                                    ₱{cartArtworks.reduce((sum, art) => sum + (art.price || 0), 0).toLocaleString()}
-                                  </span>
-                                </div>
-                                <div className="flex justify-between text-xs">
-                                  <span className="text-neutral-500">Downpayment:</span>
-                                  <span className="font-bold text-red-600">
-                                    -₱{parseFloat(bulkDownpayment).toLocaleString()}
-                                  </span>
-                                </div>
-                                <div className="h-px bg-red-200 my-1"></div>
-                                <div className="flex justify-between text-sm font-bold">
-                                  <span className="text-red-700">Remaining Balance:</span>
-                                  <span className="text-red-700">
-                                    ₱{(cartArtworks.reduce((sum, art) => sum + (art.price || 0), 0) - parseFloat(bulkDownpayment)).toLocaleString()}
-                                  </span>
-                                </div>
-                              </div>
-                            )}
-                          </div>
-
-                          <label className="flex items-center space-x-2 p-3 bg-neutral-50 rounded-lg cursor-pointer">
-                            <input
-                              type="checkbox"
-                              checked={bulkActionExtra}
-                              onChange={e => setBulkActionExtra(e.target.checked)}
-                              className="rounded text-neutral-900 focus:ring-neutral-500"
-                            />
-                            <span className="text-sm font-medium text-neutral-700">
-                              Mark items as Delivered immediately?
-                            </span>
-                          </label>
-                        </div>
-
-                        {/* Attachments Section */}
-                        <div className="pt-4 border-t border-neutral-100 space-y-4">
-                          <label className="block text-xs font-bold text-neutral-500 uppercase">
-                            Attachments (Required for Sale/Delivery)
-                          </label>
-                          <div className="flex p-1 bg-neutral-50 rounded-xl border border-neutral-200">
-                            {(['itdr', 'rsa', 'orcr'] as const).map((tab) => (
-                              <button
-                                key={tab}
-                                type="button"
-                                onClick={() => setActiveBulkAttachmentTab(tab)}
-                                className={`flex-1 py-1.5 text-[10px] font-bold uppercase tracking-widest rounded-lg transition-all ${activeBulkAttachmentTab === tab
-                                  ? 'bg-neutral-900 text-white shadow-sm'
-                                  : 'text-neutral-400 hover:text-neutral-600'
-                                  }`}
-                              >
-                                {tab === 'itdr' ? 'IT/DR' : tab === 'rsa' ? 'RSA/AR' : 'OR/CR'}
-                              </button>
-                            ))}
-                          </div>
-
-                          <div className="p-4 bg-neutral-50 rounded-2xl border border-neutral-200 border-dashed">
-                            <label className={`block text-[10px] font-bold uppercase tracking-widest mb-2 ${((activeBulkAttachmentTab === 'itdr' && bulkActionExtra) || activeBulkAttachmentTab === 'rsa') ? 'text-red-600' : 'text-neutral-400'
-                              }`}>
-                              {activeBulkAttachmentTab === 'itdr' ? (bulkActionExtra ? 'IT/DR Document (Required for Delivery)' : 'IT/DR Document') : activeBulkAttachmentTab === 'rsa' ? 'RSA / AR Image (Required)' : 'OR / CR Image'}
-                            </label>
-                            <input
-                              key={activeBulkAttachmentTab}
-                              type="file"
-                              accept="image/*"
-                              onChange={async (e) => {
-                                const file = e.target.files?.[0];
-                                if (!file) return;
-
-                                const reader = new FileReader();
-                                reader.onload = async (ev) => {
-                                  const rawBase64 = ev.target?.result as string;
-                                  const compressed = await compressBase64Image(rawBase64);
-
-                                  if (activeBulkAttachmentTab === 'itdr') setBulkTempItdr(compressed);
-                                  else if (activeBulkAttachmentTab === 'rsa') setBulkTempRsa(compressed);
-                                  else if (activeBulkAttachmentTab === 'orcr') setBulkTempOrCr(compressed);
-                                };
-                                reader.readAsDataURL(file);
-                              }}
-                              className="block w-full text-xs text-neutral-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-[10px] file:font-bold file:bg-neutral-900 file:text-white hover:file:bg-neutral-800"
-                            />
-
-                            {((activeBulkAttachmentTab === 'itdr' ? bulkTempItdr : activeBulkAttachmentTab === 'rsa' ? bulkTempRsa : bulkTempOrCr)) ? (
-                              <div className="relative mt-4 group">
-                                <img
-                                  src={Array.isArray(activeBulkAttachmentTab === 'itdr' ? bulkTempItdr : activeBulkAttachmentTab === 'rsa' ? bulkTempRsa : bulkTempOrCr)
-                                    ? (activeBulkAttachmentTab === 'itdr' ? (bulkTempItdr as string[])[0] : activeBulkAttachmentTab === 'rsa' ? (bulkTempRsa as string[])[0] : (bulkTempOrCr as string[])[0])
-                                    : (activeBulkAttachmentTab === 'itdr' ? bulkTempItdr as string : activeBulkAttachmentTab === 'rsa' ? bulkTempRsa as string : bulkTempOrCr as string)}
-                                  alt="Preview"
-                                  className="w-full h-48 object-contain bg-white rounded-xl border border-neutral-200"
-                                />
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    if (activeBulkAttachmentTab === 'itdr') setBulkTempItdr(null);
-                                    else if (activeBulkAttachmentTab === 'rsa') setBulkTempRsa(null);
-                                    else if (activeBulkAttachmentTab === 'orcr') setBulkTempOrCr(null);
-                                  }}
-                                  className="absolute top-2 right-2 p-1.5 bg-white/90 backdrop-blur shadow-sm rounded-full text-red-500 hover:bg-red-50 transition-colors"
-                                >
-                                  <Trash2 size={14} />
-                                </button>
-                              </div>
-                            ) : (
-                              <div className="w-full h-48 flex flex-col items-center justify-center text-neutral-400 gap-2">
-                                <Package size={24} className="opacity-20" />
-                                <p className="text-[10px] font-medium uppercase tracking-widest">No Attachment</p>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
-                    {bulkActionModal.type === 'reserve' && (
-                      <div className="space-y-4">
-                        <div className="flex p-1 bg-neutral-100 rounded-xl">
-                          <button
-                            type="button"
-                            onClick={() => setReservationTab('person')}
-                            className={`flex-1 py-1.5 text-xs font-bold uppercase tracking-wider rounded-lg transition-all ${reservationTab === 'person'
-                              ? 'bg-white text-neutral-900 shadow-sm'
-                              : 'text-neutral-500 hover:text-neutral-700'
-                              }`}
-                          >
-                            Person
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setReservationTab('event')}
-                            className={`flex-1 py-1.5 text-xs font-bold uppercase tracking-wider rounded-lg transition-all ${reservationTab === 'event'
-                              ? 'bg-white text-neutral-900 shadow-sm'
-                              : 'text-neutral-500 hover:text-neutral-700'
-                              }`}
-                          >
-                            Event
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setReservationTab('auction')}
-                            className={`flex-1 py-1.5 text-xs font-bold uppercase tracking-wider rounded-lg transition-all ${reservationTab === 'auction'
-                              ? 'bg-white text-neutral-900 shadow-sm'
-                              : 'text-neutral-500 hover:text-neutral-700'
-                              }`}
-                          >
-                            Auction
-                          </button>
-                        </div>
-
-                        {reservationTab === 'person' && (
-                          <div>
-                            <label className="block text-xs font-bold text-neutral-500 uppercase mb-1">
-                              Client Name
-                            </label>
-                            <input
-                              autoFocus
-                              type="text"
-                              value={reservationClient}
-                              onChange={e => setReservationClient(e.target.value)}
-                              className="w-full px-4 py-2 bg-neutral-50 border border-neutral-200 rounded-lg text-sm"
-                              placeholder="Enter client name..."
-                            />
-                          </div>
-                        )}
-
-                        {reservationTab === 'event' && (
-                          <div>
-                            <label className="block text-xs font-bold text-neutral-500 uppercase mb-1">
-                              Select Event
-                            </label>
-                            <select
-                              value={reservationEventId}
-                              onChange={e => setReservationEventId(e.target.value)}
-                              className="w-full px-4 py-2 bg-neutral-50 border border-neutral-200 rounded-lg text-sm"
-                            >
-                              <option value="">Select an upcoming event...</option>
-                              {events
-                                ?.filter(e => e.status !== 'Recent' && (!e.type || e.type === 'Exhibition'))
-                                .filter(e => {
-                                  if (e.status === 'Closed') return false;
-                                  if (e.isStrictDuration && e.endDate) {
-                                    const end = new Date(e.endDate);
-                                    end.setHours(23, 59, 59, 999);
-                                    if (end.getTime() < Date.now()) return false;
-                                  }
-                                  return true;
-                                })
-                                .map(e => (
-                                  <option key={e.id} value={e.id}>
-                                    {e.title} ({e.status})
-                                  </option>
-                                ))}
-                            </select>
-                          </div>
-                        )}
-
-                        {reservationTab === 'auction' && (
-                          <div>
-                            <label className="block text-xs font-bold text-neutral-500 uppercase mb-1">
-                              Select Auction
-                            </label>
-                            <select
-                              value={reservationAuctionId}
-                              onChange={e => setReservationAuctionId(e.target.value)}
-                              className="w-full px-4 py-2 bg-neutral-50 border border-neutral-200 rounded-lg text-sm"
-                            >
-                              <option value="">Select an auction...</option>
-                              {events
-                                ?.filter(e => e.type === 'Auction' && e.status !== 'Recent')
-                                .filter(e => {
-                                  if (e.status === 'Closed') return false;
-                                  if (e.isStrictDuration && e.endDate) {
-                                    const end = new Date(e.endDate);
-                                    end.setHours(23, 59, 59, 999);
-                                    if (end.getTime() < Date.now()) return false;
-                                  }
-                                  return true;
-                                })
-                                .map(e => (
-                                  <option key={e.id} value={e.id}>
-                                    {e.title} ({e.status})
-                                  </option>
-                                ))}
-                            </select>
-                          </div>
-                        )}
-
-                        {reservationTab === 'person' && (
-                          <div>
-                            <label className="block text-xs font-bold text-neutral-500 uppercase mb-1">
-                              Duration
-                            </label>
-                            <div className="flex gap-2">
-                              {(['Days', 'Hours', 'Minutes'] as const).map(u => {
-                                const val = u === 'Days' ? reservationDays : u === 'Hours' ? reservationHours : reservationMinutes;
-                                return (
-                                  <div key={u} className="flex-1">
-                                    <label className="block text-[10px] text-neutral-400 mb-0.5">{u}</label>
-                                    <input
-                                      type="text"
-                                      inputMode="numeric"
-                                      value={val}
-                                      onFocus={(e) => e.target.select()}
-                                      onChange={e => {
-                                        const raw = e.target.value.replace(/\D/g, '');
-                                        const v = Math.max(0, parseInt(raw, 10) || 0);
-                                        if (u === 'Days') setReservationDays(v);
-                                        else if (u === 'Hours') setReservationHours(Math.min(23, v));
-                                        else setReservationMinutes(Math.min(59, v));
-                                      }}
-                                      className="w-full px-3 py-2 bg-neutral-50 border border-neutral-200 rounded-lg text-sm"
-                                    />
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        )}
-
-
-                        {reservationTab !== 'auction' && (
-                          <div>
-                            <label className="block text-xs font-bold text-neutral-500 uppercase mb-1">
-                              Additional Notes
-                            </label>
-                            <textarea
-                              value={reservationDetails}
-                              onChange={e => setReservationDetails(e.target.value)}
-                              className="w-full px-4 py-2 bg-neutral-50 border border-neutral-200 rounded-lg text-sm h-20 resize-none"
-                              placeholder="Any additional details..."
-                            />
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    {bulkActionModal.type === 'framer' && (
-                      <div className="space-y-6">
-                        {/* Status Banner */}
-                        <div className="bg-neutral-50 border border-neutral-100 rounded-[2rem] p-6 flex gap-5 transition-all">
-                          <div className="shrink-0 w-12 h-12 bg-white rounded-2xl shadow-sm flex items-center justify-center ring-1 ring-neutral-200 text-neutral-600">
-                            <Wrench size={24} />
-                          </div>
-                          <div className="space-y-1.5 pt-0.5">
-                            <h4 className="text-[13px] font-black uppercase tracking-wider text-neutral-900">Framing/Retouch</h4>
-                            <p className="text-[11px] font-bold leading-relaxed text-neutral-500">
-                              The artwork will be marked as "For Framing" and removed from available inventory. You can track its status in the "For Framing" tab in Operations.
-                            </p>
-                          </div>
-                        </div>
-
-                        <div className="space-y-4">
-                          <label className="text-[10px] font-black text-neutral-400 uppercase tracking-[0.2em]">
-                            Damage / Repair Details <span className="text-neutral-500 font-black">*</span>
-                          </label>
-                          <textarea
-                            autoFocus
-                            value={bulkFramerDamage}
-                            onChange={e => setBulkFramerDamage(e.target.value)}
-                            className="w-full px-6 py-5 bg-neutral-50 border-none rounded-[2rem] text-sm font-medium text-neutral-700 focus:ring-4 focus:ring-neutral-500/5 transition-all resize-none placeholder:text-neutral-300 min-h-[160px]"
-                            placeholder="Describe the damage or required repairs..."
-                          />
-                        </div>
-
-                        <div className="space-y-4">
-                          <label className="text-[10px] font-black text-neutral-400 uppercase tracking-[0.2em]">
-                            Attach IT/DR <span className="text-neutral-400 font-bold lowercase italic">(Optional)</span>
-                          </label>
-                          <div className="relative group">
-                            <input
-                              type="file"
-                              accept="image/*"
-                              onChange={async (e) => {
-                                const file = e.target.files?.[0];
-                                if (!file) return;
-                                const reader = new FileReader();
-                                reader.onload = async (ev) => {
-                                  const rawBase64 = ev.target?.result as string;
-                                  const compressed = await compressBase64Image(rawBase64);
-                                  setBulkTempItdr(compressed);
-                                };
-                                reader.readAsDataURL(file);
-                              }}
-                              className="absolute inset-0 opacity-0 cursor-pointer z-10"
-                            />
-                            <div className="w-full py-10 bg-white border-2 border-neutral-100 border-dashed rounded-[2rem] flex flex-col items-center justify-center gap-4 group-hover:bg-neutral-50 transition-all">
-                              {bulkTempItdr ? (
-                                <div className="relative w-full px-6">
-                                  <img src={Array.isArray(bulkTempItdr) ? bulkTempItdr[0] : bulkTempItdr as string} alt="Preview" className="w-full h-32 object-contain rounded-xl" />
-                                  <button onClick={() => setBulkTempItdr(null)} className="absolute top-0 right-8 p-1.5 bg-rose-500 text-white rounded-full">
-                                    <X size={12} />
-                                  </button>
-                                </div>
-                              ) : (
-                                <>
-                                  <div className="w-14 h-14 bg-neutral-50 rounded-2xl flex items-center justify-center text-neutral-400 group-hover:scale-110 transition-transform shadow-inner">
-                                    <Upload size={24} />
-                                  </div>
-                                  <div className="text-center">
-                                    <p className="text-[13px] font-black text-neutral-900 mb-0.5">Upload Document</p>
-                                  </div>
-                                </>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="flex items-center justify-center gap-8 pt-4">
-                          <button
-                            type="button"
-                            onClick={handleCloseBulkModal}
-                            className="text-[13px] font-black text-neutral-500 hover:text-neutral-900 transition-colors uppercase tracking-[0.2em]"
-                          >
-                            Back to Cart
-                          </button>
-                          <button
-                            type="button"
-                            onClick={handleBulkActionSubmit}
-                            disabled={!bulkFramerDamage.trim()}
-                            className="px-10 py-5 bg-neutral-900 text-white text-[13px] font-black uppercase tracking-[0.2em] rounded-[2rem] shadow-xl shadow-neutral-200 hover:shadow-2xl hover:-translate-y-0.5 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                          >
-                            Send to Framer
-                          </button>
-                        </div>
-                      </div>
-                    )}
-
-                    {bulkActionModal.type === 'return' && (
-                      <div className="space-y-8">
-                        {/* Return Type Selection */}
-                        <div className="bg-neutral-100/50 p-2 rounded-[2rem] flex items-center gap-2">
-                          <button
-                            type="button"
-                            onClick={() => setBulkReturnType('Artist Reclaim')}
-                            className={`flex-1 py-4 px-6 rounded-[1.8rem] text-[11px] font-black uppercase tracking-widest transition-all ${bulkReturnType === 'Artist Reclaim' ? 'bg-white text-neutral-900 shadow-sm' : 'text-neutral-400 hover:text-neutral-600'}`}
-                          >
-                            Return (Void)
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setBulkReturnType('For Retouch')}
-                            className={`flex-1 py-4 px-6 rounded-[1.8rem] text-[11px] font-black uppercase tracking-widest transition-all ${bulkReturnType === 'For Retouch' ? 'bg-white text-neutral-900 shadow-sm' : 'text-neutral-400 hover:text-neutral-600'}`}
-                          >
-                            For Retouch
-                          </button>
-                        </div>
-
-                        {/* Status Banner */}
-                        {bulkReturnType === 'Artist Reclaim' ? (
-                          <div className="bg-white border border-neutral-100 rounded-[2rem] p-6 flex gap-5 transition-all shadow-sm">
-                            <div className="shrink-0 w-12 h-12 bg-neutral-50 rounded-2xl flex items-center justify-center text-rose-500">
-                              <AlertTriangle size={24} />
-                            </div>
-                            <div className="space-y-1.5 pt-0.5">
-                              <h4 className="text-[13px] font-black uppercase tracking-wider text-rose-900">Permanent Return (Void)</h4>
-                              <p className="text-[11px] font-bold leading-relaxed text-neutral-500">
-                                This action is a VOID. The artwork will be permanently removed from inventory. Audit trail and data will be preserved. IT/DR attachment is REQUIRED.
-                              </p>
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="bg-white border border-neutral-100 rounded-[2rem] p-6 flex gap-5 transition-all shadow-sm">
-                            <div className="shrink-0 w-12 h-12 bg-neutral-50 rounded-2xl flex items-center justify-center text-neutral-400">
-                              <RotateCcw size={24} />
-                            </div>
-                            <div className="space-y-1.5 pt-0.5">
-                              <h4 className="text-[13px] font-black uppercase tracking-wider text-neutral-900">Temporary Status Change</h4>
-                              <p className="text-[11px] font-bold leading-relaxed text-neutral-500">
-                                The artwork status will change to "For Retouch". It remains in the inventory but is marked as unavailable. You can return it to the branch later.
-                              </p>
-                            </div>
-                          </div>
-                        )}
-
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 pt-2">
-                          {/* Column 1: Details */}
-                          <div className="space-y-6">
-                            <div className="space-y-3">
-                              <label className="text-[10px] font-black text-neutral-400 uppercase tracking-[0.2em]">
-                                Reason for Return <span className="text-neutral-500 font-black">*</span>
-                              </label>
-                              <div className="relative">
-                                <textarea
-                                  value={bulkReturnReason}
-                                  onChange={e => setBulkReturnReason(e.target.value)}
-                                  className="w-full px-5 py-4 bg-neutral-50 border-none rounded-[1.5rem] text-sm font-medium text-neutral-700 min-h-[140px] resize-none placeholder:text-neutral-300"
-                                  placeholder="Describe the reason for return (e.g., Artist request, Contract expiration, Damaged...)"
-                                />
-                                <div className="absolute bottom-4 right-4 text-[9px] font-bold text-neutral-300 uppercase tracking-widest">
-                                  {bulkReturnReason.length} chars
-                                </div>
-                              </div>
-                            </div>
-                            <div className="space-y-3">
-                              <label className="text-[10px] font-black text-neutral-400 uppercase tracking-[0.2em]">
-                                Additional Notes
-                              </label>
-                              <input
-                                type="text"
-                                value={bulkReturnNotes}
-                                onChange={e => setBulkReturnNotes(e.target.value)}
-                                className="w-full px-5 py-4 bg-neutral-50 border-none rounded-[1.5rem] text-sm font-medium text-neutral-700 placeholder:text-neutral-300"
-                                placeholder="Any internal remarks or instructions..."
-                              />
-                            </div>
-                          </div>
-
-                          {/* Column 2: Logistics */}
-                          <div className="space-y-6">
-                            <div className="space-y-3">
-                              <label className="text-[10px] font-black text-neutral-400 uppercase tracking-[0.2em]">
-                                IT / DR Reference No.
-                              </label>
-                              <div className="relative group">
-                                <div className="absolute left-5 top-1/2 -translate-y-1/2 text-neutral-400">
-                                  <ClipboardCheck size={18} />
-                                </div>
-                                <input
-                                  type="text"
-                                  value={bulkReturnRef}
-                                  onChange={e => setBulkReturnRef(e.target.value)}
-                                  className="w-full pl-12 pr-5 py-4 bg-neutral-50 border-none rounded-[1.5rem] text-sm font-black text-neutral-400 placeholder:text-neutral-300 tracking-wider uppercase"
-                                  placeholder="IT-2024-001"
-                                />
-                              </div>
-                            </div>
-
-                            <div className="space-y-3">
-                              <label className="text-[10px] font-black text-neutral-400 uppercase tracking-[0.2em]">
-                                Proof of Return (IT/DR) <span className="text-neutral-500 font-black">*</span>
-                              </label>
-                              <div className="relative group">
-                                <input
-                                  type="file"
-                                  accept="image/*"
-                                  onChange={async (e) => {
-                                    const file = e.target.files?.[0];
-                                    if (!file) return;
-                                    const reader = new FileReader();
-                                    reader.onload = async (ev) => {
-                                      const rawBase64 = ev.target?.result as string;
-                                      const compressed = await compressBase64Image(rawBase64);
-                                      setBulkTempItdr(compressed);
-                                    };
-                                    reader.readAsDataURL(file);
-                                  }}
-                                  className="absolute inset-0 opacity-0 cursor-pointer z-10"
-                                />
-                                <div className="w-full py-8 bg-white border-2 border-neutral-100 border-dashed rounded-[2rem] flex flex-col items-center justify-center gap-3 group-hover:bg-neutral-50 transition-all">
-                                  {bulkTempItdr ? (
-                                    <div className="relative w-full px-4">
-                                      <img src={Array.isArray(bulkTempItdr) ? bulkTempItdr[0] : bulkTempItdr as string} alt="Preview" className="w-full h-24 object-contain rounded-xl" />
-                                      <button onClick={() => setBulkTempItdr(null)} className="absolute top-0 right-4 p-1 bg-rose-500 text-white rounded-full">
-                                        <X size={10} />
-                                      </button>
-                                    </div>
-                                  ) : (
-                                    <>
-                                      <div className="w-12 h-12 bg-neutral-50 rounded-2xl flex items-center justify-center text-neutral-400 group-hover:scale-110 transition-transform shadow-inner">
-                                        <Upload size={20} />
-                                      </div>
-                                      <div className="text-center">
-                                        <p className="text-[12px] font-black text-neutral-900 mb-0.5">Upload Proof</p>
-                                        <p className="text-[9px] font-bold text-neutral-400 uppercase tracking-widest">JPG OR PNG</p>
-                                      </div>
-                                    </>
-                                  )}
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="flex items-center justify-center gap-10 pt-4">
-                          <button
-                            type="button"
-                            onClick={handleCloseBulkModal}
-                            className="text-[14px] font-black text-neutral-500 hover:text-neutral-900 transition-colors uppercase tracking-[0.2em]"
-                          >
-                            Back to Cart
-                          </button>
-                          <button
-                            type="button"
-                            onClick={handleBulkActionSubmit}
-                            disabled={!bulkReturnReason.trim() || (bulkReturnType === 'Artist Reclaim' && !bulkTempItdr)}
-                            className="px-10 py-5 bg-neutral-400 text-white text-[14px] font-black rounded-[2rem] shadow-xl shadow-neutral-200 transition-all flex items-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed group"
-                          >
-                            <span>{bulkReturnType === 'Artist Reclaim' ? 'Confirm Void' : 'Mark For Retouch'}</span>
-                            <span className="w-px h-4 bg-white/30" />
-                            <RefreshCw size={18} className="group-hover:rotate-180 transition-transform duration-500" />
-                          </button>
-                        </div>
-                      </div>
-                    )}
-
-                    {bulkActionModal.type === 'transfer' && (
-                      <div className="space-y-4">
-                        <div>
-                          <label className="block text-xs font-bold text-neutral-500 uppercase mb-1">
-                            Destination Branch
-                          </label>
-                          <select
-                            value={bulkActionValue}
-                            onChange={e => setBulkActionValue(e.target.value)}
-                            className="w-full px-4 py-2 bg-neutral-50 border border-neutral-200 rounded-lg text-sm"
-                          >
-                            <option value="">Select Branch...</option>
-                            {branches.map(b => (
-                              <option key={b} value={b}>
-                                {b}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-
-                        {/* Attachments Section for Transfer */}
-                        <div className="pt-4 border-t border-neutral-100 space-y-4">
-                          <label className="block text-xs font-bold text-neutral-500 uppercase">
-                            Attachments (Required for Transfer)
-                          </label>
-                          <div className="flex p-1 bg-neutral-50 rounded-xl border border-neutral-200">
-                            {(['itdr', 'rsa', 'orcr'] as const).map((tab) => (
-                              <button
-                                key={tab}
-                                type="button"
-                                onClick={() => setActiveBulkAttachmentTab(tab)}
-                                className={`flex-1 py-1.5 text-[10px] font-bold uppercase tracking-widest rounded-lg transition-all ${activeBulkAttachmentTab === tab
-                                  ? 'bg-neutral-900 text-white shadow-sm'
-                                  : 'text-neutral-400 hover:text-neutral-600'
-                                  }`}
-                              >
-                                {tab === 'itdr' ? 'IT/DR' : tab === 'rsa' ? 'RSA/AR' : 'OR/CR'}
-                              </button>
-                            ))}
-                          </div>
-
-                          <div className="p-4 bg-neutral-50 rounded-2xl border border-neutral-200 border-dashed">
-                            <label className={`block text-[10px] font-bold uppercase tracking-widest mb-2 ${activeBulkAttachmentTab === 'itdr' ? 'text-red-600' : 'text-neutral-400'}`}>
-                              {activeBulkAttachmentTab === 'itdr' ? 'IT/DR Document (Required)' : activeBulkAttachmentTab === 'rsa' ? 'RSA / AR Image' : 'OR / CR Image'}
-                            </label>
-                            <input
-                              key={activeBulkAttachmentTab}
-                              type="file"
-                              accept="image/*"
-                              onChange={async (e) => {
-                                const file = e.target.files?.[0];
-                                if (!file) return;
-
-                                const reader = new FileReader();
-                                reader.onload = async (ev) => {
-                                  const rawBase64 = ev.target?.result as string;
-                                  const compressed = await compressBase64Image(rawBase64);
-
-                                  if (activeBulkAttachmentTab === 'itdr') setBulkTempItdr(compressed);
-                                  else if (activeBulkAttachmentTab === 'rsa') setBulkTempRsa(compressed);
-                                  else if (activeBulkAttachmentTab === 'orcr') setBulkTempOrCr(compressed);
-                                };
-                                reader.readAsDataURL(file);
-                              }}
-                              className="block w-full text-xs text-neutral-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-[10px] file:font-bold file:bg-neutral-900 file:text-white hover:file:bg-neutral-800"
-                            />
-
-                            {((activeBulkAttachmentTab === 'itdr' ? bulkTempItdr : activeBulkAttachmentTab === 'rsa' ? bulkTempRsa : bulkTempOrCr)) ? (
-                              <div className="relative mt-4 group">
-                                <img
-                                  src={Array.isArray(activeBulkAttachmentTab === 'itdr' ? bulkTempItdr : activeBulkAttachmentTab === 'rsa' ? bulkTempRsa : bulkTempOrCr)
-                                    ? (activeBulkAttachmentTab === 'itdr' ? (bulkTempItdr as string[])[0] : activeBulkAttachmentTab === 'rsa' ? (bulkTempRsa as string[])[0] : (bulkTempOrCr as string[])[0])
-                                    : (activeBulkAttachmentTab === 'itdr' ? bulkTempItdr as string : activeBulkAttachmentTab === 'rsa' ? bulkTempRsa as string : bulkTempOrCr as string)}
-                                  alt="Preview"
-                                  className="w-full h-48 object-contain bg-white rounded-xl border border-neutral-200"
-                                />
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    if (activeBulkAttachmentTab === 'itdr') setBulkTempItdr(null);
-                                    else if (activeBulkAttachmentTab === 'rsa') setBulkTempRsa(null);
-                                    else if (activeBulkAttachmentTab === 'orcr') setBulkTempOrCr(null);
-                                  }}
-                                  className="absolute top-2 right-2 p-1.5 bg-white/90 backdrop-blur shadow-sm rounded-full text-red-500 hover:bg-red-50 transition-colors"
-                                >
-                                  <Trash2 size={14} />
-                                </button>
-                              </div>
-                            ) : (
-                              <div className="mt-4 w-full h-48 bg-white rounded-xl border border-neutral-200 border-dashed flex flex-col items-center justify-center text-neutral-400">
-                                <Plus size={24} className="mb-2" />
-                                <span className="text-[10px] font-bold uppercase tracking-widest">
-                                  Click to attach image
-                                </span>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
-                    {bulkActionModal.type === 'delete' && (
-                      <div className="p-4 bg-neutral-50 text-neutral-700 rounded-lg text-sm flex items-start gap-3">
-                        <AlertCircle className="w-5 h-5 flex-shrink-0" />
-                        <p>
-                          This action cannot be undone. The selected artworks will be permanently
-                          removed from this branch inventory.
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                <div className={`px-6 py-4 border-t border-neutral-200 gap-3 bg-neutral-50 ${bulkActionModal.type === 'sale' ? 'flex justify-end' : 'flex items-center justify-between'}`}>
-                  <div className={`text-[11px] text-neutral-500 ${bulkActionModal.type === 'sale' ? 'hidden' : ''}`}>
-                    <span>
-                      Confirm{' '}
-                      {bulkActionModal.type === 'sale'
-                        ? 'sale'
-                        : bulkActionModal.type === 'reserve'
-                          ? 'reservation'
-                          : bulkActionModal.type === 'transfer'
-                            ? 'transfer'
-                            : bulkActionModal.type === 'framer'
-                              ? 'framing'
-                              : bulkActionModal.type === 'return'
-                                ? 'return'
-                                : 'deletion'}{' '}
-                      for all items in the cart.
-                    </span>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-3">
-                    <button
-                      type="button"
-                      onClick={handleCloseBulkModal}
-                      className={bulkActionModal.type === 'sale'
-                        ? 'px-6 py-2.5 rounded-md text-neutral-600 font-bold hover:bg-neutral-100 transition-all transform hover:-translate-y-0.5'
-                        : 'px-6 py-2.5 rounded-xl text-xs font-bold text-neutral-600 border border-neutral-300 hover:bg-neutral-50 hover:border-neutral-400 transition-all uppercase tracking-wide'}
-                    >
-                      {bulkActionModal.type === 'sale' ? 'Cancel' : 'Back to Cart'}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleBulkActionSubmit}
-                      disabled={
-                        bulkActionModal.type === 'delete' ? false :
-                          bulkActionModal.type === 'reserve' ? (
-                            reservationTab === 'person' ? !reservationClient :
-                              reservationTab === 'event' ? !reservationEventId :
-                                !reservationAuctionId
-                          ) :
-                            bulkActionModal.type === 'sale' ? (
-                              !bulkActionValue || !bulkClientContact || (bulkActionExtra ? (!bulkTempItdr || !bulkTempRsa) : !bulkTempRsa)
-                            ) :
-                              bulkActionModal.type === 'transfer' ? (!bulkActionValue || !bulkTempItdr) :
-                                bulkActionModal.type === 'framer' ? !bulkFramerDamage :
-                                  bulkActionModal.type === 'return' ? !bulkReturnReason :
-                                    !bulkActionValue
-                      }
-                      className={`px-8 py-2.5 rounded-xl text-xs font-black uppercase tracking-[0.1em] shadow-lg transition-all ${(bulkActionModal.type === 'delete' ? false :
-                        bulkActionModal.type === 'reserve' ? (
-                          reservationTab === 'person' ? !reservationClient :
-                            reservationTab === 'event' ? !reservationEventId :
-                              !reservationAuctionId
-                        ) :
-                          bulkActionModal.type === 'sale' ? (
-                            !bulkActionValue ||
-                            !bulkClientContact ||
-                            (bulkActionExtra ? (!bulkTempItdr || !bulkTempRsa) : !bulkTempRsa)
-                          ) :
-                            bulkActionModal.type === 'transfer' ? (!bulkActionValue || !bulkTempItdr) :
-                              !bulkActionValue)
-                        ? 'bg-neutral-200 text-neutral-400 border border-neutral-200 cursor-not-allowed shadow-none'
-                        : bulkActionModal.type === 'sale'
-                          ? 'bg-neutral-900 text-white hover:bg-black shadow-neutral-200 hover:shadow-neutral-300 hover:-translate-y-0.5 rounded-md'
-                          : 'bg-neutral-900 text-white hover:bg-black shadow-neutral-900/30 hover:shadow-neutral-900/50 hover:-translate-y-0.5'
-                        } disabled:opacity-100 disabled:cursor-not-allowed`}
-                    >
-                      Confirm{' '}
-                      {bulkActionModal.type === 'sale'
-                        ? 'Sale'
-                        : bulkActionModal.type === 'delete'
-                          ? 'Delete'
-                          : bulkActionModal.type === 'reserve'
-                            ? 'Reservation'
-                            : bulkActionModal.type === 'framer'
-                              ? 'Framing'
-                              : bulkActionModal.type === 'return'
-                                ? 'Return'
-                                : 'Action'}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ) : (
               <div className="flex-1 flex flex-col overflow-hidden">
                 {/* Artworks List — Top Section (scrollable) */}
                 <div className="custom-scrollbar flex-1 overflow-y-auto bg-[linear-gradient(180deg,#ffffff_0%,#f9fbfd_100%)] px-10 py-6">
@@ -2866,7 +2064,7 @@ const BranchManagement: React.FC<BranchManagementProps> = ({
                   </div>
                 </div>
               </div>
-            )}
+
           </div>
         </div>,
         document.body
@@ -2898,8 +2096,6 @@ const BranchManagement: React.FC<BranchManagementProps> = ({
           setBulkSaleDownpayments={setBulkSaleDownpayments}
           bulkSaleInstallmentsEnabled={bulkSaleInstallmentsEnabled}
           setBulkSaleInstallmentsEnabled={setBulkSaleInstallmentsEnabled}
-          bulkActionExtra={bulkActionExtra}
-          setBulkActionExtra={setBulkActionExtra}
           bulkSaleEventId={bulkSaleEventId}
           setBulkSaleEventId={setBulkSaleEventId}
           events={events || []}
@@ -2916,8 +2112,8 @@ const BranchManagement: React.FC<BranchManagementProps> = ({
           setReservationTab={setReservationTab}
           reservationClient={reservationClient}
           setReservationClient={setReservationClient}
-          reservationEventName={reservationEventId}
-          setReservationEventName={setReservationEventId}
+          reservationEventId={reservationEventId}
+          setReservationEventId={setReservationEventId}
           reservationAuctionId={reservationAuctionId}
           setReservationAuctionId={setReservationAuctionId}
           reservationDays={reservationDays}
@@ -3002,13 +2198,15 @@ const BranchManagement: React.FC<BranchManagementProps> = ({
 
                 <div>
                   <label className="block text-xs font-bold text-neutral-600 uppercase tracking-wider mb-2">Category</label>
-                  <input
-                    type="text"
+                  <select
                     value={branchCategory}
                     onChange={(e) => setBranchCategory(e.target.value)}
-                    placeholder="Type a category..."
-                    className="w-full px-4 py-3 bg-neutral-50 border border-neutral-200 rounded-xl text-neutral-900 font-medium focus:outline-none focus:ring-2 focus:ring-neutral-900/10 focus:border-neutral-900"
-                  />
+                    className="w-full px-4 py-3 bg-neutral-50 border border-neutral-200 rounded-xl text-neutral-900 font-medium focus:outline-none focus:ring-2 focus:ring-neutral-900/10 focus:border-neutral-900 appearance-none cursor-pointer"
+                  >
+                    {existingCategories.map(cat => (
+                      <option key={cat} value={cat}>{cat}</option>
+                    ))}
+                  </select>
                 </div>
 
                 <div>

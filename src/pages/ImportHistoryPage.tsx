@@ -3,6 +3,7 @@ import { jsPDF } from 'jspdf';
 import { ImportRecord, Artwork, UserPermissions } from '../types';
 import { Search, FileSpreadsheet, Clock, Download, CheckCircle, AlertCircle, HelpCircle, Shield, ShieldAlert, Trash2, X, CheckSquare, Square, Copy, RefreshCw, FileText, Image as ImageIcon, ArrowRightLeft, ChevronRight } from 'lucide-react';
 import { OptimizedImage } from '../components/OptimizedImage';
+import { Modal } from '../components/Modal';
 
 interface ImportHistoryPageProps {
   logs: ImportRecord[];
@@ -182,26 +183,18 @@ const ImportHistoryPage: React.FC<ImportHistoryPageProps> = ({ logs, preventDupl
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
       {analyzingLog && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-neutral-900/50 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-white rounded-md w-full max-w-5xl h-[85vh] shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
-            {/* Modal Header */}
-            <div className="px-8 py-6 border-b border-neutral-100 flex items-start justify-between bg-neutral-50/50">
+        <Modal
+          onClose={() => setAnalyzingLog(null)}
+          maxWidth="max-w-5xl"
+          title={
+            <div className="flex items-center space-x-3">
+              <div className="p-2 bg-neutral-100 rounded-sm">
+                <FileSpreadsheet className="text-neutral-700" size={24} />
+              </div>
               <div>
-                <div className="flex items-center space-x-3 mb-2">
-                  <div className="p-2 bg-neutral-100 rounded-sm">
-                    <FileSpreadsheet className="text-neutral-700" size={24} />
-                  </div>
-                  <div>
-                    <h2 className="text-xl font-black text-neutral-900">{analyzingLog.filename}</h2>
-                    <p className="text-sm text-neutral-500 font-medium flex items-center gap-2">
-                      <span>Imported by {analyzingLog.importedBy}</span>
-                      <span>•</span>
-                      <span>{new Date(analyzingLog.timestamp).toLocaleString()}</span>
-                    </p>
-                  </div>
-                </div>
-                <div className="flex items-center space-x-2 mt-2">
-                  <span className={`px-2.5 py-1 rounded-sm text-[10px] font-black uppercase tracking-tighter border flex w-fit items-center gap-1 ${analyzingLog.status === 'Success' ? 'bg-neutral-900 text-white border-neutral-900' :
+                <h2 className="text-xl font-black text-neutral-900">{analyzingLog.filename}</h2>
+                <div className="flex items-center space-x-2 mt-1">
+                  <span className={`px-2 py-0.5 rounded-sm text-[10px] font-black uppercase tracking-tighter border flex items-center gap-1 ${analyzingLog.status === 'Success' ? 'bg-neutral-900 text-white border-neutral-900' :
                       analyzingLog.status === 'Partial' ? 'bg-neutral-100 text-neutral-700 border-neutral-200' :
                         'bg-white text-neutral-500 border-neutral-200'
                     }`}>
@@ -210,59 +203,45 @@ const ImportHistoryPage: React.FC<ImportHistoryPageProps> = ({ logs, preventDupl
                     {analyzingLog.status === 'Failed' && <AlertCircle size={10} />}
                     {analyzingLog.status}
                   </span>
-                  <span className="text-xs font-bold text-neutral-400">•</span>
-                  <span className="text-xs font-bold text-neutral-600">{analyzingLog.recordCount} records processed</span>
-                  {analyzingLog.updatedIds && analyzingLog.updatedIds.length > 0 && (
-                    <>
-                      <span className="text-xs font-bold text-neutral-400">•</span>
-                      <span className="text-xs font-bold text-neutral-600 bg-neutral-100 px-2 py-0.5 rounded-sm border border-neutral-200">
-                        {analyzingLog.updatedIds.length} repeated
-                      </span>
-                    </>
-                  )}
+                  <span className="text-[10px] text-neutral-400 font-bold uppercase tracking-wider">
+                    {analyzingLog.recordCount} Records
+                  </span>
                 </div>
               </div>
-              <button
-                onClick={() => setAnalyzingLog(null)}
-                className="p-2 hover:bg-neutral-200 rounded-sm transition-colors text-neutral-400 hover:text-neutral-600"
-              >
-                <X size={24} />
-              </button>
             </div>
-
+          }
+        >
+          <div className="flex flex-col h-full -m-8">
             {/* Modal Tabs */}
-            <div className="px-8 border-b border-neutral-100 flex items-center space-x-8 overflow-x-auto no-scrollbar">
+            <div className="px-8 border-b border-neutral-200 flex items-center space-x-8 bg-white sticky top-0 z-10">
               <button
                 onClick={() => setAnalysisTab('imported')}
-                className={`py-4 text-sm font-bold border-b-2 transition-all flex items-center gap-2 whitespace-nowrap ${analysisTab === 'imported'
+                className={`py-4 text-xs font-black uppercase tracking-widest border-b-2 transition-all flex items-center gap-2 whitespace-nowrap ${analysisTab === 'imported'
                     ? 'border-neutral-900 text-neutral-900'
                     : 'border-transparent text-neutral-400 hover:text-neutral-600'
                   }`}
               >
-                <CheckCircle size={16} />
-                New Paintings ({
+                New ({
                   (analyzingLog.importedIds?.length || 0) - (analyzingLog.updatedIds?.length || 0)
                 })
               </button>
               <button
                 onClick={() => setAnalysisTab('repeating')}
-                className={`py-4 text-sm font-bold border-b-2 transition-all flex items-center gap-2 whitespace-nowrap ${analysisTab === 'repeating'
+                className={`py-4 text-xs font-black uppercase tracking-widest border-b-2 transition-all flex items-center gap-2 whitespace-nowrap ${analysisTab === 'repeating'
                     ? 'border-neutral-900 text-neutral-900'
                     : 'border-transparent text-neutral-400 hover:text-neutral-600'
                   }`}
               >
-                <RefreshCw size={16} />
-                Repeating Paintings ({analyzingLog.updatedIds?.length || 0})
+                Repeated ({analyzingLog.updatedIds?.length || 0})
               </button>
               <button
                 onClick={() => setAnalysisTab('failed')}
-                className={`py-4 text-sm font-bold border-b-2 transition-all flex items-center gap-2 whitespace-nowrap ${analysisTab === 'failed'
+                className={`py-4 text-xs font-black uppercase tracking-widest border-b-2 transition-all flex items-center gap-2 whitespace-nowrap ${analysisTab === 'failed'
                     ? 'border-neutral-900 text-neutral-900'
                     : 'border-transparent text-neutral-400 hover:text-neutral-600'
                   }`}
               >
-                <ShieldAlert size={16} />
-                Failed Items ({analyzingLog.failedItems?.length || 0})
+                Failed ({analyzingLog.failedItems?.length || 0})
               </button>
             </div>
 
@@ -278,16 +257,13 @@ const ImportHistoryPage: React.FC<ImportHistoryPageProps> = ({ logs, preventDupl
                           <Shield size={32} />
                         </div>
                         <p className="text-neutral-500 font-bold">No failed items found.</p>
-                        <p className="text-xs text-neutral-400 mt-1 max-w-xs">
-                          Everything in this file was processed successfully!
-                        </p>
                       </div>
                     );
                   }
                   return (
                     <div className="space-y-3">
                       {failedItems.map((item, idx) => (
-                        <div key={idx} className="bg-white p-4 rounded-md border border-rose-100 shadow-sm flex flex-col md:flex-row gap-4 hover:shadow-md transition-shadow">
+                        <div key={idx} className="bg-white p-4 rounded-md border border-rose-100 shadow-sm flex flex-col md:flex-row gap-4">
                           <div className="flex flex-col items-center justify-center w-16 h-16 bg-rose-50 text-rose-600 rounded-sm flex-shrink-0 border border-rose-100">
                             <span className="text-[10px] uppercase font-bold text-rose-400">Row</span>
                             <span className="text-xl font-black">{item.rowNumber}</span>
@@ -298,20 +274,7 @@ const ImportHistoryPage: React.FC<ImportHistoryPageProps> = ({ logs, preventDupl
                               Import Failed
                             </h4>
                             <p className="text-sm text-neutral-600 font-medium mb-3">{item.reason}</p>
-
-                            {/* Try to show meaningful data if available */}
-                            {(item.data?.title || item.data?.code || item.data?.artist) && (
-                              <div className="flex flex-wrap gap-2 text-xs text-neutral-700 font-bold px-1 mb-2">
-                                {item.data.title && <span>Title: {item.data.title}</span>}
-                                {item.data.code && <span>Code: {item.data.code}</span>}
-                                {item.data.artist && <span>Artist: {item.data.artist}</span>}
-                              </div>
-                            )}
-
                             <div className="bg-neutral-50 rounded-sm border border-neutral-100 overflow-hidden">
-                              <div className="px-3 py-2 bg-neutral-100/50 border-b border-neutral-100 text-[10px] font-bold text-neutral-500 uppercase tracking-wider">
-                                Raw Data
-                              </div>
                               <div className="p-3 text-xs font-mono text-neutral-600 overflow-x-auto whitespace-pre-wrap">
                                 {JSON.stringify(item.data, null, 2)}
                               </div>
@@ -331,12 +294,7 @@ const ImportHistoryPage: React.FC<ImportHistoryPageProps> = ({ logs, preventDupl
                       <div className="w-16 h-16 bg-neutral-100 rounded-sm flex items-center justify-center text-neutral-300 mb-4">
                         {analysisTab === 'imported' ? <FileSpreadsheet size={32} /> : <Copy size={32} />}
                       </div>
-                      <p className="text-neutral-500 font-bold">No {analysisTab === 'imported' ? 'imported' : 'repeating'} artworks found for this log.</p>
-                      <p className="text-xs text-neutral-400 mt-1 max-w-xs">
-                        {analysisTab === 'repeating'
-                          ? 'Great! No duplicates were found during this import.'
-                          : 'This might be an older import log without detailed tracking.'}
-                      </p>
+                      <p className="text-neutral-500 font-bold">No {analysisTab === 'imported' ? 'imported' : 'repeating'} artworks found.</p>
                     </div>
                   );
                 }
@@ -347,23 +305,15 @@ const ImportHistoryPage: React.FC<ImportHistoryPageProps> = ({ logs, preventDupl
                       <div
                         key={art.id}
                         onClick={() => onViewArtwork(art)}
-                        className={`group bg-white p-4 rounded-md border transition-all cursor-pointer hover:shadow-md ${analysisTab === 'repeating'
-                            ? 'border-neutral-300 hover:border-neutral-400 shadow-sm'
-                            : 'border-neutral-200 hover:border-neutral-300'
-                          }`}
+                        className="bg-white p-4 rounded-md border border-neutral-200 hover:border-neutral-900 transition-all cursor-pointer group"
                       >
                         <div className="flex gap-4">
-                          <div className="w-20 h-20 rounded-md bg-neutral-100 overflow-hidden flex-shrink-0 relative">
+                          <div className="w-16 h-16 rounded-md bg-neutral-100 overflow-hidden flex-shrink-0">
                             {art.imageUrl ? (
                               <OptimizedImage src={art.imageUrl || undefined} alt={art.title} className="w-full h-full object-cover" />
                             ) : (
                               <div className="w-full h-full flex items-center justify-center text-neutral-300">
-                                <FileSpreadsheet size={24} />
-                              </div>
-                            )}
-                            {analysisTab === 'repeating' && (
-                              <div className="absolute top-1 right-1 w-5 h-5 bg-neutral-900 text-white rounded-sm flex items-center justify-center shadow-sm">
-                                <RefreshCw size={10} strokeWidth={3} />
+                                <ImageIcon size={20} />
                               </div>
                             )}
                           </div>
@@ -372,33 +322,11 @@ const ImportHistoryPage: React.FC<ImportHistoryPageProps> = ({ logs, preventDupl
                               {art.title}
                             </h4>
                             <p className="text-xs text-neutral-500 truncate mb-1">{art.artist}</p>
-                            <div className="flex flex-col gap-1 mt-2">
-                              <div className="flex items-center gap-2">
-                                <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold uppercase ${art.status === 'Available' ? 'bg-neutral-900 text-white' :
-                                    art.status === 'Sold' ? 'bg-neutral-200 text-neutral-700' :
-                                      'bg-neutral-100 text-neutral-500'
-                                  }`}>
-                                  {art.status}
-                                </span>
-                                <span className="text-xs font-bold text-neutral-700">
-                                  {art.price.toLocaleString()} {art.currency}
-                                </span>
-                              </div>
-                              <span className="text-[10px] text-neutral-400 font-medium flex items-center gap-1">
-                                <Clock size={10} />
-                                Added {new Date(art.createdAt).toLocaleDateString()}
-                              </span>
-                            </div>
+                            <span className="inline-block px-2 py-0.5 bg-neutral-900 text-white text-[9px] font-black uppercase tracking-widest rounded-sm">
+                              {art.status}
+                            </span>
                           </div>
                         </div>
-                        {analysisTab === 'repeating' && (
-                          <div className="mt-3 pt-3 border-t border-neutral-100 flex items-center gap-2">
-                            <AlertCircle size={12} className="text-neutral-500" />
-                            <p className="text-[10px] font-bold text-neutral-500">
-                              Merged with existing record
-                            </p>
-                          </div>
-                        )}
                       </div>
                     ))}
                   </div>
@@ -406,7 +334,7 @@ const ImportHistoryPage: React.FC<ImportHistoryPageProps> = ({ logs, preventDupl
               })()}
             </div>
           </div>
-        </div>
+        </Modal>
       )}
 
       {comparingLogs && (() => {
@@ -422,120 +350,84 @@ const ImportHistoryPage: React.FC<ImportHistoryPageProps> = ({ logs, preventDupl
         const repeatedArtworks = permittedArtworks.filter(a => repeatedIds.includes(a.id));
 
         return (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-neutral-900/50 backdrop-blur-sm animate-in fade-in duration-200">
-            <div className="bg-white rounded-md w-full max-w-7xl max-h-[90vh] h-full md:h-auto shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
-              {/* Modal Header */}
-              <div className="px-6 py-4 md:px-8 md:py-6 border-b border-neutral-100 flex flex-col md:flex-row md:items-center justify-between gap-4 bg-neutral-50/50">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 text-neutral-500 text-xs font-bold uppercase tracking-widest mb-2">
-                    <ArrowRightLeft size={14} />
-                    <span>Import Comparison</span>
-                  </div>
-                  <div className="flex items-center gap-2 md:gap-4 overflow-hidden">
-                    <div className="flex flex-col min-w-0 flex-1 md:flex-none md:max-w-[250px]">
-                      <span className="text-xs md:text-sm font-bold text-neutral-400 whitespace-nowrap">{new Date(oldLog.timestamp).toLocaleDateString()}</span>
-                      <div className="group relative">
-                        <span className="font-bold text-neutral-700 truncate block text-sm md:text-base">{oldLog.filename}</span>
-                        <div className="absolute left-0 bottom-full mb-2 hidden group-hover:block bg-neutral-900 text-white text-xs px-2 py-1 rounded whitespace-nowrap z-50">
-                          {oldLog.filename}
-                        </div>
-                      </div>
-                    </div>
-                    <ChevronRight className="text-neutral-300 flex-shrink-0" />
-                    <div className="flex flex-col min-w-0 flex-1 md:flex-none md:max-w-[250px]">
-                      <span className="text-xs md:text-sm font-bold text-neutral-400 whitespace-nowrap">{new Date(newLog.timestamp).toLocaleDateString()}</span>
-                      <div className="group relative">
-                        <span className="font-black text-neutral-900 truncate block text-sm md:text-base">{newLog.filename}</span>
-                        <div className="absolute left-0 bottom-full mb-2 hidden group-hover:block bg-neutral-900 text-white text-xs px-2 py-1 rounded whitespace-nowrap z-50">
-                          {newLog.filename}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
+          <Modal
+            onClose={() => setComparingLogs(null)}
+            maxWidth="max-w-7xl"
+            title={
+              <div className="flex items-center gap-2 text-neutral-500 text-xs font-bold uppercase tracking-widest">
+                <ArrowRightLeft size={14} />
+                <span>Import Comparison</span>
+              </div>
+            }
+          >
+            <div className="flex flex-col md:flex-row -m-8 h-[70vh]">
+              {/* Added Column */}
+              <div className="flex-1 flex flex-col border-r border-neutral-100 bg-green-50/10">
+                <div className="px-6 py-4 border-b border-neutral-100 bg-white sticky top-0 z-10 flex items-center justify-between">
+                  <h3 className="text-xs font-black uppercase tracking-widest text-green-700 flex items-center gap-2">
+                    <CheckCircle size={14} />
+                    Added ({addedArtworks.length})
+                  </h3>
                 </div>
-                <button
-                  onClick={() => setComparingLogs(null)}
-                  className="self-end md:self-center p-2 hover:bg-neutral-200 rounded-full transition-colors text-neutral-400 hover:text-neutral-600"
-                >
-                  <X size={24} />
-                </button>
+                <div className="p-6 overflow-y-auto flex-1 space-y-3">
+                  {addedArtworks.length === 0 ? (
+                    <div className="text-center py-12 text-neutral-400">
+                      <p className="text-xs font-bold">No new artworks added.</p>
+                    </div>
+                  ) : (
+                    addedArtworks.map(art => (
+                      <div key={art.id} onClick={() => onViewArtwork(art)} className="bg-white p-3 rounded-md border border-green-100 hover:border-green-300 shadow-sm cursor-pointer transition-all flex gap-3 group">
+                        <div className="w-12 h-12 rounded-sm bg-neutral-100 overflow-hidden flex-shrink-0">
+                          {art.imageUrl ? (
+                            <img src={art.imageUrl} className="w-full h-full object-cover" />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center text-neutral-300"><ImageIcon size={16} /></div>
+                          )}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <h4 className="font-bold text-neutral-900 truncate text-sm">{art.title}</h4>
+                          <p className="text-[10px] text-neutral-500 truncate">{art.artist}</p>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
               </div>
 
-              {/* Comparison Content */}
-              <div className="flex-1 overflow-hidden flex flex-col md:flex-row">
-                {/* Added Column */}
-                <div className="flex-1 flex flex-col border-r border-neutral-100 bg-green-50/10">
-                  <div className="px-6 py-4 border-b border-neutral-100 bg-white sticky top-0 z-10 flex items-center justify-between">
-                    <h3 className="font-bold text-green-700 flex items-center gap-2">
-                      <CheckCircle size={18} />
-                      Added in New File ({addedArtworks.length})
-                    </h3>
-                  </div>
-                  <div className="p-6 overflow-y-auto flex-1 space-y-3">
-                    {addedArtworks.length === 0 ? (
-                      <div className="text-center py-12 text-neutral-400">
-                        <p>No new artworks added.</p>
-                      </div>
-                    ) : (
-                      addedArtworks.map(art => (
-                        <div key={art.id} onClick={() => onViewArtwork(art)} className="bg-white p-3 rounded-md border border-green-100 hover:border-green-300 shadow-sm cursor-pointer transition-all flex gap-3 group">
-                          <div className="w-12 h-12 rounded-sm bg-neutral-100 overflow-hidden flex-shrink-0">
-                            {art.imageUrl ? (
-                              <img src={art.imageUrl} className="w-full h-full object-cover" />
-                            ) : (
-                              <div className="w-full h-full flex items-center justify-center text-neutral-300"><ImageIcon size={16} /></div>
-                            )}
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <h4 className="font-bold text-neutral-900 truncate text-sm">{art.title}</h4>
-                            <p className="text-xs text-neutral-500 truncate">{art.artist}</p>
-                            <p className="text-xs font-bold text-neutral-900 mt-1">₱{art.price.toLocaleString()}</p>
-                          </div>
-                        </div>
-                      ))
-                    )}
-                  </div>
+              {/* Repeated Column */}
+              <div className="flex-1 flex flex-col bg-neutral-50/30">
+                <div className="px-6 py-4 border-b border-neutral-100 bg-white sticky top-0 z-10 flex items-center justify-between">
+                  <h3 className="text-xs font-black uppercase tracking-widest text-neutral-600 flex items-center gap-2">
+                    <RefreshCw size={14} />
+                    Repeated ({repeatedArtworks.length})
+                  </h3>
                 </div>
-
-                {/* Repeated Column */}
-                <div className="flex-1 flex flex-col bg-neutral-50/30">
-                  <div className="px-6 py-4 border-b border-neutral-100 bg-white sticky top-0 z-10 flex items-center justify-between">
-                    <h3 className="font-bold text-neutral-600 flex items-center gap-2">
-                      <RefreshCw size={18} />
-                      Repeated (Common) ({repeatedArtworks.length})
-                    </h3>
-                  </div>
-                  <div className="p-6 overflow-y-auto flex-1 space-y-3">
-                    {repeatedArtworks.length === 0 ? (
-                      <div className="text-center py-12 text-neutral-400">
-                        <p>No repeated artworks found.</p>
-                      </div>
-                    ) : (
-                      repeatedArtworks.map(art => (
-                        <div key={art.id} onClick={() => onViewArtwork(art)} className="bg-white p-3 rounded-md border border-neutral-200 hover:border-neutral-300 shadow-sm cursor-pointer transition-all flex gap-3 opacity-75 hover:opacity-100">
-                          <div className="w-12 h-12 rounded-sm bg-neutral-100 overflow-hidden flex-shrink-0">
-                            {art.imageUrl ? (
-                              <img src={art.imageUrl} className="w-full h-full object-cover" />
-                            ) : (
-                              <div className="w-full h-full flex items-center justify-center text-neutral-300"><ImageIcon size={16} /></div>
-                            )}
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <h4 className="font-bold text-neutral-900 truncate text-sm">{art.title}</h4>
-                            <p className="text-xs text-neutral-500 truncate">{art.artist}</p>
-                            <div className="flex items-center gap-2 mt-1">
-                              <span className="text-xs font-bold text-neutral-900">₱{art.price.toLocaleString()}</span>
-                              <span className="px-1.5 py-0.5 bg-neutral-100 text-neutral-500 text-[10px] rounded font-bold">{art.status}</span>
-                            </div>
-                          </div>
+                <div className="p-6 overflow-y-auto flex-1 space-y-3">
+                  {repeatedArtworks.length === 0 ? (
+                    <div className="text-center py-12 text-neutral-400">
+                      <p className="text-xs font-bold">No repeated artworks found.</p>
+                    </div>
+                  ) : (
+                    repeatedArtworks.map(art => (
+                      <div key={art.id} onClick={() => onViewArtwork(art)} className="bg-white p-3 rounded-md border border-neutral-200 hover:border-neutral-300 shadow-sm cursor-pointer transition-all flex gap-3 opacity-75 hover:opacity-100">
+                        <div className="w-12 h-12 rounded-sm bg-neutral-100 overflow-hidden flex-shrink-0">
+                          {art.imageUrl ? (
+                            <img src={art.imageUrl} className="w-full h-full object-cover" />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center text-neutral-300"><ImageIcon size={16} /></div>
+                          )}
                         </div>
-                      ))
-                    )}
-                  </div>
+                        <div className="min-w-0 flex-1">
+                          <h4 className="font-bold text-neutral-900 truncate text-sm">{art.title}</h4>
+                          <p className="text-[10px] text-neutral-500 truncate">{art.artist}</p>
+                        </div>
+                      </div>
+                    ))
+                  )}
                 </div>
               </div>
             </div>
-          </div>
+          </Modal>
         );
       })()}
 

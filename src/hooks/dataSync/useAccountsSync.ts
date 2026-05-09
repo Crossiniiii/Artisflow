@@ -54,13 +54,11 @@ export const useAccountsSync = ({
       return;
     }
 
-    setAccounts(prev => {
-      const existing = prev.find(acc => acc.id === currentUser.id);
-      if (existing) {
-        return prev.map(acc => acc.id === currentUser.id ? { ...acc, ...currentUser } : acc);
-      }
-      return [currentUser, ...prev];
-    });
+    // Ensure currentUser is in the accounts list if not already there, 
+    // but only do it once to avoid loops.
+    if (currentUser?.id && !accounts.some(acc => acc.id === currentUser.id)) {
+      setAccounts(prev => [currentUser, ...prev]);
+    }
 
     const shouldSyncAccounts = activeTab === 'accounts' || activeTab === 'chat';
     if (!shouldSyncAccounts) {

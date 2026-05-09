@@ -23,6 +23,11 @@ const ArtworkTransfer = lazy(() => import('./pages/ArtworkTransfer'));
 const ChatPage = lazy(() => import('./pages/ChatPage'));
 const SalesApprovalPage = lazy(() => import('./pages/SalesApprovalPage'));
 const PaymentApprovalPage = lazy(() => import('./pages/PaymentApprovalPage'));
+const FinancePage = lazy(() => import('./pages/FinancePage'));
+const ApprovalsPage = lazy(() => import('./pages/ApprovalsPage'));
+const DeliveriesPage = lazy(() => import('./pages/DeliveriesPage'));
+const DeliveryRequestsPage = lazy(() => import('./pages/DeliveryRequestsPage'));
+const AgentRequestsPage = lazy(() => import('./pages/AgentRequestsPage'));
 const LoginPage = lazy(() => import('./pages/LoginPage'));
 import ErrorBoundary from './components/ErrorBoundary';
 
@@ -61,7 +66,9 @@ const App: React.FC = () => {
     selectedArtworkId, setSelectedArtworkId,
     operationsView, setOperationsView,
     importStatus, setImportStatus,
-    targetSaleId, setTargetSaleId
+    targetSaleId, setTargetSaleId,
+    isMasterViewOpen, setIsMasterViewOpen,
+    gatePassSaleId, setGatePassSaleId
   } = useUI();
 
   const {
@@ -107,8 +114,20 @@ const App: React.FC = () => {
       handleConfirmAudit, handleReturnToGallery, handleSendToFramer, handleBulkSendToFramer,
       handleReturnFromFramer, handleDeleteFramerRecord, handleUpdateReturnRecord, handleBulkDeleteReturnRecords,
       handleSale, handleDeliver, handleApproveSale, handleDeclineSale, handleAddInstallment, handleDeleteSaleRecord,
-      handleEditPayment, handleApprovePaymentEdit, handleDeclinePaymentEdit
+      handleEditPayment, handleApprovePaymentEdit, handleDeclinePaymentEdit, handleUpdateSale, handleDispatch
     } = useArtworkOperations();
+
+  // Automate Gate Pass generation flow
+  useEffect(() => {
+    if (gatePassSaleId) {
+      const sale = sales.find(s => s.id === gatePassSaleId);
+      if (sale) {
+        setSelectedArtworkId(sale.artworkId);
+        setIsMasterViewOpen(true);
+        setActiveTab('master-view');
+      }
+    }
+  }, [gatePassSaleId, sales, setSelectedArtworkId, setIsMasterViewOpen, setActiveTab]);
   const {
     handleCreateTransferRequest, handleAcceptTransfer, handleDeclineTransfer,
     handleHoldTransfer, handleDeleteTransfer
@@ -255,12 +274,25 @@ const App: React.FC = () => {
     // Ensure 'artwork-transfer' and 'chat' are available if role permits it by default
     // This fixes the issue for existing users who have stored permissions without these new tabs
     if (merged.accessibleTabs && defaults.accessibleTabs) {
-      if (defaults.accessibleTabs.includes('artwork-transfer') && !merged.accessibleTabs.includes('artwork-transfer')) {
-        merged.accessibleTabs = [...merged.accessibleTabs, 'artwork-transfer'];
-      }
-      if (defaults.accessibleTabs.includes('chat') && !merged.accessibleTabs.includes('chat')) {
-        merged.accessibleTabs = [...merged.accessibleTabs, 'chat'];
-      }
+      const standardTabs = [
+        'finance', 
+        'approvals', 
+        'deliveries', 
+        'delivery-requests', 
+        'requests', 
+        'chat', 
+        'artwork-transfer', 
+        'analytics', 
+        'snapshots', 
+        'audit-logs', 
+        'import-history'
+      ];
+      
+      standardTabs.forEach(tab => {
+        if (defaults.accessibleTabs!.includes(tab) && !merged.accessibleTabs!.includes(tab)) {
+          merged.accessibleTabs = [...merged.accessibleTabs!, tab];
+        }
+      });
     }
 
     return merged;
@@ -508,12 +540,119 @@ const App: React.FC = () => {
               />
             </Suspense>
           );
+        case 'finance':
+          const canAccessFinance = currentPermissions.accessibleTabs?.includes('finance');
+          if (!canAccessFinance) return (
+            <ErrorBoundary name="Dashboard-Fallback-Finance">
+              <Dashboard artworks={artworks} sales={sales} events={events} accounts={validAccounts} onSelectArt={handleViewArtwork} onManageEvents={() => setActiveTab('operations')} onNavigateFromStat={handleNavigateFromStat} />
+            </ErrorBoundary>
+          );
+          return (
+            <Suspense fallback={<div>Loading...</div>}>
+              <FinancePage />
+            </Suspense>
+          );
+        case 'approvals':
+          const canAccessApprovals = currentPermissions.accessibleTabs?.includes('approvals');
+          if (!canAccessApprovals) return (
+            <ErrorBoundary name="Dashboard-Fallback-Approvals">
+              <Dashboard artworks={artworks} sales={sales} events={events} accounts={validAccounts} onSelectArt={handleViewArtwork} onManageEvents={() => setActiveTab('operations')} onNavigateFromStat={handleNavigateFromStat} />
+            </ErrorBoundary>
+          );
+          return (
+            <Suspense fallback={<div>Loading...</div>}>
+              <ApprovalsPage
+                sales={sales}
+                artworks={artworks}
+                onApproveSale={handleApproveSale}
+                onDeclineSale={handleDeclineSaleWithMessaging}
+                onApprovePaymentEdit={handleApprovePaymentEdit}
+                onDeclinePaymentEdit={handleDeclinePaymentEdit}
+                onUpdateSale={handleUpdateSale}
+                userPermissions={currentPermissions}
+                currentUser={currentUser}
+              />
+            </Suspense>
+          );
+        case 'deliveries':
+          const canAccessDeliveries = currentPermissions.accessibleTabs?.includes('deliveries');
+          if (!canAccessDeliveries) return (
+            <ErrorBoundary name="Dashboard-Fallback-Deliveries">
+              <Dashboard artworks={artworks} sales={sales} events={events} accounts={validAccounts} onSelectArt={handleViewArtwork} onManageEvents={() => setActiveTab('operations')} onNavigateFromStat={handleNavigateFromStat} />
+            </ErrorBoundary>
+          );
+          return (
+            <Suspense fallback={<div>Loading...</div>}>
+              <DeliveriesPage
+                sales={sales}
+                artworks={artworks}
+                logs={logs}
+                branches={branches}
+                events={events}
+                framerRecords={framerRecords}
+                returnRecords={returnRecords}
+                transferRequests={transferRequests}
+                userPermissions={currentPermissions}
+                currentUser={currentUser}
+                onUpdateSale={handleUpdateSale}
+                onDispatch={handleDispatch}
+                onDeliver={handleDeliver}
+                onReturn={handleReturnArtwork}
+                onReturnToGallery={handleReturnToGallery}
+                onSendToFramer={handleSendToFramer}
+                onReturnFromFramer={handleReturnFromFramer}
+                onTransfer={(id, dest, attachments) => {
+                  handleCreateTransferRequest([id], dest, attachments);
+                }}
+                onReserve={handleReserveArtwork}
+                onCancelReservation={handleCancelReservation}
+                onSale={handleSale}
+                onCancelSale={handleCancelSale}
+              />
+            </Suspense>
+          );
+        case 'delivery-requests':
+          const canAccessDeliveryReq = currentPermissions.accessibleTabs?.includes('delivery-requests');
+          if (!canAccessDeliveryReq) return (
+            <ErrorBoundary name="Dashboard-Fallback-DeliveryReq">
+              <Dashboard artworks={artworks} sales={sales} events={events} accounts={validAccounts} onSelectArt={handleViewArtwork} onManageEvents={() => setActiveTab('operations')} onNavigateFromStat={handleNavigateFromStat} />
+            </ErrorBoundary>
+          );
+          return (
+            <Suspense fallback={<div>Loading...</div>}>
+              <DeliveryRequestsPage
+                sales={sales}
+                artworks={artworks}
+                userPermissions={currentPermissions}
+                currentUser={currentUser}
+                onUpdateSale={handleUpdateSale}
+              />
+            </Suspense>
+          );
+        case 'requests':
+          const canAccessRequests = currentPermissions.accessibleTabs?.includes('requests');
+          if (!canAccessRequests) return (
+            <ErrorBoundary name="Dashboard-Fallback-Requests">
+              <Dashboard artworks={artworks} sales={sales} events={events} accounts={validAccounts} onSelectArt={handleViewArtwork} onManageEvents={() => setActiveTab('operations')} onNavigateFromStat={handleNavigateFromStat} />
+            </ErrorBoundary>
+          );
+          return (
+            <Suspense fallback={<div>Loading...</div>}>
+              <AgentRequestsPage
+                sales={sales}
+                artworks={allArtworksIncludingDeleted}
+                userPermissions={currentPermissions}
+                currentUser={currentUser}
+                onViewArtwork={handleViewArtwork}
+              />
+            </Suspense>
+          );
         case 'sales-history':
           return (
             <Suspense fallback={<div>Loading...</div>}>
               <SalesRecordPage
                 sales={sales}
-                artworks={artworks}
+                artworks={allArtworksIncludingDeleted}
                 onBulkDelete={handleBulkDeleteSales}
                 canExport={currentPermissions.canViewSalesHistory}
                 canDelete={userRole === UserRole.ADMIN}
@@ -692,7 +831,18 @@ const App: React.FC = () => {
           setActiveTab('operations');
           return null;
         case 'master-view':
-          const selectedArt = artworks.find(a => String(a.id) === String(selectedArtworkId));
+          const selectedArt = (artworks || []).find(a => String(a.id) === String(selectedArtworkId)) || 
+                             (allArtworksIncludingDeleted || []).find(a => String(a.id) === String(selectedArtworkId));
+          
+          if (!selectedArt && isLoadingArtworks) {
+            return (
+              <div className="flex flex-col items-center justify-center min-h-[60vh] text-neutral-400 space-y-4">
+                <div className="w-8 h-8 border-4 border-neutral-200 border-t-neutral-900 rounded-full animate-spin" />
+                <p className="text-sm font-bold uppercase tracking-widest">Loading Master Record...</p>
+              </div>
+            );
+          }
+
           return selectedArt ? (
             <Suspense fallback={<div>Loading...</div>}>
               <MasterView
@@ -724,6 +874,7 @@ const App: React.FC = () => {
                 onEditPayment={handleEditPayment}
                 onApprovePaymentEdit={handleApprovePaymentEdit}
                 onDeclinePaymentEdit={handleDeclinePaymentEdit}
+                onUpdateSale={handleUpdateSale}
                 transferRequests={transferRequests}
                 onAcceptTransfer={handleAcceptTransfer}
                 onHoldTransfer={handleHoldTransfer}
@@ -737,6 +888,7 @@ const App: React.FC = () => {
                   }
                 }}
                 onBack={() => {
+                  if (gatePassSaleId) setGatePassSaleId(null);
                   if (historyStack.length > 0) {
                     const prev = historyStack[historyStack.length - 1];
                     setHistoryStack(prevStack => prevStack.slice(0, -1));
@@ -744,9 +896,11 @@ const App: React.FC = () => {
                     if (prev.tab === 'operations' && prev.operationsView) {
                       setOperationsView(prev.operationsView);
                     }
+                  } else {
                     setActiveTab('dashboard');
                   }
                 }}
+                initialModalMode={gatePassSaleId ? 'gatepass' : 'none'}
               />
             </Suspense>
           ) : (

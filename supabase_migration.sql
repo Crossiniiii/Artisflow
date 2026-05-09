@@ -94,6 +94,7 @@ CREATE TABLE IF NOT EXISTS sales (
   pending_downpayment_edit JSONB,
   installments JSONB DEFAULT '[]'::JSONB,
   artwork_snapshot JSONB,
+  delivery_request JSONB,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );

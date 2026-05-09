@@ -34,13 +34,13 @@ export const unsubscribeGlobalSyncChannel = () => {
 
 export const PROFILE_COLUMNS = 'id, name, first_name, full_name, email, role, branch, status, permissions, last_login, position';
 export const LOGIN_PROFILE_COLUMNS = 'id, name, first_name, full_name, email, role, status';
-export const DASHBOARD_ARTWORK_COLUMNS = 'id, title, artist, code, status, price, remarks, current_branch, created_at, import_period, reserved_for_event_name';
-export const FULL_ARTWORK_COLUMNS = 'id, code, title, artist, medium, dimensions, year, price, status, current_branch, created_at, updated_at, remarks, reservation_expiry, reserved_for_event_id, reserved_for_event_name, size_frame, sold_at_branch, deleted_at, import_period';
+export const DASHBOARD_ARTWORK_COLUMNS = 'id, title, artist, code, status, price, remarks, current_branch, created_at, updated_at, deleted_at, import_period, reserved_for_event_id, reserved_for_event_name, image_url';
+export const FULL_ARTWORK_COLUMNS = 'id, code, title, artist, medium, dimensions, year, price, status, current_branch, created_at, updated_at, remarks, reservation_expiry, reserved_for_event_id, reserved_for_event_name, size_frame, sold_at_branch, deleted_at, import_period, image_url, itdr_image_url, rsa_image_url, or_cr_image_url';
 
-export const ARTWORK_SYNC_PAGE_SIZE = 500;
-export const ARTWORK_SYNC_MAX_RETRIES = 2;
-export const DASHBOARD_IMAGE_SYNC_LIMIT = 0;
-export const ARTWORK_SYNC_FAILURE_BACKOFF_MS = 30 * 1000;
+export const ARTWORK_SYNC_PAGE_SIZE = 100;
+const ARTWORK_SYNC_MAX_RETRIES = 3;
+export const DASHBOARD_IMAGE_SYNC_LIMIT = 100;
+export const ARTWORK_SYNC_FAILURE_BACKOFF_MS = 60 * 1000;
 export const OPERATIONS_ROW_LIMITS = {
   logs: 120,
   audits: 48,
@@ -51,8 +51,8 @@ export const OPERATIONS_ROW_LIMITS = {
   notifications: 30
 } as const;
 export const NOTIFICATION_BOOT_DELAY_MS = 8000;
-export const SYNC_CACHE_PREFIX = 'artisflow-sync-cache';
-export const CACHE_TTL_MS = {
+const SYNC_CACHE_PREFIX = 'artisflow-sync-cache';
+const CACHE_TTL_MS = {
   artworks: 60 * 1000,
   'all-artworks': 60 * 1000,
   sales: 45 * 1000,
@@ -72,7 +72,7 @@ export const normalizeBranchLogo = async (logoUrl?: string | null): Promise<stri
   return isValid ? logoUrl : undefined;
 };
 
-export const getCacheKey = (userId: string, key: string) => `${SYNC_CACHE_PREFIX}:${userId}:${key}`;
+const getCacheKey = (userId: string, key: string) => `${SYNC_CACHE_PREFIX}:${userId}:${key}`;
 
 export const readCache = <T,>(userId: string, key: string): T | null => {
   try {
@@ -162,9 +162,16 @@ export const fetchPagedRows = async (table: string, columns: string, from: numbe
     .range(from, to);
 
   if (error) {
-    const isRetryableTimeout = (error.message || '').toLowerCase().includes('timeout');
-    if (isRetryableTimeout && attempt < ARTWORK_SYNC_MAX_RETRIES) {
-      await new Promise(resolve => setTimeout(resolve, 600 * (attempt + 1)));
+    const errorMsg = (error.message || '').toLowerCase();
+    const isRetryable = errorMsg.includes('timeout') || 
+                      errorMsg.includes('fetch') || 
+                      (error as any).status === 522 || 
+                      (error as any).status === 524 ||
+                      error.code === 'PGRST116'; 
+
+    if (isRetryable && attempt < ARTWORK_SYNC_MAX_RETRIES) {
+      const delay = Math.pow(2, attempt) * 1000; // Exponential backoff: 1s, 2s, 4s...
+      await new Promise(resolve => setTimeout(resolve, delay));
       return fetchPagedRows(table, columns, from, to, attempt + 1);
     }
     throw error;

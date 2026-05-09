@@ -9,19 +9,18 @@ interface StatusBadgeProps {
 
 export const StatusBadge: React.FC<StatusBadgeProps> = ({ status, sale, artworkPrice }) => {
     const styles: Record<string, string> = {
-        [ArtworkStatus.AVAILABLE]: 'bg-emerald-600 text-white border-emerald-600',
-        [ArtworkStatus.RESERVED]: 'bg-orange-100 text-orange-700 border-orange-200',
-        [ArtworkStatus.SOLD]: 'bg-red-100 text-red-800 border-red-200',
-        [ArtworkStatus.DELIVERED]: 'bg-sky-100 text-sky-800 border-sky-200',
-        [ArtworkStatus.CANCELLED]: 'bg-rose-100 text-rose-800 border-rose-200 line-through',
-        [ArtworkStatus.FOR_RETOUCH]: 'bg-blue-600 text-white border-blue-700 shadow-sm',
-        [ArtworkStatus.FOR_FRAMING]: 'bg-indigo-100 text-indigo-800 border-indigo-200 border-double',
-        [ArtworkStatus.EXCLUSIVE_VIEW_ONLY]: 'bg-purple-900 text-white border-purple-700',
-        // Handle Return/Void Status - High Visibility Protocol Color
-        [ArtworkStatus.RETURNED]: 'bg-red-600 text-white border-red-700 shadow-sm',
-        'RETURNED': 'bg-red-600 text-white border-red-700 shadow-sm',
-        'Sold (Prior)': 'bg-slate-100 text-slate-700 border-slate-200',
-        'Pull Out': 'bg-neutral-100 text-neutral-600 border-neutral-200',
+        [ArtworkStatus.AVAILABLE]: 'bg-[#107c10] text-white border-[#107c10]',
+        [ArtworkStatus.RESERVED]: 'bg-[#fff4ce] text-[#4a1e00] border-[#fed44d]',
+        [ArtworkStatus.SOLD]: 'bg-[#fde7e9] text-[#a4262c] border-[#fde7e9]',
+        [ArtworkStatus.DELIVERED]: 'bg-[#eff6fc] text-[#0078d4] border-[#deecf9]',
+        [ArtworkStatus.CANCELLED]: 'bg-[#f3f2f1] text-[#605e5c] border-[#edebe9] line-through',
+        [ArtworkStatus.FOR_RETOUCH]: 'bg-[#605e5c] text-white border-[#323130] shadow-sm',
+        [ArtworkStatus.FOR_FRAMING]: 'bg-[#f3f2f1] text-[#323130] border-[#edebe9] border-dashed',
+        [ArtworkStatus.EXCLUSIVE_VIEW_ONLY]: 'bg-[#323130] text-white border-[#000000]',
+        [ArtworkStatus.RETURNED]: 'bg-[#d13438] text-white border-[#d13438] shadow-sm',
+        'RETURNED': 'bg-[#d13438] text-white border-[#d13438] shadow-sm',
+        'Sold (Prior)': 'bg-[#f3f2f1] text-[#605e5c] border-[#edebe9]',
+        'Pull Out': 'bg-[#f3f2f1] text-[#605e5c] border-[#edebe9]',
     };
 
     // Normalize status string for lookup if needed
@@ -35,11 +34,55 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({ status, sale, artworkP
         const isFullPayment = sale.downpayment !== undefined && sale.downpayment >= artworkPrice;
         
         if (isDownpayment) {
-            displayText = `${status} (Down)`;
+            displayText = `${status} (Partial)`;
         } else if (isFullPayment) {
             displayText = `${status} (Full)`;
         }
     }
 
-    return <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide border shadow-sm whitespace-nowrap ${styles[normalizedStatus] || 'bg-neutral-100 text-neutral-900 border-neutral-200'}`}>{displayText}</span>;
+    // Logistics Status Integration
+    if (sale?.deliveryRequest) {
+        const dStatus = sale.deliveryRequest.status;
+        let logBadge = null;
+
+        if (dStatus === 'Approved') {
+            logBadge = (
+                <div className="flex items-center gap-1.5 px-2 py-0.5 bg-[#dff6dd] text-[#107c10] border border-[#107c10]/20 rounded-sm text-[8px] font-black uppercase tracking-widest shadow-sm">
+                    <div className="w-1.5 h-1.5 rounded-full bg-[#107c10] animate-pulse" />
+                    Dispatch Ready
+                </div>
+            );
+        } else if (dStatus === 'Pending') {
+            logBadge = (
+                <div className="flex items-center gap-1.5 px-2 py-0.5 bg-[#fff4ce] text-[#4a1e00] border border-[#fed44d]/40 rounded-sm text-[8px] font-black uppercase tracking-widest shadow-sm">
+                    <div className="w-1.5 h-1.5 rounded-full bg-[#ffb900]" />
+                    Review Pending
+                </div>
+            );
+        } else if (dStatus === 'Declined') {
+            logBadge = (
+                <div className="flex items-center gap-1.5 px-2 py-0.5 bg-[#fde7e9] text-[#a4262c] border border-[#a4262c]/20 rounded-sm text-[8px] font-black uppercase tracking-widest shadow-sm">
+                    <div className="w-1.5 h-1.5 rounded-full bg-[#a4262c]" />
+                    Update Required
+                </div>
+            );
+        }
+
+        if (logBadge) {
+            return (
+                <div className="flex flex-col items-end gap-1">
+                    <span className={`px-2.5 py-1 rounded-sm text-[10px] font-black uppercase tracking-wider border shadow-sm whitespace-nowrap ${styles[normalizedStatus] || 'bg-[#f3f2f1] text-[#323130] border-[#edebe9]'}`}>
+                        {displayText}
+                    </span>
+                    {logBadge}
+                </div>
+            );
+        }
+    }
+
+    return (
+        <span className={`px-2.5 py-1 rounded-sm text-[10px] font-black uppercase tracking-wider border shadow-sm whitespace-nowrap ${styles[normalizedStatus] || 'bg-[#f3f2f1] text-[#323130] border-[#edebe9]'}`}>
+            {displayText}
+        </span>
+    );
 };

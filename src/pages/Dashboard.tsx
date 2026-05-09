@@ -88,27 +88,174 @@ const Dashboard: React.FC<DashboardProps> = ({ artworks, sales, events, isLoadin
   const totalInventory = filteredArtworks.length;
   const totalSold = soldArtworks.length;
   const totalReserved = filteredArtworks.filter(a => a.status === ArtworkStatus.RESERVED).length;
-  const totalGrossRevenue = soldArtworks.reduce((sum, art) => sum + (art.price || 0), 0);
+  const inventoryMetrics = useMemo(() => {
+    const totalCount = filteredArtworks.length;
+    const totalValue = filteredArtworks.reduce((sum, art) => sum + (art.price || 0), 0);
+    
+    // Status Distribution
+    const statusMap = filteredArtworks.reduce((acc, art) => {
+      acc[art.status] = (acc[art.status] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
 
-  const totalCollectedRevenue = useMemo(() => {
+    const statusData = Object.entries(statusMap).map(([name, value]) => ({ name, value }));
+
+    // Branch Distribution
+    const branchMap = filteredArtworks.reduce((acc, art) => {
+      const b = art.currentBranch || 'Unassigned';
+      acc[b] = (acc[b] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+
+    const branchData = Object.entries(branchMap)
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value);
+
+    return { totalCount, totalValue, statusData, branchData };
+  }, [filteredArtworks]);
+
+  const soldMetrics = useMemo(() => {
+    const totalCount = soldArtworks.length;
+    const totalValue = soldArtworks.reduce((sum, art) => sum + (art.price || 0), 0);
+    
+    // Top Artists by Volume
+    const artistMap = soldArtworks.reduce((acc, art) => {
+      acc[art.artist] = (acc[art.artist] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+
+    const artistData = Object.entries(artistMap)
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 5);
+
+    // Branch Performance
+    const branchMap = soldArtworks.reduce((acc, art) => {
+      const b = art.currentBranch || 'Unassigned';
+      acc[b] = (acc[b] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+
+    const branchData = Object.entries(branchMap)
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value);
+
+    return { totalCount, totalValue, artistData, branchData };
+  }, [soldArtworks]);
+
+  const reservedArtworks = useMemo(
+    () => filteredArtworks.filter(a => a.status === ArtworkStatus.RESERVED),
+    [filteredArtworks]
+  );
+
+  const reservedMetrics = useMemo(() => {
+    const totalCount = reservedArtworks.length;
+    const totalValue = reservedArtworks.reduce((sum, art) => sum + (art.price || 0), 0);
+    
+    // Reservation Intents
+    const reasonMap = reservedArtworks.reduce((acc, art) => {
+      let reason = 'Private Client';
+      if ((art.remarks || '').includes('[Reserved For Auction:')) reason = 'Auction Block';
+      else if ((art.remarks || '').includes('[Reserved For Event:')) reason = 'Exhibition';
+      
+      acc[reason] = (acc[reason] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+
+    const intentData = Object.entries(reasonMap).map(([name, value]) => ({ name, value }));
+
+    // Hold Allocation by Branch
+    const branchMap = reservedArtworks.reduce((acc, art) => {
+      const b = art.currentBranch || 'Unassigned';
+      acc[b] = (acc[b] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+
+    const branchData = Object.entries(branchMap)
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value);
+
+    return { totalCount, totalValue, intentData, branchData };
+  }, [reservedArtworks]);
+
+  const revenueMetrics = useMemo(() => {
     const salesMap = new Map(completedSales.map(s => [s.artworkId, s]));
-    return soldArtworks.reduce((sum, art) => {
+    
+    let fullyPaid = 0;
+    let installmentsCollected = 0;
+    let totalGross = 0;
+    let totalCollected = 0;
+    let totalDownpayments = 0;
+    let totalPendingInstallments = 0;
+    let installmentSalesCount = 0;
+    let totalInstallmentBaseValue = 0;
+    let downpaymentPcts: number[] = [];
+
+    soldArtworks.forEach(art => {
+      const price = art.price || 0;
+      totalGross += price;
+      
       const sale = salesMap.get(art.id);
-      if (!sale) return sum + (art.price || 0); // Assume fully paid if no sale record
-      
-      // If not a downpayment sale and approved, it's a full payment
-      if (sale.status === 'Approved' && !sale.isDownpayment) {
-        return sum + (art.price || 0);
+      if (!sale) {
+        // Assume legacy/direct sales are fully paid
+        fullyPaid += price;
+        totalCollected += price;
+        return;
       }
-      
-      // Only include approved downpayments if the sale is approved
-      const basePaid = sale.status === 'Approved' ? (sale.downpayment || 0) : 0;
-      
-      // Only include verified installments
-      const totalInstallments = (sale.installments || []).filter(i => !i.isPending).reduce((s, i) => s + i.amount, 0);
-      
-      return sum + basePaid + totalInstallments;
-    }, 0);
+
+      if (sale.status === 'Approved' && !sale.isDownpayment) {
+        fullyPaid += price;
+        totalCollected += price;
+      } else if (sale.isDownpayment) {
+        installmentSalesCount++;
+        totalInstallmentBaseValue += price;
+
+        const basePaid = sale.status === 'Approved' ? (sale.downpayment || 0) : 0;
+        totalDownpayments += basePaid;
+        
+        if (price > 0) {
+          downpaymentPcts.push((basePaid / price) * 100);
+        }
+
+        const installments = sale.installments || [];
+        const verifiedInstallments = installments.filter(i => !i.isPending).reduce((s, i) => s + i.amount, 0);
+        const pendingInstallments = installments.filter(i => i.isPending).reduce((s, i) => s + i.amount, 0);
+        
+        totalPendingInstallments += pendingInstallments;
+        installmentsCollected += (basePaid + verifiedInstallments);
+        totalCollected += (basePaid + verifiedInstallments);
+      }
+    });
+
+    // Branch Revenue Distribution
+    const branchRevenueMap = soldArtworks.reduce((acc, art) => {
+      const b = art.currentBranch || 'Unassigned';
+      const price = art.price || 0;
+      acc[b] = (acc[b] || 0) + price;
+      return acc;
+    }, {} as Record<string, number>);
+
+    const branchRevenueData = Object.entries(branchRevenueMap)
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value);
+
+    const avgDownpaymentPct = downpaymentPcts.length > 0 
+      ? downpaymentPcts.reduce((a, b) => a + b, 0) / downpaymentPcts.length 
+      : 0;
+
+    return {
+      fullyPaid,
+      installmentsCollected,
+      totalToBeCollected: totalGross - totalCollected,
+      totalGross,
+      totalCollected,
+      totalDownpayments,
+      totalPendingInstallments,
+      installmentSalesCount,
+      totalInstallmentBaseValue,
+      avgDownpaymentPct,
+      branchRevenueData
+    };
   }, [soldArtworks, completedSales]);
 
   const stats = [
@@ -117,9 +264,9 @@ const Dashboard: React.FC<DashboardProps> = ({ artworks, sales, events, isLoadin
       label: 'Total Inventory',
       value: totalInventory,
       icon: ICONS.Inventory,
-      gradient: 'from-black to-neutral-900',
+      gradient: 'from-white to-neutral-50',
       shadow: 'shadow-neutral-200',
-      textColor: 'text-white',
+      textColor: 'text-neutral-900',
       target: 'inventory' as const
     },
     {
@@ -127,9 +274,9 @@ const Dashboard: React.FC<DashboardProps> = ({ artworks, sales, events, isLoadin
       label: 'Total Sold',
       value: totalSold.toLocaleString(),
       icon: ICONS.Sales,
-      gradient: 'from-neutral-900 to-neutral-900',
+      gradient: 'from-white to-neutral-50',
       shadow: 'shadow-neutral-200',
-      textColor: 'text-white',
+      textColor: 'text-neutral-900',
       target: 'sales' as const
     },
     {
@@ -137,19 +284,20 @@ const Dashboard: React.FC<DashboardProps> = ({ artworks, sales, events, isLoadin
       label: 'Total Reserved',
       value: totalReserved,
       icon: <Clock size={24} className="text-neutral-900" />,
-      gradient: 'from-neutral-900 to-neutral-900',
+      gradient: 'from-white to-neutral-50',
       shadow: 'shadow-neutral-200',
-      textColor: 'text-white',
+      textColor: 'text-neutral-900',
       target: 'inventory' as const
     },
     {
       id: 'revenue' as const,
-      label: 'Gross Sales',
-      value: `₱${totalGrossRevenue.toLocaleString()}`,
-      subValue: `₱${totalCollectedRevenue.toLocaleString()} Collected`,
-      icon: <TrendingUp size={24} className="text-neutral-900" />,
-      gradient: 'from-neutral-700 to-neutral-600',
-      shadow: 'shadow-neutral-200',
+      label: 'Gross Revenue',
+      value: `₱${revenueMetrics.totalGross.toLocaleString()}`,
+      isRevenue: true,
+      metrics: revenueMetrics,
+      icon: <TrendingUp size={24} className="text-white" />,
+      gradient: 'from-[#323130] to-[#201f1e]',
+      shadow: 'shadow-neutral-900/20',
       textColor: 'text-white',
       target: 'sales' as const
     },
@@ -160,10 +308,6 @@ const Dashboard: React.FC<DashboardProps> = ({ artworks, sales, events, isLoadin
     [currentUser]
   );
 
-  const reservedArtworks = useMemo(
-    () => filteredArtworks.filter(a => a.status === ArtworkStatus.RESERVED),
-    [filteredArtworks]
-  );
 
   const revenueDetails = useMemo(
     () => {
@@ -171,9 +315,16 @@ const Dashboard: React.FC<DashboardProps> = ({ artworks, sales, events, isLoadin
       const salesMap = new Map(completedSales.map(s => [s.artworkId, s]));
 
       // Map sold artworks to include sale details if available
-      return soldArtworks.map(art => {
+      const details = soldArtworks.map(art => {
         const sale = salesMap.get(art.id);
         return { art, sale };
+      });
+
+      // Sort by sale date descending (most recent first)
+      return details.sort((a, b) => {
+        const dateA = a.sale ? new Date(a.sale.saleDate).getTime() : 0;
+        const dateB = b.sale ? new Date(b.sale.saleDate).getTime() : 0;
+        return dateB - dateA;
       });
     },
     [soldArtworks, completedSales]
@@ -225,7 +376,8 @@ const Dashboard: React.FC<DashboardProps> = ({ artworks, sales, events, isLoadin
   }, [currentUser]);
 
   const teamStatus = useMemo(() => {
-    return (accounts || [])
+    const uniqueAccounts = Array.from(new Map((accounts || []).filter(a => a && a.id).map(acc => [acc.id, acc])).values());
+    return uniqueAccounts
       .map(acc => {
         const presence = userPresence[acc.id];
         const isMe = currentUser?.id === acc.id;
@@ -237,25 +389,19 @@ const Dashboard: React.FC<DashboardProps> = ({ artworks, sales, events, isLoadin
         return { ...acc, isOnline, lastSeen, isMe };
       })
       .sort((a, b) => {
-        // Current user first
         if (a.isMe) return -1;
         if (b.isMe) return 1;
 
-        // Sort by Branch (alphabetical)
         const branchA = a.branch || '';
         const branchB = b.branch || '';
         if (branchA !== branchB) {
-          // Put those with branch first, or just alphabetical
-          // If one has no branch, put it at the end
           if (!branchA) return 1;
           if (!branchB) return -1;
           return branchA.localeCompare(branchB);
         }
 
-        // Then by Online status
         if (a.isOnline && !b.isOnline) return -1;
         if (!a.isOnline && b.isOnline) return 1;
-        // Then by last seen (recent first)
         return (b.lastSeen || 0) - (a.lastSeen || 0);
       });
   }, [accounts, currentUser, userPresence, now]);
@@ -336,7 +482,7 @@ const Dashboard: React.FC<DashboardProps> = ({ artworks, sales, events, isLoadin
                 onClick={() => setActiveStat('revenue')}
                 className="inline-flex items-center px-2.5 py-1 rounded-sm bg-neutral-100 border border-neutral-200 text-neutral-600 font-bold uppercase tracking-wider transition-all hover:bg-neutral-200 hover:scale-105 active:scale-95 cursor-pointer"
               >
-                ₱{totalCollectedRevenue.toLocaleString()} collected
+                ₱{revenueMetrics.totalCollected.toLocaleString()} collected
               </button>
             </div>
           </div>
@@ -373,7 +519,7 @@ const Dashboard: React.FC<DashboardProps> = ({ artworks, sales, events, isLoadin
         {stats.map((stat, i) => (
           <motion.div
             key={i}
-            className={`relative overflow-hidden rounded-md p-6 max-[1512px]:p-5 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-md bg-gradient-to-br ${stat.gradient} cursor-pointer active:scale-[0.99] group border border-neutral-200`}
+            className={`relative overflow-hidden rounded-md p-4.5 max-[1512px]:p-4 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-md bg-gradient-to-br ${stat.gradient} cursor-pointer active:scale-[0.99] group border border-neutral-200`}
             onClick={() => setActiveStat(stat.id)}
             variants={{
               hidden: { opacity: 0, y: 20 },
@@ -383,29 +529,55 @@ const Dashboard: React.FC<DashboardProps> = ({ artworks, sales, events, isLoadin
             whileTap={{ scale: 0.98 }}
           >
             {/* Background Decorative Circles */}
-            <div className="absolute -right-4 -top-4 w-24 h-24 rounded-full bg-neutral-100 blur-2xl opacity-50"></div>
-            <div className="absolute -left-4 -bottom-4 w-20 h-20 rounded-full bg-neutral-50 blur-xl opacity-50"></div>
+            <div className={`absolute -right-4 -top-4 w-20 h-20 rounded-full blur-2xl opacity-50 ${stat.isRevenue ? 'bg-white/5' : 'bg-neutral-100'}`}></div>
+            <div className={`absolute -left-4 -bottom-4 w-16 h-16 rounded-full blur-xl opacity-50 ${stat.isRevenue ? 'bg-white/5' : 'bg-neutral-50'}`}></div>
 
             <div className="relative z-10 flex flex-col h-full justify-between">
               <div className="flex items-start justify-between">
-                <div className={`p-3 rounded-sm bg-white text-neutral-900 border border-neutral-100 shadow-sm`}>
-                  {stat.icon}
+                <div className={`p-2.5 rounded-sm ${stat.isRevenue ? 'bg-white/10 text-white' : 'bg-white text-neutral-900'} border border-neutral-100 shadow-sm`}>
+                  {React.cloneElement(stat.icon as React.ReactElement<any>, { size: 20 })}
                 </div>
-                {i === 2 && <div className="px-2 py-1 rounded-sm bg-neutral-100 text-neutral-600 text-[10px] font-bold border border-neutral-200 flex items-center gap-1">
-                  <TrendingUp size={12} /> +12%
+                {i === 1 && <div className="px-2 py-0.5 rounded-sm bg-neutral-100 text-neutral-600 text-[9px] font-bold border border-neutral-200 flex items-center gap-1">
+                  <TrendingUp size={10} /> +12%
                 </div>}
               </div>
 
-              <div className="mt-6">
-                <p className={`text-3xl font-black tracking-tight ${stat.textColor} drop-shadow-sm`}>{stat.value}</p>
-                <div className="flex justify-between items-center mt-1">
-                  <p className={`text-xs font-bold uppercase tracking-widest opacity-60 ${stat.textColor}`}>{stat.label}</p>
-                  {(stat as any).subValue && (
-                    <p className={`text-[10px] font-black uppercase tracking-widest bg-white/20 px-1.5 py-0.5 rounded ${stat.textColor}`}>
-                      {(stat as any).subValue}
-                    </p>
-                  )}
-                </div>
+              <div className="mt-4">
+                {stat.isRevenue && stat.metrics ? (
+                  <div className="space-y-4">
+                    <div>
+                      <p className="text-2xl font-black tracking-tight text-white drop-shadow-sm">₱{stat.metrics.totalGross.toLocaleString()}</p>
+                      <p className="text-[9px] font-bold uppercase tracking-widest text-white/60">Total Gross Sales</p>
+                    </div>
+                    
+                    <div className="grid grid-cols-1 gap-1.5 p-2.5 bg-white/5 rounded-sm border border-white/10">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[8px] font-bold uppercase tracking-wider text-white/50">Fully Paid</span>
+                        <span className="text-[10px] font-black text-emerald-400">₱{stat.metrics.fullyPaid.toLocaleString()}</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-[8px] font-bold uppercase tracking-wider text-white/50">Installments</span>
+                        <span className="text-[10px] font-black text-amber-400">₱{stat.metrics.installmentsCollected.toLocaleString()}</span>
+                      </div>
+                      <div className="flex items-center justify-between pt-1 border-t border-white/5">
+                        <span className="text-[8px] font-bold uppercase tracking-wider text-white/80">To Collect</span>
+                        <span className="text-[10px] font-black text-white">₱{stat.metrics.totalToBeCollected.toLocaleString()}</span>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <p className={`text-2xl font-black tracking-tight ${stat.textColor} drop-shadow-sm`}>{stat.value}</p>
+                    <div className="flex justify-between items-center mt-0.5">
+                      <p className={`text-[10px] font-bold uppercase tracking-widest opacity-60 ${stat.textColor}`}>{stat.label}</p>
+                      {(stat as any).subValue && (
+                        <p className={`text-[9px] font-black uppercase tracking-widest bg-white/20 px-1 py-0.5 rounded ${stat.textColor}`}>
+                          {(stat as any).subValue}
+                        </p>
+                      )}
+                    </div>
+                  </>
+                )}
               </div>
             </div>
           </motion.div>
@@ -599,7 +771,7 @@ const Dashboard: React.FC<DashboardProps> = ({ artworks, sales, events, isLoadin
             <div className="flex-1 w-full min-h-[250px] relative">
               <div className="absolute inset-0">
                 {statusData.some(d => d.value > 0) ? (
-                  <ResponsiveContainer width="100%" height="100%" minHeight={200}>
+                  <ResponsiveContainer width="100%" height="100%" debounce={50}>
                     <PieChart>
                       <Pie
                         data={statusData}
@@ -647,9 +819,13 @@ const Dashboard: React.FC<DashboardProps> = ({ artworks, sales, events, isLoadin
             </div>
 
             <div className="space-y-4">
-              {(artworks || []).slice(-3).reverse().map((art) => (
-                <div
-                  key={art.id}
+              {(() => {
+                const recent = (artworks || []).slice(-10).reverse();
+                const uniqueRecent = Array.from(new Map(recent.filter(a => a && a.id).map(art => [art.id, art])).values()).slice(0, 3);
+                
+                return uniqueRecent.map((art) => (
+                  <div
+                    key={art.id}
                   onClick={() => onSelectArt(art.id)}
                   className="flex items-center space-x-4 p-3 hover:bg-neutral-50 rounded-md cursor-pointer transition-all hover:scale-[1.02] hover:shadow-md group border border-transparent hover:border-neutral-100"
                 >
@@ -679,8 +855,9 @@ const Dashboard: React.FC<DashboardProps> = ({ artworks, sales, events, isLoadin
                   <div className="p-2 rounded-sm bg-neutral-50 text-neutral-300 group-hover:bg-neutral-200 group-hover:text-neutral-900 transition-colors">
                     <ArrowRight size={14} />
                   </div>
-                </div>
-              ))}
+                  </div>
+                ));
+              })()}
             </div>
           </div>
         </div>
@@ -748,198 +925,701 @@ const Dashboard: React.FC<DashboardProps> = ({ artworks, sales, events, isLoadin
 
             <div className="flex-1 overflow-y-auto p-6 space-y-4">
               {activeStat === 'inventory' && (
-                <>
-                  <p className="text-xs text-neutral-500 mb-2">
-                    Showing the latest inventory items.
-                  </p>
-                  {filteredArtworks.length === 0 ? (
-                    <p className="text-sm text-neutral-400">No artworks in inventory.</p>
-                  ) : (
-                    <div className="space-y-2 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">
-                      {filteredArtworks.slice().reverse().slice(0, 20).map(art => (
+                <div className="space-y-8">
+                  {/* Summary Header */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="bg-neutral-900 text-white p-5 rounded-xl border border-neutral-800 shadow-xl relative overflow-hidden group">
+                      <div className="relative z-10">
+                        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-neutral-400 mb-1">Asset Value</p>
+                        <p className="text-3xl font-black text-white">₱{inventoryMetrics.totalValue.toLocaleString()}</p>
+                      </div>
+                      <div className="absolute top-0 right-0 w-24 h-24 bg-white/5 rounded-full -mr-8 -mt-8 blur-2xl group-hover:bg-white/10 transition-colors"></div>
+                    </div>
+
+                    <div className="bg-white p-5 rounded-xl border border-neutral-200 shadow-sm flex flex-col justify-between">
+                      <p className="text-[10px] font-black uppercase tracking-[0.2em] text-neutral-400 mb-1">Physical Count</p>
+                      <div className="flex items-end justify-between">
+                        <p className="text-3xl font-black text-neutral-900">{inventoryMetrics.totalCount}</p>
+                        <div className="px-2 py-1 bg-neutral-100 rounded-md text-[10px] font-bold text-neutral-600">UNITS</div>
+                      </div>
+                    </div>
+
+                    <div className="bg-white p-5 rounded-xl border border-neutral-200 shadow-sm flex flex-col justify-between">
+                      <p className="text-[10px] font-black uppercase tracking-[0.2em] text-neutral-400 mb-1">Active Branches</p>
+                      <div className="flex items-end justify-between">
+                        <p className="text-3xl font-black text-neutral-900">{inventoryMetrics.branchData.length}</p>
+                        <div className="px-2 py-1 bg-neutral-100 rounded-md text-[10px] font-bold text-neutral-600">LOCATIONS</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Visual Analysis Row */}
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                    {/* Status Distribution */}
+                    <div className="bg-neutral-50/50 p-6 rounded-2xl border border-neutral-100">
+                      <h4 className="text-[10px] font-black text-neutral-900 uppercase tracking-widest mb-6 flex items-center gap-2">
+                        <span className="w-1.5 h-4 bg-neutral-900 rounded-full"></span>
+                        Status Distribution
+                      </h4>
+                      <div className="h-[240px] w-full">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <PieChart>
+                            <Pie
+                              data={inventoryMetrics.statusData}
+                              cx="50%"
+                              cy="50%"
+                              innerRadius={60}
+                              outerRadius={80}
+                              paddingAngle={5}
+                              dataKey="value"
+                            >
+                              {inventoryMetrics.statusData.map((entry, index) => (
+                                <Cell 
+                                  key={`cell-${index}`} 
+                                  fill={
+                                    entry.name === 'Available' ? '#10b981' :
+                                    entry.name === 'Sold' ? '#3b82f6' :
+                                    entry.name === 'Reserved' ? '#f59e0b' :
+                                    entry.name === 'Returned' ? '#ef4444' :
+                                    '#737373'
+                                  } 
+                                />
+                              ))}
+                            </Pie>
+                            <Tooltip 
+                              contentStyle={{ 
+                                borderRadius: '12px', 
+                                border: 'none', 
+                                boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)',
+                                fontSize: '12px',
+                                fontWeight: '900',
+                                textTransform: 'uppercase'
+                              }} 
+                            />
+                            <Legend verticalAlign="bottom" height={36} iconType="circle" wrapperStyle={{ fontSize: '10px', fontWeight: '900', textTransform: 'uppercase' }} />
+                          </PieChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </div>
+
+                    {/* Branch Allocation */}
+                    <div className="bg-neutral-50/50 p-6 rounded-2xl border border-neutral-100">
+                      <h4 className="text-[10px] font-black text-neutral-900 uppercase tracking-widest mb-6 flex items-center gap-2">
+                        <span className="w-1.5 h-4 bg-neutral-900 rounded-full"></span>
+                        Branch Allocation
+                      </h4>
+                      <div className="space-y-4 max-h-[240px] overflow-y-auto pr-2 custom-scrollbar">
+                        {inventoryMetrics.branchData.map((item) => (
+                          <div key={item.name} className="space-y-1.5">
+                            <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-tighter">
+                              <span className="text-neutral-500">{item.name}</span>
+                              <span className="text-neutral-900">{item.value} Items</span>
+                            </div>
+                            <div className="h-1.5 w-full bg-neutral-200 rounded-full overflow-hidden">
+                              <motion.div 
+                                initial={{ width: 0 }}
+                                animate={{ width: `${(item.value / inventoryMetrics.totalCount) * 100}%` }}
+                                className="h-full bg-neutral-900 rounded-full"
+                              />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Recent Registry */}
+                  <div>
+                    <h4 className="text-[10px] font-black text-neutral-900 uppercase tracking-widest mb-4 flex items-center gap-2">
+                      <span className="w-1.5 h-4 bg-neutral-900 rounded-full"></span>
+                      Latest Inventory Registry
+                    </h4>
+                    <div className="space-y-3 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
+                      {filteredArtworks.slice().reverse().slice(0, 15).map(art => (
                         <div
                           key={art.id}
-                          className="flex items-center justify-between p-3 rounded-md border border-neutral-100 hover:bg-neutral-50 cursor-pointer"
+                          className="flex items-center justify-between p-4 rounded-xl border border-neutral-100 hover:border-neutral-900 bg-white transition-all group cursor-pointer"
                           onClick={() => {
                             onSelectArt(art.id);
                             setActiveStat(null);
                           }}
                         >
-                          <div className="flex items-center gap-3 min-w-0">
-                            <OptimizedImage
-                              src={art.imageUrl}
-                              alt={art.title}
-                              className="w-10 h-10 rounded-sm object-cover"
-                            />
+                          <div className="flex items-center gap-4 min-w-0">
+                            <div className="relative">
+                              <OptimizedImage
+                                src={art.imageUrl}
+                                alt={art.title}
+                                className="w-12 h-12 rounded-lg object-cover grayscale group-hover:grayscale-0 transition-all duration-300"
+                              />
+                              <div className={`absolute -top-1 -left-1 w-3 h-3 rounded-full border-2 border-white ${
+                                art.status === 'Available' ? 'bg-emerald-500' :
+                                art.status === 'Reserved' ? 'bg-amber-500' :
+                                art.status === 'Sold' ? 'bg-blue-500' :
+                                'bg-neutral-400'
+                              }`}></div>
+                            </div>
                             <div className="min-w-0">
-                              <p className="text-sm font-bold text-neutral-900 truncate">
+                              <p className="text-sm font-black text-neutral-900 group-hover:text-black truncate uppercase tracking-tight">
                                 {art.title}
                               </p>
-                              <p className="text-[11px] text-neutral-500 truncate">
-                                {art.artist} • {art.currentBranch}
+                              <p className="text-[10px] font-bold text-neutral-500 uppercase tracking-wide">
+                                {art.artist} • <span className="text-neutral-400">{art.currentBranch}</span>
                               </p>
                             </div>
                           </div>
                           <div className="text-right">
-                            <p className="text-xs font-bold text-neutral-500">
-                              {art.status}
-                            </p>
-                            <p className="text-sm font-bold text-neutral-900">
+                            <p className="text-[10px] font-black text-neutral-400 uppercase mb-1">{art.status}</p>
+                            <p className="text-sm font-black text-neutral-900">
                               ₱{(art.price || 0).toLocaleString()}
                             </p>
                           </div>
                         </div>
                       ))}
                     </div>
-                  )}
-                </>
+                  </div>
+                </div>
               )}
 
               {activeStat === 'sold' && (
-                <>
-                  <p className="text-xs text-neutral-500 mb-2">
-                    Recently sold artworks.
-                  </p>
-                  {soldArtworks.length === 0 ? (
-                    <p className="text-sm text-neutral-400">No sold artworks found.</p>
-                  ) : (
-                    <div className="space-y-3">
+                <div className="space-y-8">
+                  {/* Summary Header */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="bg-neutral-900 text-white p-6 rounded-xl border border-neutral-800 shadow-xl relative overflow-hidden group">
+                      <div className="relative z-10">
+                        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-neutral-400 mb-1">Realized Revenue</p>
+                        <p className="text-4xl font-black text-white">₱{soldMetrics.totalValue.toLocaleString()}</p>
+                        <div className="mt-4 pt-4 border-t border-white/10 flex items-center gap-2">
+                          <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-widest">Growth Positive</span>
+                          <TrendingUp size={12} className="text-emerald-400" />
+                        </div>
+                      </div>
+                      <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/10 rounded-full -mr-12 -mt-12 blur-3xl group-hover:bg-emerald-500/20 transition-colors"></div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="bg-white p-5 rounded-xl border border-neutral-200 shadow-sm flex flex-col justify-between">
+                        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-neutral-400 mb-1">Sales Volume</p>
+                        <p className="text-3xl font-black text-neutral-900">{soldMetrics.totalCount}</p>
+                      </div>
+                      <div className="bg-white p-5 rounded-xl border border-neutral-200 shadow-sm flex flex-col justify-between">
+                        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-neutral-400 mb-1">Top Branch</p>
+                        <p className="text-lg font-black text-neutral-900 truncate uppercase">{soldMetrics.branchData[0]?.name || 'N/A'}</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Visual Analysis Row */}
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                    {/* Top Artists (Leaderboard) */}
+                    <div className="bg-neutral-50/50 p-6 rounded-2xl border border-neutral-100">
+                      <h4 className="text-[10px] font-black text-neutral-900 uppercase tracking-widest mb-6 flex items-center gap-2">
+                        <span className="w-1.5 h-4 bg-emerald-500 rounded-full"></span>
+                        Top Performing Artists
+                      </h4>
+                      <div className="space-y-4">
+                        {soldMetrics.artistData.map((item, idx) => (
+                          <div key={item.name} className="flex items-center gap-4">
+                            <div className="w-6 h-6 rounded-md bg-neutral-200 flex items-center justify-center text-[10px] font-black text-neutral-600">
+                              #{idx + 1}
+                            </div>
+                            <div className="flex-1 space-y-1">
+                              <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-tighter">
+                                <span className="text-neutral-900">{item.name}</span>
+                                <span className="text-emerald-600">{item.value} Sold</span>
+                              </div>
+                              <div className="h-1.5 w-full bg-neutral-200 rounded-full overflow-hidden">
+                                <motion.div 
+                                  initial={{ width: 0 }}
+                                  animate={{ width: `${(item.value / soldMetrics.totalCount) * 100}%` }}
+                                  className="h-full bg-emerald-500 rounded-full"
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Sales by Branch */}
+                    <div className="bg-neutral-50/50 p-6 rounded-2xl border border-neutral-100">
+                      <h4 className="text-[10px] font-black text-neutral-900 uppercase tracking-widest mb-6 flex items-center gap-2">
+                        <span className="w-1.5 h-4 bg-blue-500 rounded-full"></span>
+                        Branch Contribution
+                      </h4>
+                      <div className="space-y-4 max-h-[240px] overflow-y-auto pr-2 custom-scrollbar">
+                        {soldMetrics.branchData.map((item) => (
+                          <div key={item.name} className="space-y-1.5">
+                            <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-tighter">
+                              <span className="text-neutral-500">{item.name}</span>
+                              <span className="text-neutral-900">{item.value} Sales</span>
+                            </div>
+                            <div className="h-1.5 w-full bg-neutral-200 rounded-full overflow-hidden">
+                              <motion.div 
+                                initial={{ width: 0 }}
+                                animate={{ width: `${(item.value / soldMetrics.totalCount) * 100}%` }}
+                                className="h-full bg-blue-500 rounded-full"
+                              />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Recent Ledger */}
+                  <div>
+                    <h4 className="text-[10px] font-black text-neutral-900 uppercase tracking-widest mb-4 flex items-center gap-2">
+                      <span className="w-1.5 h-4 bg-neutral-900 rounded-full"></span>
+                      Recent Sales Ledger
+                    </h4>
+                    <div className="space-y-3 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
                       {soldArtworks.slice(0, 20).map(art => (
                         <div
                           key={art.id}
-                          className="flex items-center justify-between p-3 rounded-md border border-neutral-100 hover:bg-neutral-50/40 cursor-pointer"
+                          className="flex items-center justify-between p-4 rounded-xl border border-neutral-100 hover:border-neutral-900 bg-white transition-all group cursor-pointer"
                           onClick={() => {
                             onSelectArt(art.id);
                             setActiveStat(null);
                           }}
                         >
-                          <div className="flex items-center gap-3 min-w-0">
+                          <div className="flex items-center gap-4 min-w-0">
                             <OptimizedImage
                               src={art.imageUrl}
                               alt={art.title}
-                              className="w-10 h-10 rounded-sm object-cover"
+                              className="w-12 h-12 rounded-lg object-cover grayscale group-hover:grayscale-0 transition-all duration-300"
                             />
                             <div className="min-w-0">
-                              <p className="text-sm font-bold text-neutral-900 truncate">
+                              <p className="text-sm font-black text-neutral-900 group-hover:text-black truncate uppercase tracking-tight">
                                 {art.title}
                               </p>
-                              <p className="text-[11px] text-neutral-500 truncate">
-                                {art.artist} • {art.currentBranch}
-                              </p>
+                              <div className="flex items-center gap-2">
+                                <p className="text-[10px] font-bold text-neutral-500 uppercase tracking-wide">
+                                  {art.artist} • <span className="text-neutral-400">{art.currentBranch}</span>
+                                </p>
+                                <span className="text-[8px] font-black text-emerald-600 bg-emerald-50 px-1 py-0.5 rounded-sm uppercase tracking-tighter">Verified</span>
+                              </div>
                             </div>
                           </div>
-                          <p className="text-sm font-bold text-neutral-700">
-                            ₱{(art.price || 0).toLocaleString()}
-                          </p>
+                          <div className="text-right">
+                            <p className="text-sm font-black text-neutral-900">
+                              ₱{(art.price || 0).toLocaleString()}
+                            </p>
+                            <p className="text-[9px] font-bold text-neutral-400 uppercase mt-0.5">Sale Finalized</p>
+                          </div>
                         </div>
                       ))}
                     </div>
-                  )}
-                </>
+                  </div>
+                </div>
               )}
 
               {activeStat === 'revenue' && (
-                <>
-                  <p className="text-xs text-neutral-500 mb-2">
-                    Recent sales revenue details.
-                  </p>
-                  {revenueDetails.length === 0 ? (
-                    <p className="text-sm text-neutral-400">No recorded sales yet.</p>
-                  ) : (
-                    <div className="space-y-3">
-                      {revenueDetails.slice().reverse().slice(0, 20).map(({ sale, art }) => (
-                        <div
-                          key={art?.id || Math.random()}
-                          className="flex items-center justify-between p-3 rounded-md border border-neutral-100 hover:bg-neutral-50/40"
-                        >
-                          <div className="flex items-center gap-3 min-w-0">
-                            {art && (
-                              <OptimizedImage
-                                src={art.imageUrl}
-                                alt={art.title}
-                                className="w-10 h-10 rounded-sm object-cover"
+                <div className="space-y-8">
+                  {/* Summary Header */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="bg-neutral-900 text-white p-6 rounded-xl border border-neutral-800 shadow-xl relative overflow-hidden group">
+                      <div className="relative z-10">
+                        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-neutral-400 mb-1">Potential Gross Revenue</p>
+                        <p className="text-4xl font-black text-white">₱{revenueMetrics.totalGross.toLocaleString()}</p>
+                        <div className="mt-4 pt-4 border-t border-white/10 flex items-center justify-between">
+                          <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest">Analysis Confidence</span>
+                          <span className="text-[10px] font-black text-emerald-400 uppercase tracking-widest bg-white/5 px-2 py-1 rounded">
+                            {Math.round((revenueMetrics.totalCollected / (revenueMetrics.totalGross || 1)) * 100)}% Realized
+                          </span>
+                        </div>
+                      </div>
+                      <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full -mr-12 -mt-12 blur-3xl group-hover:bg-white/10 transition-colors"></div>
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-4">
+                      <div className="bg-white p-5 rounded-xl border border-neutral-200 shadow-sm flex items-center justify-between group hover:border-neutral-900 transition-colors">
+                        <div>
+                          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-neutral-400 mb-1">Collected Revenue</p>
+                          <p className="text-2xl font-black text-neutral-900">₱{revenueMetrics.totalCollected.toLocaleString()}</p>
+                        </div>
+                        <div className="w-12 h-12 bg-neutral-900 text-white rounded-lg flex items-center justify-center">
+                          <Activity size={24} />
+                        </div>
+                      </div>
+                      <div className="bg-white p-5 rounded-xl border border-neutral-200 shadow-sm flex items-center justify-between group hover:border-neutral-900 transition-colors">
+                        <div>
+                          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-neutral-400 mb-1">Outstanding Balance</p>
+                          <p className="text-2xl font-black text-neutral-900">₱{revenueMetrics.totalToBeCollected.toLocaleString()}</p>
+                        </div>
+                        <div className="w-12 h-12 bg-neutral-100 text-neutral-400 rounded-lg flex items-center justify-center">
+                          <Clock size={24} />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Visual Analysis Row */}
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                    {/* Revenue Sources */}
+                    <div className="bg-neutral-50/50 p-6 rounded-2xl border border-neutral-100">
+                      <h4 className="text-[10px] font-black text-neutral-900 uppercase tracking-widest mb-6 flex items-center gap-2">
+                        <span className="w-1.5 h-4 bg-emerald-500 rounded-full"></span>
+                        Revenue Sources
+                      </h4>
+                      <div className="h-[240px] w-full">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <PieChart>
+                            <Pie
+                              data={[
+                                { name: 'Full Payments', value: revenueMetrics.fullyPaid },
+                                { name: 'Installment Base', value: revenueMetrics.installmentsCollected }
+                              ]}
+                              cx="50%"
+                              cy="50%"
+                              innerRadius={60}
+                              outerRadius={80}
+                              paddingAngle={5}
+                              dataKey="value"
+                            >
+                              <Cell fill="#10b981" />
+                              <Cell fill="#f59e0b" />
+                            </Pie>
+                            <Tooltip 
+                              contentStyle={{ 
+                                borderRadius: '12px', 
+                                border: 'none', 
+                                boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)',
+                                fontSize: '12px',
+                                fontWeight: '900',
+                                textTransform: 'uppercase'
+                              }} 
+                              formatter={(value: number | undefined) => value ? `₱${value.toLocaleString()}` : '₱0'}
+                            />
+                            <Legend verticalAlign="bottom" height={36} iconType="circle" wrapperStyle={{ fontSize: '10px', fontWeight: '900', textTransform: 'uppercase' }} />
+                          </PieChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </div>
+
+                    {/* Branch Revenue Performance */}
+                    <div className="bg-neutral-50/50 p-6 rounded-2xl border border-neutral-100">
+                      <h4 className="text-[10px] font-black text-neutral-900 uppercase tracking-widest mb-6 flex items-center gap-2">
+                        <span className="w-1.5 h-4 bg-neutral-900 rounded-full"></span>
+                        Branch Financial Performance
+                      </h4>
+                      <div className="space-y-4 max-h-[240px] overflow-y-auto pr-2 custom-scrollbar">
+                        {revenueMetrics.branchRevenueData.map((item) => (
+                          <div key={item.name} className="space-y-1.5">
+                            <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-tighter">
+                              <span className="text-neutral-500">{item.name}</span>
+                              <span className="text-neutral-900">₱{item.value.toLocaleString()}</span>
+                            </div>
+                            <div className="h-1.5 w-full bg-neutral-200 rounded-full overflow-hidden">
+                              <motion.div 
+                                initial={{ width: 0 }}
+                                animate={{ width: `${(item.value / revenueMetrics.totalGross) * 100}%` }}
+                                className="h-full bg-neutral-900 rounded-full"
                               />
-                            )}
-                            <div className="min-w-0">
-                              <p className="text-sm font-bold text-neutral-900 truncate">
-                                {art?.title || 'Artwork'}
-                              </p>
-                              <p className="text-[11px] text-neutral-500 truncate">
-                                {sale ? (
-                                  <>
-                                    {sale.clientName} • {new Date(sale.saleDate).toLocaleDateString()}
-                                  </>
-                                ) : (
-                                  <>
-                                    {art?.artist} • {art?.status}
-                                  </>
-                                )}
-                              </p>
                             </div>
                           </div>
-                          <p className="text-sm font-bold text-neutral-700">
-                            ₱{(art?.price || 0).toLocaleString()}
-                          </p>
-                        </div>
-                      ))}
+                        ))}
+                      </div>
                     </div>
-                  )}
-                </>
+                  </div>
+
+                  {/* Installment Analysis Deep-Dive */}
+                  <div className="bg-white p-8 rounded-2xl shadow-xl relative overflow-hidden border border-neutral-200">
+                    <div className="absolute top-0 right-0 w-96 h-96 bg-emerald-500/5 rounded-full -mr-32 -mt-32 blur-[120px] pointer-events-none"></div>
+                    
+                    <div className="relative z-10">
+                      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-10">
+                        <div>
+                          <h4 className="text-[11px] font-black text-emerald-600 uppercase tracking-[0.3em] mb-2">Payment Plan Tracker</h4>
+                          <p className="text-2xl font-black text-neutral-900">Money Collected & Still Owed</p>
+                        </div>
+                        <div className="flex items-center gap-4">
+                          <div className="text-right">
+                            <p className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest mb-1">Active Plans</p>
+                            <p className="text-xl font-black text-neutral-900">{revenueMetrics.installmentSalesCount}</p>
+                          </div>
+                          <div className="w-12 h-12 bg-neutral-900 text-white rounded-xl flex items-center justify-center shadow-lg">
+                            <Activity size={20} className="text-emerald-400" />
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                        <div className="space-y-6">
+                          <div>
+                            <p className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest mb-3">Cash Collected</p>
+                            <div className="flex items-end gap-2 mb-2">
+                              <p className="text-3xl font-black text-neutral-900">₱{revenueMetrics.installmentsCollected.toLocaleString()}</p>
+                              <p className="text-xs font-bold text-emerald-600 mb-1.5 uppercase">Received</p>
+                            </div>
+                            <div className="w-full h-1.5 bg-neutral-100 rounded-full overflow-hidden">
+                              <motion.div 
+                                initial={{ width: 0 }}
+                                animate={{ width: `${(revenueMetrics.installmentsCollected / (revenueMetrics.totalInstallmentBaseValue || 1)) * 100}%` }}
+                                className="h-full bg-emerald-500"
+                              />
+                            </div>
+                          </div>
+                          <div className="grid grid-cols-2 gap-4 pt-4 border-t border-neutral-100">
+                             <div>
+                               <p className="text-[9px] font-bold text-neutral-500 uppercase tracking-tighter mb-1">Still Owed</p>
+                               <p className="text-sm font-black text-neutral-900">₱{revenueMetrics.totalPendingInstallments.toLocaleString()}</p>
+                             </div>
+                             <div>
+                               <p className="text-[9px] font-bold text-neutral-500 uppercase tracking-tighter mb-1">Downpayments</p>
+                               <p className="text-sm font-black text-emerald-600">₱{revenueMetrics.totalDownpayments.toLocaleString()}</p>
+                             </div>
+                          </div>
+                        </div>
+
+                        <div className="bg-neutral-50 p-6 rounded-xl border border-neutral-100 flex flex-col justify-between">
+                           <div>
+                             <p className="text-[10px] font-black text-neutral-500 uppercase tracking-widest mb-4">Average Downpayment</p>
+                             <div className="flex items-center gap-3">
+                               <div className="text-4xl font-black text-neutral-900">{revenueMetrics.avgDownpaymentPct.toFixed(1)}%</div>
+                               <div className="flex-1 h-2 bg-neutral-200 rounded-full overflow-hidden">
+                                  <div 
+                                    className="h-full bg-gradient-to-r from-emerald-500 to-emerald-400"
+                                    style={{ width: `${revenueMetrics.avgDownpaymentPct}%` }}
+                                  />
+                               </div>
+                             </div>
+                             <p className="text-[9px] font-medium text-neutral-400 mt-2 italic">Typical upfront payment amount across all active plans.</p>
+                           </div>
+                        </div>
+
+                        <div className="flex flex-col justify-center">
+                           <div className="p-5 bg-neutral-50 rounded-xl border border-neutral-100 space-y-4">
+                              <div className="flex items-center justify-between">
+                                 <span className="text-[10px] font-bold text-neutral-500 uppercase">Total Plan Value</span>
+                                 <span className="text-xs font-black text-neutral-900">₱{revenueMetrics.totalInstallmentBaseValue.toLocaleString()}</span>
+                              </div>
+                              <div className="flex items-center justify-between">
+                                 <span className="text-[10px] font-bold text-neutral-500 uppercase">Collection Progress</span>
+                                 <span className="text-xs font-black text-emerald-600">
+                                    {Math.round((revenueMetrics.installmentsCollected / (revenueMetrics.totalInstallmentBaseValue || 1)) * 100)}%
+                                 </span>
+                              </div>
+                              <div className="flex items-center justify-between pt-2 border-t border-neutral-200">
+                                 <span className="text-[10px] font-black text-neutral-900 uppercase">Share of Total Sales</span>
+                                 <span className="text-xs font-black text-neutral-900">
+                                    {Math.round((revenueMetrics.totalInstallmentBaseValue / (revenueMetrics.totalGross || 1)) * 100)}%
+                                 </span>
+                              </div>
+                           </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Revenue Ledger */}
+                  <div>
+                    <h4 className="text-[10px] font-black text-neutral-900 uppercase tracking-widest mb-4 flex items-center gap-2">
+                      <span className="w-1.5 h-4 bg-emerald-500 rounded-full"></span>
+                      Recent Revenue Stream
+                    </h4>
+                    <div className="space-y-3 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
+                      {revenueDetails.length === 0 ? (
+                        <p className="text-sm text-neutral-400 bg-neutral-50 p-8 rounded-md text-center border border-dashed border-neutral-200">No recorded stream yet.</p>
+                      ) : (
+                        revenueDetails.map(({ sale, art }) => (
+                          <div
+                            key={art?.id || Math.random()}
+                            className="flex items-center justify-between p-4 rounded-xl border border-neutral-100 hover:border-neutral-900 bg-white transition-all group"
+                          >
+                            <div className="flex items-center gap-4 min-w-0">
+                              {art && (
+                                <div className="relative">
+                                  <OptimizedImage
+                                    src={art.imageUrl}
+                                    alt={art.title}
+                                    className="w-12 h-12 rounded-lg object-cover grayscale group-hover:grayscale-0 transition-all duration-300"
+                                  />
+                                  {sale?.isDownpayment && (
+                                    <div className="absolute -top-1 -left-1 bg-amber-500 text-white text-[7px] font-black px-1 py-0.5 rounded shadow-sm">
+                                      INSTALL
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                              <div className="min-w-0">
+                                <p className="text-sm font-black text-neutral-900 truncate uppercase tracking-tight">
+                                  {art?.title || 'Artwork'}
+                                </p>
+                                <p className="text-[10px] font-bold text-neutral-500 uppercase tracking-wide">
+                                  {sale?.clientName || 'Client'} • {sale ? new Date(sale.saleDate).toLocaleDateString() : 'N/A'}
+                                </p>
+                              </div>
+                            </div>
+                            <div className="text-right">
+                              <p className="text-sm font-black text-neutral-900">
+                                ₱{(art?.price || 0).toLocaleString()}
+                              </p>
+                              {sale?.isDownpayment && (
+                                <p className="text-[9px] font-black text-emerald-600 uppercase flex items-center gap-1">
+                                  <span>₱{( (sale.status === 'Approved' ? (sale.downpayment || 0) : 0) + (sale.installments || []).filter(i => !i.isPending).reduce((s, i) => s + i.amount, 0) ).toLocaleString()} Recv</span>
+                                  <span className="text-neutral-400 font-bold">
+                                    ({Math.round((( (sale.status === 'Approved' ? (sale.downpayment || 0) : 0) + (sale.installments || []).filter(i => !i.isPending).reduce((s, i) => s + i.amount, 0) ) / (art?.price || 1)) * 100)}%)
+                                  </span>
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                </div>
               )}
 
               {activeStat === 'reserved' && (
-                <>
-                  <p className="text-xs text-neutral-500 mb-2">
-                    Artworks currently reserved.
-                  </p>
-                  {reservedArtworks.length === 0 ? (
-                    <p className="text-sm text-neutral-400">No reserved artworks.</p>
-                  ) : (
-                    <div className="space-y-3">
-                      {reservedArtworks.slice(0, 20).map(art => {
-                        const reservationTarget = parseReservationDetails(art.remarks) || art.reservedForEventName;
+                <div className="space-y-8">
+                  {/* Summary Header */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="bg-amber-900 text-white p-6 rounded-xl border border-amber-800 shadow-xl relative overflow-hidden group">
+                      <div className="relative z-10">
+                        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-amber-400 mb-1">Potential Revenue On Hold</p>
+                        <p className="text-4xl font-black text-white">₱{reservedMetrics.totalValue.toLocaleString()}</p>
+                        <div className="mt-4 pt-4 border-t border-white/10 flex items-center gap-2">
+                          <span className="text-[10px] font-bold text-amber-400 uppercase tracking-widest">Active Holds</span>
+                          <Clock size={12} className="text-amber-400" />
+                        </div>
+                      </div>
+                      <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/10 rounded-full -mr-12 -mt-12 blur-3xl group-hover:bg-amber-500/20 transition-colors"></div>
+                    </div>
 
-                        return (
+                    <div className="grid grid-cols-1 gap-4">
+                      <div className="bg-white p-5 rounded-xl border border-neutral-200 shadow-sm flex items-center justify-between">
+                        <div>
+                          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-neutral-400 mb-1">Reservation Count</p>
+                          <p className="text-3xl font-black text-neutral-900">{reservedMetrics.totalCount}</p>
+                        </div>
+                        <div className="w-12 h-12 bg-amber-50 rounded-lg flex items-center justify-center text-amber-600">
+                          <Sparkles size={24} />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Visual Analysis Row */}
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                    {/* Hold Intents */}
+                    <div className="bg-neutral-50/50 p-6 rounded-2xl border border-neutral-100">
+                      <h4 className="text-[10px] font-black text-neutral-900 uppercase tracking-widest mb-6 flex items-center gap-2">
+                        <span className="w-1.5 h-4 bg-amber-500 rounded-full"></span>
+                        Reservation Intent
+                      </h4>
+                      <div className="h-[240px] w-full">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <PieChart>
+                            <Pie
+                              data={reservedMetrics.intentData}
+                              cx="50%"
+                              cy="50%"
+                              innerRadius={60}
+                              outerRadius={80}
+                              paddingAngle={5}
+                              dataKey="value"
+                            >
+                              {reservedMetrics.intentData.map((entry, index) => (
+                                <Cell 
+                                  key={`cell-${index}`} 
+                                  fill={
+                                    entry.name === 'Auction Block' ? '#ef4444' :
+                                    entry.name === 'Exhibition' ? '#8b5cf6' :
+                                    '#f59e0b'
+                                  } 
+                                />
+                              ))}
+                            </Pie>
+                            <Tooltip 
+                              contentStyle={{ 
+                                borderRadius: '12px', 
+                                border: 'none', 
+                                boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)',
+                                fontSize: '12px',
+                                fontWeight: '900',
+                                textTransform: 'uppercase'
+                              }} 
+                            />
+                            <Legend verticalAlign="bottom" height={36} iconType="circle" wrapperStyle={{ fontSize: '10px', fontWeight: '900', textTransform: 'uppercase' }} />
+                          </PieChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </div>
+
+                    {/* Hold Allocation by Branch */}
+                    <div className="bg-neutral-50/50 p-6 rounded-2xl border border-neutral-100">
+                      <h4 className="text-[10px] font-black text-neutral-900 uppercase tracking-widest mb-6 flex items-center gap-2">
+                        <span className="w-1.5 h-4 bg-neutral-900 rounded-full"></span>
+                        Hold Allocation by Branch
+                      </h4>
+                      <div className="space-y-4 max-h-[240px] overflow-y-auto pr-2 custom-scrollbar">
+                        {reservedMetrics.branchData.map((item) => (
+                          <div key={item.name} className="space-y-1.5">
+                            <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-tighter">
+                              <span className="text-neutral-500">{item.name}</span>
+                              <span className="text-neutral-900">{item.value} Holds</span>
+                            </div>
+                            <div className="h-1.5 w-full bg-neutral-200 rounded-full overflow-hidden">
+                              <motion.div 
+                                initial={{ width: 0 }}
+                                animate={{ width: `${(item.value / reservedMetrics.totalCount) * 100}%` }}
+                                className="h-full bg-amber-500 rounded-full"
+                              />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Active Registry */}
+                  <div>
+                    <h4 className="text-[10px] font-black text-neutral-900 uppercase tracking-widest mb-4 flex items-center gap-2">
+                      <span className="w-1.5 h-4 bg-amber-500 rounded-full"></span>
+                      Active Reservation Registry
+                    </h4>
+                    <div className="space-y-3 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
+                      {reservedArtworks.length === 0 ? (
+                        <p className="text-sm text-neutral-400 bg-neutral-50 p-8 rounded-md text-center border border-dashed border-neutral-200">No reserved artworks found.</p>
+                      ) : (
+                        reservedArtworks.map(art => (
                           <div
                             key={art.id}
-                            className="flex items-center justify-between p-3 rounded-md border border-neutral-100 hover:bg-neutral-50/40 cursor-pointer"
+                            className="flex items-center justify-between p-4 rounded-xl border border-neutral-100 hover:border-amber-900 bg-white transition-all group cursor-pointer"
                             onClick={() => {
                               onSelectArt(art.id);
                               setActiveStat(null);
                             }}
                           >
-                            <div className="flex items-center gap-3 min-w-0">
+                            <div className="flex items-center gap-4 min-w-0">
                               <OptimizedImage
                                 src={art.imageUrl}
                                 alt={art.title}
-                                className="w-10 h-10 rounded-sm object-cover"
+                                className="w-12 h-12 rounded-lg object-cover group-hover:scale-105 transition-transform duration-300"
                               />
                               <div className="min-w-0">
-                                <p className="text-sm font-bold text-neutral-900 truncate">
-                                  {art.title}
-                                </p>
-                                <p className="text-[11px] text-neutral-500 truncate">
-                                  {art.artist} • {art.currentBranch}
-                                </p>
-                                {reservationTarget && (
-                                  <p className="text-[10px] font-bold text-neutral-700 truncate mt-0.5 flex items-center gap-1">
-                                    <span className="w-1.5 h-1.5 rounded-full bg-neutral-500 animate-pulse"></span>
-                                    Reserved for: {reservationTarget}
-                                  </p>
-                                )}
-                              </div>
+                              <p className="text-sm font-black text-neutral-900 group-hover:text-amber-900 truncate uppercase tracking-tight">
+                                {art.title}
+                              </p>
+                              <p className="text-[10px] font-bold text-neutral-500 uppercase tracking-wide">
+                                {art.artist} • <span className="text-neutral-400">{art.currentBranch}</span>
+                              </p>
                             </div>
-                            <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-orange-100 text-orange-700 text-[10px] font-bold border border-orange-200">
-                              <span className="w-1.5 h-1.5 rounded-full bg-orange-500 mr-1.5 animate-pulse"></span>
-                              {art.status}
-                            </span>
                           </div>
-                        )
-                      })}
-                    </div>
-                  )}
-                </>
-              )}
+                          <div className="text-right">
+                            <p className="text-[10px] font-black text-amber-600 uppercase mb-1">Reserved</p>
+                            <p className="text-sm font-black text-neutral-900">
+                              ₱{(art.price || 0).toLocaleString()}
+                            </p>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
             </div>
           </div>
         </div>

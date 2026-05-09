@@ -285,6 +285,23 @@ const SalesRecordPage: React.FC<SalesRecordPageProps> = ({
   const [mediumFilter, setMediumFilter] = useState<string>('All');
   const [sizeFilter, setSizeFilter] = useState<string>('');
 
+  const getPaymentSummary = (sale: SaleRecord, price: number) => {
+    const downpayment = sale.downpayment || 0;
+    const installmentsTotal = (sale.installments || [])
+      .filter(i => !i.isPending)
+      .reduce((sum, inst) => sum + inst.amount, 0);
+    const totalPaid = downpayment + installmentsTotal;
+    const balance = Math.max(price - totalPaid, 0);
+    const isInstallment = !!sale.isDownpayment || (totalPaid > 0 && totalPaid < price);
+
+    return {
+      totalPaid,
+      balance,
+      isFullyPaid: !isInstallment || balance <= 0,
+      paymentType: isInstallment ? 'Installment' : 'Full Payment'
+    };
+  };
+
   // 1. Synthesize Virtual Sales from Imported/Existing Artworks that are SOLD/DELIVERED but missing in sales log
   const allSales = useMemo(() => {
     const validSales = sales.filter(s => s.status !== SaleStatus.FOR_SALE_APPROVAL);
@@ -605,7 +622,7 @@ const SalesRecordPage: React.FC<SalesRecordPageProps> = ({
 
       <div className="bg-white rounded-md border border-neutral-200 shadow-sm overflow-hidden">
         <div className="hidden md:block overflow-x-auto">
-        <table className="w-full text-left border-collapse min-w-[1000px]">
+        <table className="w-full text-left border-collapse min-w-[1120px]">
           <thead>
             <tr className="bg-neutral-50 border-b border-neutral-100">
               <th className="px-6 py-4">
@@ -617,6 +634,7 @@ const SalesRecordPage: React.FC<SalesRecordPageProps> = ({
               <th className="px-6 py-4 text-[10px] font-black text-neutral-400 uppercase tracking-widest">Agent</th>
               <th className="px-6 py-4 text-[10px] font-black text-neutral-400 uppercase tracking-widest">Date</th>
               <th className="px-6 py-4 text-[10px] font-black text-neutral-400 uppercase tracking-widest text-right">Value</th>
+              <th className="px-6 py-4 text-[10px] font-black text-neutral-400 uppercase tracking-widest">Payment Type</th>
               <th className="px-6 py-4 text-[10px] font-black text-neutral-400 uppercase tracking-widest text-center">Certificate</th>
               <th className="px-6 py-4 text-[10px] font-black text-neutral-400 uppercase tracking-widest">Status</th>
             </tr>
@@ -712,6 +730,23 @@ const SalesRecordPage: React.FC<SalesRecordPageProps> = ({
                             </span>
                           )}
                         </div>
+                      );
+                    })()}
+                  </td>
+                  <td className="px-6 py-4">
+                    {(() => {
+                      const { paymentType } = getPaymentSummary(sale, displayArt?.price || 0);
+                      const isInstallment = paymentType === 'Installment';
+
+                      return (
+                        <span className={`inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-tight ${
+                          isInstallment
+                            ? 'bg-orange-100 text-orange-700 border border-orange-200'
+                            : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                        }`}>
+                          <span className={`w-1.5 h-1.5 rounded-sm ${isInstallment ? 'bg-orange-500' : 'bg-emerald-500'}`}></span>
+                          <span>{paymentType}</span>
+                        </span>
                       );
                     })()}
                   </td>
@@ -835,6 +870,23 @@ const SalesRecordPage: React.FC<SalesRecordPageProps> = ({
                           <span className="font-black text-neutral-900">₱{(displayArt?.price || 0).toLocaleString()}</span>
                         </div>
                       </div>
+
+                      {(() => {
+                        const { paymentType } = getPaymentSummary(sale, displayArt?.price || 0);
+                        const isInstallment = paymentType === 'Installment';
+
+                        return (
+                          <div className="flex justify-end">
+                            <span className={`inline-flex items-center px-2 py-0.5 rounded-md border text-[10px] font-bold uppercase tracking-tight ${
+                              isInstallment
+                                ? 'bg-orange-100 text-orange-700 border-orange-200'
+                                : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                            }`}>
+                              {paymentType}
+                            </span>
+                          </div>
+                        );
+                      })()}
 
                       {(() => {
                         const price = displayArt?.price || 0;

@@ -13,25 +13,85 @@ interface ReservationsViewProps {
 
 const ReservationsView: React.FC<ReservationsViewProps> = ({ artworks, onView, onBulkCancel, onBulkDelete, permissions }) => {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [filterType, setFilterType] = useState<'All' | 'Auction' | 'Exhibition' | 'Client'>('All');
+  const [searchQuery, setSearchQuery] = useState('');
   
+  const parseReservationDetails = (remarks?: string) => {
+    if (!remarks) return { type: 'N/A', target: 'N/A', notes: '' };
+    
+    // Format: Type: Person | Target: Name | Notes: ...
+    const parts = remarks.split('|').map(p => p.trim());
+    const typePart = parts.find(p => p.toLowerCase().startsWith('type:'));
+    const targetPart = parts.find(p => p.toLowerCase().startsWith('target:'));
+    const notesPart = parts.find(p => p.toLowerCase().startsWith('notes:'));
+
+    // Handle bracketed format: [Reserved For Auction: Name]
+    if (remarks.startsWith('[Reserved For ')) {
+      const isAuction = remarks.includes('Reserved For Auction:');
+      const isExhibition = remarks.includes('Reserved For Exhibition:') || remarks.includes('Reserved For Event:');
+      const target = remarks.substring(remarks.indexOf(':') + 1, remarks.length - 1).trim();
+      
+      return {
+        type: isAuction ? 'Auction' : (isExhibition ? 'Exhibition' : 'Event'),
+        target: target || 'N/A',
+        notes: ''
+      };
+    }
+
+    // Fallback for old format "Reserved for Auction: EventName"
+    if (!typePart && remarks.includes('Reserved for Auction:')) {
+        return {
+            type: 'Auction',
+            target: remarks.replace('Reserved for Auction:', '').trim(),
+            notes: ''
+        };
+    }
+
+    const type = typePart ? typePart.substring(5).trim() : 'N/A';
+    // Map Person/Client to Client
+    const displayType = (type.toLowerCase() === 'person' || type.toLowerCase() === 'client') ? 'Client' : type;
+
+    return {
+      type: displayType,
+      target: targetPart ? targetPart.substring(7).trim() : 'N/A',
+      notes: notesPart ? notesPart.substring(6).trim() : ''
+    };
+  };
+
   const reservedArtworks = useMemo(() => {
     return artworks.filter(a => a.status === ArtworkStatus.RESERVED).filter(art => {
+      // View Control Permissions
       const canViewReserved = permissions?.canViewReserved ?? true;
       const canViewAuctioned = permissions?.canViewAuctioned ?? true;
       const canViewExhibit = permissions?.canViewExhibit ?? true;
 
-      const isAuction = (art.remarks || '').includes('[Reserved For Auction:');
-      const isEvent = (art.remarks || '').includes('[Reserved For Event:');
+      const details = parseReservationDetails(art.remarks);
+      const isAuction = details.type === 'Auction';
+      const isEvent = details.type === 'Exhibition' || details.type === 'Event';
 
-      if (isAuction) {
-        return canViewAuctioned;
-      } else if (isEvent) {
-        return canViewExhibit;
-      } else {
-        return canViewReserved;
+      // Permission Check
+      if (isAuction && !canViewAuctioned) return false;
+      if (isEvent && !canViewExhibit) return false;
+      if (!isAuction && !isEvent && !canViewReserved) return false;
+
+      // Type Filter
+      if (filterType !== 'All') {
+        if (filterType === 'Auction' && !isAuction) return false;
+        if (filterType === 'Exhibition' && !isEvent) return false;
+        if (filterType === 'Client' && (isAuction || isEvent)) return false;
       }
+
+      // Search Filter
+      if (searchQuery.trim()) {
+        const query = searchQuery.toLowerCase();
+        const matchesArt = art.title.toLowerCase().includes(query) || art.code.toLowerCase().includes(query);
+        const matchesClient = details.target.toLowerCase().includes(query);
+        if (!matchesArt && !matchesClient) return false;
+      }
+
+      return true;
     });
-  }, [artworks, permissions]);
+  }, [artworks, permissions, filterType, searchQuery]);
 
   const toggleSelect = (id: string, e?: React.MouseEvent) => {
     e?.stopPropagation();
@@ -53,31 +113,6 @@ const ReservationsView: React.FC<ReservationsViewProps> = ({ artworks, onView, o
         onBulkDelete?.(selectedIds);
     }
     setSelectedIds([]);
-  };
-
-  const parseReservationDetails = (remarks?: string) => {
-    if (!remarks) return { type: 'N/A', target: 'N/A', notes: '' };
-    
-    // Format: Type: Person | Target: Name | Notes: ...
-    const parts = remarks.split('|').map(p => p.trim());
-    const typePart = parts.find(p => p.toLowerCase().startsWith('type:'));
-    const targetPart = parts.find(p => p.toLowerCase().startsWith('target:'));
-    const notesPart = parts.find(p => p.toLowerCase().startsWith('notes:'));
-
-    // Fallback for old format "Reserved for Auction: EventName"
-    if (!typePart && remarks.includes('Reserved for Auction:')) {
-        return {
-            type: 'Auction',
-            target: remarks.replace('Reserved for Auction:', '').trim(),
-            notes: ''
-        };
-    }
-
-    return {
-      type: typePart ? typePart.substring(5).trim() : 'N/A',
-      target: targetPart ? targetPart.substring(7).trim() : 'N/A',
-      notes: notesPart ? notesPart.substring(6).trim() : ''
-    };
   };
 
   const getTimeRemaining = (expiryStr?: string) => {
@@ -111,7 +146,7 @@ const ReservationsView: React.FC<ReservationsViewProps> = ({ artworks, onView, o
            </div>
         </div>
         <div className="flex items-center gap-3">
-            <button 
+             <button 
                 onClick={toggleSelectAll} 
                 className="flex items-center gap-2 px-3 py-2 bg-white border border-neutral-200 rounded-xl text-sm font-bold text-neutral-600 hover:bg-neutral-50 transition-colors"
             >
@@ -121,6 +156,34 @@ const ReservationsView: React.FC<ReservationsViewProps> = ({ artworks, onView, o
             <span className="px-4 py-2 bg-neutral-100 text-neutral-900 border border-neutral-200 rounded-xl font-bold text-sm shadow-sm">
             {reservedArtworks.length} Active
             </span>
+        </div>
+      </div>
+
+      <div className="flex flex-col sm:flex-row gap-4 bg-white p-4 rounded-3xl border border-neutral-100 shadow-sm">
+        <div className="flex-1 relative">
+          <Clock className="absolute left-4 top-1/2 -translate-y-1/2 text-neutral-400" size={18} />
+          <input 
+            type="text"
+            placeholder="Search by artwork, code, or client..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full pl-11 pr-4 py-3 bg-neutral-50 border border-neutral-200 rounded-2xl text-sm font-medium focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:bg-white transition-all"
+          />
+        </div>
+        <div className="flex p-1 bg-neutral-100 rounded-2xl">
+          {(['All', 'Auction', 'Exhibition', 'Client'] as const).map(type => (
+            <button
+              key={type}
+              onClick={() => setFilterType(type)}
+              className={`px-6 py-2 rounded-xl text-xs font-black transition-all ${
+                filterType === type 
+                  ? 'bg-white text-neutral-900 shadow-sm' 
+                  : 'text-neutral-500 hover:text-neutral-700'
+              }`}
+            >
+              {type === 'Exhibition' ? 'Exhibits' : (type === 'All' ? 'All' : (type === 'Auction' ? 'Auctions' : 'Clients'))}
+            </button>
+          ))}
         </div>
       </div>
 

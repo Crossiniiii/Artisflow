@@ -110,7 +110,7 @@ const PermissionsSelector: React.FC<PermissionsSelectorProps> = ({
         <p className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest mb-4">Artflow Tabs (Navigation)</p>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {APP_TABS.map((tab) => {
-            const isAccessible = formData.permissions.accessibleTabs
+            const isAccessible = (formData.permissions.accessibleTabs && Array.isArray(formData.permissions.accessibleTabs))
               ? formData.permissions.accessibleTabs.includes(tab.id)
               : getDefaultAccessibleTabs(formData.role).includes(tab.id);
 

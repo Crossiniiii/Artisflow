@@ -1,5 +1,6 @@
 
 import React, { useState, useMemo, useRef, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { createPortal } from 'react-dom';
 import {
   Artwork,
@@ -13,18 +14,25 @@ import {
   ReturnType,
   FramerRecord,
   ReturnRecord,
-  TransferRequest
+  TransferRequest,
+  SaleStatus
 } from '../types';
 import { ICONS } from '../constants';
 import CertificateModal from '../components/CertificateModal';
+import GatePassModal from '../components/GatePassModal';
+import { PhoneInput } from '../components/PhoneInput';
 import { ActionResultModal } from '../components/modals/ActionResultModal';
-import { XCircle, CheckCircle, Bookmark, Edit, Paperclip, ChevronDown, Trash2, RotateCcw, AlertTriangle, AlertCircle, Upload, Tag, Archive, Wrench, Gavel, FileSpreadsheet, Download, FileText, Package, Image as ImageIcon, Clock, Calendar, Home, ArrowRight, Plus, Shield } from 'lucide-react';
+import { XCircle, CheckCircle, Bookmark, Edit, Paperclip, ChevronDown, Trash2, RotateCcw, AlertTriangle, AlertCircle, Upload, Tag, Archive, Wrench, Gavel, FileSpreadsheet, Download, FileText, Package, Image as ImageIcon, Clock, Calendar, Home, ArrowRight, Plus, Shield, ShoppingCart } from 'lucide-react';
 import LoadingOverlay from '../components/LoadingOverlay';
 import { OptimizedImage } from '../components/OptimizedImage';
 import { compressImage } from '../utils/imageUtils';
 import { parseAttachmentString } from '../utils/attachmentUtils';
 import { useMasterViewDerived } from '../hooks/useMasterViewDerived';
 import { useActionProcessing } from '../hooks/useActionProcessing';
+import DeliveryFinalizationModal from '../components/modals/DeliveryFinalizationModal';
+import DeliveryRequestModal from '../components/modals/DeliveryRequestModal';
+
+import { getArtworkClassification } from '../services/inventoryService';
 
 interface MasterViewProps {
   artwork: Artwork;
@@ -50,7 +58,7 @@ interface MasterViewProps {
     isDownpayment?: boolean
   ) => void;
   onCancelSale: (id: string) => void;
-  onDeliver: (id: string, itdr?: string | string[], rsa?: string | string[], orcr?: string | string[]) => void;
+  onDeliver: (id: string, itdr?: string | string[], rsa?: string | string[], orcr?: string | string[], carrier?: string, referenceNumber?: string) => void;
   onEdit: (updates: Partial<Artwork>) => void;
   onBack: () => void;
   // Note: We'd ideally pass events here for the dropdown, assuming it's managed in App state
@@ -72,15 +80,16 @@ interface MasterViewProps {
   onApprovePaymentEdit?: (saleId: string, paymentId: string) => void;
   onDeclinePaymentEdit?: (saleId: string, paymentId: string) => void;
   transferRequests?: TransferRequest[];
-  onAcceptTransfer?: (request: TransferRequest) => void;
   onDeclineTransfer?: (request: TransferRequest) => void;
   onHoldTransfer?: (request: TransferRequest) => void;
+  onUpdateSale?: (id: string, updates: Partial<SaleRecord>) => void;
+  initialModalMode?: 'transfer' | 'sale' | 'reserve' | 'certificate' | 'gatepass' | 'edit' | 'attach-unified' | 'return' | 'framer' | 'framer-return' | 'retouch-return' | 'auction' | 'delivery-attach' | 'none' | 'installment' | 'edit-payment';
 }
 
 const MasterView: React.FC<MasterViewProps> = ({
   artwork, branches, logs, sale, userRole, userBranch, userPermissions, onTransfer, onSale, onCancelSale, onDeliver, onReturn, onReturnToGallery, onSendToFramer, onReturnFromFramer, onEdit, onBack, events = [], onReserve, onReservationComplete, onCancelReservation, onDelete, onAddToAuction, onNavigateTo,
   framerRecords = [], returnRecords = [], onAddInstallment, onEditPayment, onApprovePaymentEdit, onDeclinePaymentEdit,
-  transferRequests = [], onAcceptTransfer, onDeclineTransfer, onHoldTransfer
+  transferRequests = [], onAcceptTransfer, onDeclineTransfer, onHoldTransfer, onUpdateSale, initialModalMode = 'none'
 }) => {
   const pendingTransferRequest = useMemo(() => {
     return transferRequests.find(r => String(r.artworkId) === String(artwork.id) && r.status === 'Pending');
@@ -91,7 +100,7 @@ const MasterView: React.FC<MasterViewProps> = ({
     if (userRole === UserRole.ADMIN) return true;
     return userBranch === pendingTransferRequest.toBranch;
   }, [pendingTransferRequest, userRole, userBranch]);
-  const [modalMode, setModalMode] = useState<'transfer' | 'sale' | 'reserve' | 'certificate' | 'edit' | 'attach-unified' | 'return' | 'framer' | 'framer-return' | 'retouch-return' | 'auction' | 'delivery-attach' | 'none' | 'installment' | 'edit-payment'>('none');
+  const [modalMode, setModalMode] = useState<'transfer' | 'sale' | 'reserve' | 'certificate' | 'gatepass' | 'edit' | 'attach-unified' | 'return' | 'framer' | 'framer-return' | 'retouch-return' | 'auction' | 'delivery-attach' | 'none' | 'installment' | 'edit-payment'>(initialModalMode);
   const [editingPayment, setEditingPayment] = useState<{ id: string; amount: string; date: string; reference: string; type: 'downpayment' | 'installment' } | null>(null);
   const [optimisticArtwork, setOptimisticArtwork] = useState<Artwork | null>(null);
   const [pendingViewState, setPendingViewState] = useState<{ status?: ArtworkStatus; currentBranch?: string } | null>(null);
@@ -142,6 +151,9 @@ const MasterView: React.FC<MasterViewProps> = ({
   const [deliveryRsa, setDeliveryRsa] = useState<string[]>([]);
   const [deliveryOrcr, setDeliveryOrcr] = useState<string[]>([]);
   const [activeDeliveryAttachmentTab, setActiveDeliveryAttachmentTab] = useState<'itdr' | 'rsa' | 'orcr'>('itdr');
+  const [showDeliveryFinalizeModal, setShowDeliveryFinalizeModal] = useState(false);
+  const [showDeliveryRequestModal, setShowDeliveryRequestModal] = useState(false);
+  const [showDeliveryOptionsModal, setShowDeliveryOptionsModal] = useState(false);
   const [activeAttachmentTab, setActiveAttachmentTab] = useState<'itdr' | 'rsa' | 'orcr'>('itdr');
   const [transferBranch, setTransferBranch] = useState<Branch>(branches[0] as Branch);
   const [transferItdr, setTransferItdr] = useState<string[]>([]);
@@ -535,8 +547,8 @@ const MasterView: React.FC<MasterViewProps> = ({
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-8 p-2 sm:p-0">
         <div className="lg:col-span-2 space-y-4 md:space-y-8">
-          <div className="bg-white rounded-md border border-neutral-200 shadow-sm overflow-hidden flex flex-col md:flex-row">
-            <div className="w-full md:w-2/5 relative bg-neutral-100 min-h-[320px] md:min-h-[440px] flex items-center justify-center">
+          <div className="lg:col-span-2 bg-white rounded-md shadow-sm border border-neutral-200 flex flex-col md:flex-row overflow-hidden items-stretch">
+            <div className="w-full md:w-[60%] bg-neutral-100 flex items-center justify-center relative min-h-[500px] border-r border-neutral-100">
               <OptimizedImage
                 src={artwork.imageUrl || undefined}
                 className="w-full h-full object-contain"
@@ -566,7 +578,15 @@ const MasterView: React.FC<MasterViewProps> = ({
                   )}
                 </div>
                 <h1 className="text-2xl sm:text-3xl font-bold text-neutral-900 leading-tight">{artwork.title}</h1>
-                <p className="text-base sm:text-lg text-neutral-500 font-medium">{artwork.artist}, {artwork.year}</p>
+                <p className="text-base sm:text-lg text-neutral-500 font-medium">
+                  {artwork.artist}, {artwork.year}
+                  {(artwork.type || getArtworkClassification(artwork.dimensions)) && (
+                    <>
+                      <span className="mx-2 text-neutral-300">•</span>
+                      {artwork.type || getArtworkClassification(artwork.dimensions)}
+                    </>
+                  )}
+                </p>
                 <div className="mt-3 flex flex-wrap items-center gap-2">
                   <span className="inline-flex items-center px-2.5 py-1 rounded-sm bg-neutral-50 border border-neutral-200 text-[10px] font-black uppercase tracking-widest text-neutral-700">
                     <span className="w-1.5 h-1.5 rounded-sm bg-neutral-500 mr-1.5" />
@@ -819,12 +839,76 @@ const MasterView: React.FC<MasterViewProps> = ({
                 </div>
               )}
 
+              {/* Delivery Information */}
+              {(displayStatus === ArtworkStatus.DELIVERED || (sale && sale.isDelivered)) && (
+                <div className="pt-4 border-t border-neutral-100 mt-4 animate-in fade-in slide-in-from-top-2 duration-500">
+                  <p className="text-[10px] font-black text-neutral-400 uppercase tracking-[0.2em] mb-2">Delivery Information</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-3 gap-x-4 text-[11px] bg-blue-50/40 p-3 rounded-md border border-blue-100/50">
+                    <div className="col-span-2">
+                      <p className="text-[9px] font-black text-blue-500/70 uppercase tracking-widest mb-0.5">Destination</p>
+                      <p className="text-neutral-900 font-black leading-tight">
+                        {sale?.deliveryRequest?.clientAddress || 'Direct Pickup / In-Gallery Collection'}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-[9px] font-black text-blue-500/70 uppercase tracking-widest mb-0.5">Date</p>
+                      <p className="text-neutral-900 font-black">
+                        {sale?.deliveryDate || sale?.deliveryRequest?.deliveryDate ? 
+                          new Date(sale.deliveryDate || sale.deliveryRequest!.deliveryDate).toLocaleDateString('en-US', { 
+                            month: 'short', 
+                            day: 'numeric',
+                            year: 'numeric'
+                          }) : 'Handled at Branch'}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-[9px] font-black text-blue-500/70 uppercase tracking-widest mb-0.5">Team</p>
+                      <p className="text-neutral-900 font-black">
+                        {sale?.deliveryRequest?.extraPersonnelCount !== undefined 
+                          ? (sale.deliveryRequest.extraPersonnelCount > 0 
+                              ? `${sale.deliveryRequest.extraPersonnelCount} Extra Personnel` 
+                              : 'Driver Only') 
+                          : 'Standard Fulfillment'}
+                      </p>
+                    </div>
+                    {sale?.deliveryRequest?.carrier && (
+                      <div>
+                        <p className="text-[9px] font-black text-blue-500/70 uppercase tracking-widest mb-0.5">Carrier</p>
+                        <p className="text-neutral-900 font-black">
+                          {sale.deliveryRequest.carrier}
+                        </p>
+                      </div>
+                    )}
+                    {sale?.deliveryRequest?.referenceNumber && (
+                      <div>
+                        <p className="text-[9px] font-black text-blue-500/70 uppercase tracking-widest mb-0.5">Reference #</p>
+                        <p className="text-neutral-900 font-black">
+                          {sale.deliveryRequest.referenceNumber}
+                        </p>
+                      </div>
+                    )}
+                    {sale?.deliveryRequest?.toolsNeeded && sale.deliveryRequest.toolsNeeded.length > 0 && (
+                      <div className="col-span-2 pt-1">
+                        <p className="text-[9px] font-black text-blue-500/70 uppercase tracking-widest mb-1">Equipment</p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {sale.deliveryRequest.toolsNeeded.map((tool, i) => (
+                            <span key={i} className="px-2 py-0.5 bg-white border border-blue-100 rounded text-[9px] font-black text-blue-600 uppercase">
+                              {tool}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
               {(displayStatus === ArtworkStatus.DELIVERED || displayStatus === ArtworkStatus.CANCELLED) && (
-                <div className="bg-neutral-50 border border-neutral-200 p-4 rounded-sm flex items-start space-x-3">
-                  <div className="text-neutral-400">{ICONS.Shield}</div>
+                <div className="bg-neutral-50 border border-neutral-200 p-3 rounded-md flex items-start space-x-3 mt-4">
+                  <div className="text-neutral-400 mt-0.5">{ICONS.Shield}</div>
                   <div>
-                    <p className="text-xs font-bold text-neutral-700">Record Finalized</p>
-                    <p className="text-[11px] text-neutral-500 mt-0.5">This record is finalized due to its current status. Activity is restricted for audit integrity.</p>
+                    <p className="text-[11px] font-black text-neutral-900 uppercase tracking-tight">Record Finalized</p>
+                    <p className="text-[10px] text-neutral-500 font-bold leading-tight">This record is finalized due to its current status. Activity is restricted for audit integrity.</p>
                   </div>
                 </div>
               )}
@@ -1273,25 +1357,11 @@ const MasterView: React.FC<MasterViewProps> = ({
                     }}
                   />
                   <ActionButton
-                    label="Mark as Delivered"
+                    label="Delivery Options"
                     icon={ICONS.Deliver}
                     variant="indigo"
                     disabled={isStatusTransitioning || displayStatus !== ArtworkStatus.SOLD}
-                    onClick={() => {
-                      // Check if mandatory attachments exist
-                      if (!artwork.itdrImageUrl || !artwork.rsaImageUrl) {
-                        setModalMode('delivery-attach');
-                      } else {
-                        setConfirmModal({
-                          isOpen: true,
-                          title: 'Confirm Delivery',
-                          message: 'Mark this artwork as Delivered? This will finalize the record.',
-                          variant: 'info',
-                          confirmLabel: 'Mark Delivered',
-                          onConfirm: () => wrapAction(() => onDeliver(artwork.id), 'Updating Status...', ArtworkStatus.DELIVERED)
-                        });
-                      }
-                    }}
+                    onClick={() => setShowDeliveryOptionsModal(true)}
                   />
                 </>
               )}
@@ -3145,7 +3215,12 @@ const MasterView: React.FC<MasterViewProps> = ({
 
             <div className="space-y-1">
               <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">Contact Number <span className="text-red-500">*</span></label>
-              <input type="text" placeholder="+63 912 345 6789" required className="w-full px-5 py-3 bg-neutral-50 border-0 rounded-sm text-sm font-bold text-neutral-700 focus:outline-none focus:ring-2 focus:ring-neutral-500/20 focus:bg-neutral-50 hover:bg-neutral-100 transition-all" value={clientContact} onChange={(e) => setClientContact(e.target.value)} />
+              <PhoneInput
+                value={clientContact}
+                onChange={setClientContact}
+                placeholder="912 345 6789"
+                className="h-11"
+              />
             </div>
 
             <div className="space-y-3">
@@ -3226,8 +3301,8 @@ const MasterView: React.FC<MasterViewProps> = ({
                   <Tag size={20} />
                 </div>
                 <div>
-                  <p className="text-xs font-black uppercase tracking-widest text-neutral-900">Mark as Delivered</p>
-                  <p className="text-[10px] font-bold text-neutral-500">Require IT/DR + RSA attachments</p>
+                  <p className="text-xs font-black uppercase tracking-widest text-neutral-900">Handed over to Client</p>
+                  <p className="text-[10px] font-bold text-neutral-500">Already delivered / skip logistics request</p>
                 </div>
               </div>
               <div className={`w-12 h-6 rounded-md transition-all relative ${saleDelivered ? 'bg-neutral-900' : 'bg-neutral-200'}`}>
@@ -3373,6 +3448,7 @@ const MasterView: React.FC<MasterViewProps> = ({
       )}
 
       {modalMode === 'certificate' && sale && <CertificateModal artwork={artwork} sale={sale} onClose={() => setModalMode('none')} />}
+      {modalMode === 'gatepass' && sale && <GatePassModal artwork={artwork} sale={sale} onClose={() => setModalMode('none')} />}
 
 
 
@@ -3501,6 +3577,101 @@ const MasterView: React.FC<MasterViewProps> = ({
         confirmLabel={confirmModal.confirmLabel}
         variant={confirmModal.variant}
       />
+
+      {/* Delivery Finalization Modal */}
+      {showDeliveryFinalizeModal && (
+        <DeliveryFinalizationModal
+          sale={sale ?? { clientName: 'Client' } as any}
+          artwork={artwork}
+          onClose={() => setShowDeliveryFinalizeModal(false)}
+          onConfirm={(itdr, rsa, orcr, carrier, referenceNumber) => {
+            wrapAction(
+              () => onDeliver(artwork.id, itdr, rsa, orcr, carrier, referenceNumber),
+              'Processing Delivery...',
+              ArtworkStatus.DELIVERED
+            );
+            setShowDeliveryFinalizeModal(false);
+          }}
+        />
+      )}
+
+      {/* Delivery Request Modal */}
+      {showDeliveryRequestModal && (
+        <DeliveryRequestModal
+          sale={sale ?? { clientName: 'Client' } as any}
+          artwork={artwork}
+          onClose={() => setShowDeliveryRequestModal(false)}
+          onSubmit={(requestData) => {
+            if (onUpdateSale && sale) {
+              const newRequest: any = {
+                id: `DRQ-${Date.now()}`,
+                saleId: sale.id,
+                clientAddress: requestData.clientAddress!,
+                deliveryDate: requestData.deliveryDate!,
+                extraPersonnelCount: requestData.extraPersonnelCount!,
+                toolsNeeded: requestData.toolsNeeded || [],
+                remarks: requestData.remarks,
+                status: 'Pending',
+                requestedAt: new Date().toISOString(),
+              };
+              onUpdateSale(sale.id, { deliveryRequest: newRequest });
+            }
+            setShowDeliveryRequestModal(false);
+          }}
+        />
+      )}
+
+      {/* Delivery Options Selection Modal */}
+      {showDeliveryOptionsModal && (
+        <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={() => setShowDeliveryOptionsModal(false)}>
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="p-6 border-b border-neutral-100 flex items-center justify-between">
+              <h3 className="text-lg font-black text-neutral-900 uppercase tracking-tight">Delivery Options</h3>
+              <button onClick={() => setShowDeliveryOptionsModal(false)} className="p-2 hover:bg-neutral-100 rounded-full transition-colors">
+                <XCircle size={20} className="text-neutral-400" />
+              </button>
+            </div>
+            <div className="p-6 space-y-3">
+              <button 
+                onClick={() => {
+                  setShowDeliveryOptionsModal(false);
+                  setShowDeliveryRequestModal(true);
+                }}
+                className="w-full p-4 flex items-center gap-4 bg-neutral-50 hover:bg-neutral-100 rounded-xl transition-all group border border-neutral-200"
+              >
+                <div className="w-12 h-12 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform">
+                  <Clock size={24} />
+                </div>
+                <div className="text-left">
+                  <p className="font-black text-neutral-900 uppercase text-xs tracking-widest">Schedule Delivery</p>
+                  <p className="text-xs text-neutral-500 font-medium mt-0.5">Set date, address and installation details</p>
+                </div>
+              </button>
+
+              <button 
+                onClick={() => {
+                  setShowDeliveryOptionsModal(false);
+                  setShowDeliveryFinalizeModal(true);
+                }}
+                className="w-full p-4 flex items-center gap-4 bg-neutral-50 hover:bg-neutral-100 rounded-xl transition-all group border border-neutral-200"
+              >
+                <div className="w-12 h-12 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform">
+                  <Package size={24} />
+                </div>
+                <div className="text-left">
+                  <p className="font-black text-neutral-900 uppercase text-xs tracking-widest">Mark as Delivered</p>
+                  <p className="text-xs text-neutral-500 font-medium mt-0.5">Finalize fulfillment and archive sale</p>
+                </div>
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
     </div>
 
   );

@@ -9,7 +9,7 @@ import { Artwork } from '../types';
 /**
  * Validates if a string is a valid Base64 image
  */
-export const isValidBase64Image = (str: string): boolean => {
+const isValidBase64Image = (str: string): boolean => {
   if (!str || !str.startsWith('data:image')) return false;
   
   // Check basic format - more lenient regex
@@ -113,65 +113,3 @@ export const repairBase64Image = (str: string): string | null => {
   return null;
 };
 
-/**
- * Batch validates and repairs artwork images
- * Returns array of artworks with repaired images
- */
-export const validateAndRepairArtworkImages = async <T extends Artwork>(
-  artworks: T[]
-): Promise<{ repaired: T[]; failed: T[] }> => {
-  const repaired: T[] = [];
-  const failed: T[] = [];
-  
-  for (const artwork of artworks) {
-    if (!artwork.imageUrl) {
-      repaired.push(artwork);
-      continue;
-    }
-    
-    // Check if image is valid
-    const isValid = await validateImageUrl(artwork.imageUrl);
-    
-    if (isValid) {
-      repaired.push(artwork);
-    } else if (artwork.imageUrl.startsWith('data:')) {
-      // Try to repair Base64 images
-      const repairedImage = repairBase64Image(artwork.imageUrl);
-      if (repairedImage) {
-        repaired.push({ ...artwork, imageUrl: repairedImage });
-        console.log(`[ImageValidator] Repaired image for: ${artwork.title || artwork.id}`);
-      } else {
-        console.warn(`[ImageValidator] Failed to repair image for: ${artwork.title || artwork.id}`);
-        failed.push(artwork);
-        // Keep artwork but remove broken image
-        repaired.push({ ...artwork, imageUrl: undefined });
-      }
-    } else {
-      // External URL failed - keep it as-is (might be temporary)
-      repaired.push(artwork);
-    }
-  }
-  
-  return { repaired, failed };
-};
-
-/**
- * Preloads images into browser cache
- */
-export const preloadImages = (urls: string[]): Promise<void[]> => {
-  const validUrls = urls.filter(url => url && (url.startsWith('http') || url.startsWith('data:image')));
-  
-  return Promise.all(
-    validUrls.map(url => 
-      new Promise<void>((resolve) => {
-        const img = new Image();
-        img.onload = () => resolve();
-        img.onerror = () => resolve(); // Continue even if one fails
-        img.src = url;
-        
-        // Timeout after 10 seconds
-        setTimeout(() => resolve(), 10000);
-      })
-    )
-  );
-};

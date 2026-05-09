@@ -21,6 +21,7 @@ export enum ArtworkStatus {
 
 export enum SaleStatus {
   FOR_SALE_APPROVAL = 'For Sale Approval',
+  FOR_PAYMENT_APPROVAL = 'For Payment Approval',
   APPROVED = 'Approved',
   DECLINED = 'Declined'
 }
@@ -36,7 +37,7 @@ export enum EventStatus {
   CLOSED = 'Closed'
 }
 
-export type EventType = 'Exhibition' | 'Auction';
+type EventType = 'Exhibition' | 'Auction';
 
 export interface ExhibitionEvent {
   id: string;
@@ -114,6 +115,7 @@ export interface Artwork {
   sizeFrame?: string;
   soldAtBranch?: string; // Captures the branch where the artwork was located at the time of sale
   deletedAt?: string; // ISO string for soft deletion
+  type?: string; // e.g. "Sculpture", "Painting"
   [key: string]: any;
 }
 
@@ -127,6 +129,8 @@ export interface InstallmentRecord {
   isPending?: boolean; // For overpayments needing approval
   isDeclined?: boolean; // For tracking rejected payment requests
   declinedAt?: string;
+  declineReason?: string;
+  requestedAttachments?: string[]; // e.g. ['receipt', 'reference']
   attachmentUrls?: string[];
   pendingEdit?: {
     amount: number;
@@ -135,8 +139,45 @@ export interface InstallmentRecord {
     requestedAt: string;
     requestedBy: string;
     status: 'Pending' | 'Approved' | 'Declined';
+    declineReason?: string;
+    requestedAttachments?: string[];
     attachmentUrls?: string[];
   };
+}
+
+export enum DeliveryRequestStatus {
+  PENDING = 'Pending',
+  APPROVED = 'Approved',
+  DISPATCHED = 'Dispatched',
+  DECLINED = 'Declined'
+}
+
+export interface DeliveryRequest {
+  id: string;
+  saleId: string;
+  clientAddress: string; // Legacy/Combined address
+  // Structured Address
+  street?: string;
+  barangay?: string;
+  city?: string;
+  province?: string;
+  zipCode?: string;
+  landmark?: string;
+  
+  deliveryDate: string;
+  extraPersonnelCount: number;
+  toolsNeeded: string[];
+  status: DeliveryRequestStatus;
+  requestedAt: string;
+  requestedBy: string;
+  declineReason?: string;
+  approvedAt?: string;
+  approvedBy?: string;
+  dispatchedAt?: string;
+  dispatchedBy?: string;
+  carrier?: string;
+  referenceNumber?: string;
+  remarks?: string;
 }
 
 export interface SaleRecord {
@@ -152,8 +193,9 @@ export interface SaleRecord {
   isDelivered: boolean;
   isCancelled?: boolean;
   status?: SaleStatus;
+  deliveryRequest?: DeliveryRequest; // Detailed logistics request
   declineReason?: string; // Reason for rejection
-  requestedAttachments?: ('itdr' | 'rsa' | 'orcr')[]; // Files requested for re-upload
+  requestedAttachments?: string[]; // Requirements for fix (e.g., 'itdr', 'rsa', 'orcr', 'price', 'branch', 'client_details')
   attachmentUrl?: string; // Legacy generic attachment
   itdrUrl?: string[];     // IT/DR attachments
   rsaUrl?: string[];      // RSA/AR attachments
@@ -168,6 +210,8 @@ export interface SaleRecord {
     requestedAt: string;
     requestedBy: string;
     status: 'Pending' | 'Approved' | 'Declined';
+    declineReason?: string;
+    requestedAttachments?: string[];
   };
   installments?: InstallmentRecord[];
   artworkSnapshot?: {
@@ -254,9 +298,6 @@ export interface ImportRecord {
   failedItems?: ImportFailedItem[];
 }
 
-export interface WebAppSettings {
-  preventDuplicateImports: boolean;
-}
 
 export type ReturnType = 'Artist Reclaim' | 'For Retouch';
 
@@ -278,7 +319,7 @@ export interface ReturnRecord {
 
 // --- Monitoring Summary Types ---
 
-export type TransactionType = 'IN' | 'SOLD' | 'TRANSFER' | 'PULLOUT';
+type TransactionType = 'IN' | 'SOLD' | 'TRANSFER' | 'PULLOUT';
 
 export interface InventoryTransaction {
   id: string;

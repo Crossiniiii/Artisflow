@@ -73,17 +73,26 @@ export const useActionProcessing = ({ itemTitle, itemCode }: UseActionProcessing
   const wrapAction = useCallback(async (
     action: () => Promise<boolean | void> | boolean | void,
     message = 'Processing...',
-    _targetStatus?: unknown
+    optionsOrStatus?: { silent?: boolean; targetStatus?: unknown } | any
   ) => {
     if (!isMounted.current) return;
     const actionId = ++activeActionIdRef.current;
-    setIsProcessing(true);
-    setProcessMessage(message);
+    
+    const options = typeof optionsOrStatus === 'object' && optionsOrStatus !== null && !Array.isArray(optionsOrStatus)
+      ? optionsOrStatus
+      : { targetStatus: optionsOrStatus };
+      
+    if (!options?.silent) {
+      setIsProcessing(true);
+      setProcessMessage(message);
+    }
 
     const timeoutId = setTimeout(() => {
       if (isMounted.current && activeActionIdRef.current === actionId) {
-        setIsProcessing(false);
-        setProcessProgress(0);
+        if (!options?.silent) {
+          setIsProcessing(false);
+          setProcessProgress(0);
+        }
         showActionResult('Action Timed Out', 'Action timed out. Please check your connection or try again.', 'warning');
       }
     }, 15000);
@@ -94,7 +103,7 @@ export const useActionProcessing = ({ itemTitle, itemCode }: UseActionProcessing
         return false;
       }
 
-      if (isMounted.current && activeActionIdRef.current === actionId) {
+      if (isMounted.current && activeActionIdRef.current === actionId && !options?.silent) {
         setProcessProgress(100);
       }
       return true;
@@ -106,7 +115,7 @@ export const useActionProcessing = ({ itemTitle, itemCode }: UseActionProcessing
       return false;
     } finally {
       clearTimeout(timeoutId);
-      if (isMounted.current && activeActionIdRef.current === actionId) {
+      if (isMounted.current && activeActionIdRef.current === actionId && !options?.silent) {
         setIsProcessing(false);
         setProcessProgress(0);
       }

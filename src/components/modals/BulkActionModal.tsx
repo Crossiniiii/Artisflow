@@ -1,8 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { ShoppingBag, AlertCircle, Trash2, Upload, Wrench, RefreshCcw, AlertTriangle, X } from 'lucide-react';
+import { ShoppingBag, AlertCircle, Trash2, Upload, Wrench, RefreshCcw, AlertTriangle, X, Clock } from 'lucide-react';
 import { Modal } from '../Modal';
 import { ExhibitionEvent, Artwork } from '../../types';
 import { compressImage } from '../../utils/imageUtils';
+import { OptimizedTextarea } from '../OptimizedTextarea';
+import { PhoneInput } from '../PhoneInput';
 
 interface BulkActionModalProps {
     bulkActionModal: { type: string } | null;
@@ -17,8 +19,6 @@ interface BulkActionModalProps {
     setBulkClientEmail?: (val: string) => void;
     bulkClientContact?: string;
     setBulkClientContact?: (val: string) => void;
-    bulkActionExtra: boolean;
-    setBulkActionExtra: (val: boolean) => void;
     bulkSaleEventId: string;
     setBulkSaleEventId: (val: string) => void;
 
@@ -41,8 +41,8 @@ interface BulkActionModalProps {
     setReservationTab: (val: 'person' | 'event' | 'auction') => void;
     reservationClient: string;
     setReservationClient: (val: string) => void;
-    reservationEventName: string;
-    setReservationEventName: (val: string) => void;
+    reservationEventId: string;
+    setReservationEventId: (val: string) => void;
     reservationAuctionId: string;
     setReservationAuctionId: (val: string) => void;
     reservationDays: number;
@@ -80,7 +80,7 @@ interface BulkActionModalProps {
 
 export const BulkActionModal: React.FC<BulkActionModalProps> = ({
     bulkActionModal, onClose, selectedIds, artworks,
-    bulkActionValue, setBulkActionValue, bulkActionExtra, setBulkActionExtra, bulkSaleEventId, setBulkSaleEventId,
+    bulkActionValue, setBulkActionValue, bulkSaleEventId, setBulkSaleEventId,
     bulkClientEmail, setBulkClientEmail, bulkClientContact, setBulkClientContact,
     bulkDownpayment, setBulkDownpayment,
     bulkSaleDownpayments, setBulkSaleDownpayments,
@@ -88,7 +88,7 @@ export const BulkActionModal: React.FC<BulkActionModalProps> = ({
     events, branches,
     activeBulkAttachmentTab, setActiveBulkAttachmentTab,
     bulkTempItdr, setBulkTempItdr, bulkTempRsa, setBulkTempRsa, bulkTempOrcr, setBulkTempOrcr,
-    reservationTab, setReservationTab, reservationClient, setReservationClient, reservationEventName, setReservationEventName,
+    reservationTab, setReservationTab, reservationClient, setReservationClient, reservationEventId, setReservationEventId,
     reservationAuctionId, setReservationAuctionId, reservationDays, setReservationDays, reservationHours, setReservationHours,
     reservationMinutes, setReservationMinutes, reservationNotes, setReservationNotes,
     framerDamageDetails, setFramerDamageDetails,
@@ -180,14 +180,14 @@ export const BulkActionModal: React.FC<BulkActionModalProps> = ({
         bulkActionModal.type === 'delete' ? false :
             bulkActionModal.type === 'reserve' ? (
                 reservationTab === 'person' ? !reservationClient :
-                    reservationTab === 'event' ? !reservationEventName :
+                    reservationTab === 'event' ? !reservationEventId :
                         !reservationAuctionId
             ) :
                 bulkActionModal.type === 'sale' ? (
                     !bulkActionValue ||
                     !bulkClientEmail?.trim() ||
-                    !bulkClientContact?.trim() ||
-                    (bulkActionExtra ? toAttachmentArray(bulkTempItdr).length === 0 : false) ||
+                    !bulkClientContact || bulkClientContact.replace(/\D/g, '').length < 7 ||
+                    false ||
                     toAttachmentArray(bulkTempRsa).length === 0
                 ) :
                     bulkActionModal.type === 'transfer' ? (!bulkActionValue || !bulkTempItdr) :
@@ -196,23 +196,23 @@ export const BulkActionModal: React.FC<BulkActionModalProps> = ({
                                 true;
 
     const standardFooter = (
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 sm:gap-0">
-            <p className="text-[10px] font-bold text-[#a19f9d] uppercase tracking-[0.2em] hidden sm:block">
+        <div className="flex flex-col sm:flex-row items-center justify-between w-full">
+            <p className="text-[11px] font-medium text-[#605E5C] uppercase tracking-[0.15em] hidden sm:block">
                 {bulkActionModal.type === 'delete' ? 'System De-Classification' : `Authorized ${bulkActionModal.type} operation`}
             </p>
-            <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+            <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
                 <button
                     onClick={closeAndReset}
-                    className="w-full sm:w-auto px-6 py-2.5 rounded-md font-bold text-[11px] uppercase tracking-widest text-[#605e5c] bg-white border border-[#edebe9] hover:bg-[#f3f2f1] transition-all order-2 sm:order-1"
+                    className="px-6 py-2 rounded-sm font-semibold text-sm text-[#323130] bg-white border border-[#8A8886] hover:bg-[#EDEBE9] transition-all order-2 sm:order-1"
                 >
                     {bulkActionModal.type === 'sale' ? 'Cancel' : 'Back to Workspace'}
                 </button>
                 <button
                     onClick={onSubmit}
                     disabled={isStandardActionDisabled}
-                    className={`w-full sm:w-auto px-8 py-2.5 rounded-md font-bold text-[11px] uppercase tracking-widest shadow-sm transition-all disabled:bg-[#f3f2f1] disabled:text-[#c8c6c4] disabled:border-[#edebe9] disabled:shadow-none disabled:cursor-not-allowed order-1 sm:order-2 ${bulkActionModal.type === 'delete'
-                        ? 'bg-[#a4262c] text-white hover:bg-[#821f24]'
-                        : 'bg-[#0078d4] text-white hover:bg-[#005a9e]'
+                    className={`px-10 py-2 rounded-sm font-semibold text-sm shadow-sm transition-all disabled:bg-[#F3F2F1] disabled:text-[#A19F9D] disabled:border-[#EDEBE9] disabled:shadow-none disabled:cursor-not-allowed order-1 sm:order-2 ${bulkActionModal.type === 'delete'
+                        ? 'bg-[#A4262C] text-white hover:bg-[#821F24]'
+                        : 'bg-[#0078D4] text-white hover:bg-[#005A9E]'
                         }`}
                 >
                     {bulkActionModal.type === 'sale' ? 'Confirm Sale' :
@@ -232,57 +232,59 @@ export const BulkActionModal: React.FC<BulkActionModalProps> = ({
             title={getTitle()}
             maxWidth={bulkActionModal.type === 'framer' || bulkActionModal.type === 'return' ? 'max-w-4xl' : 'max-w-2xl'}
             variant={bulkActionModal.type === 'framer' || bulkActionModal.type === 'return' ? 'sharp' : undefined}
-            footer={bulkActionModal.type === 'sale' ? standardFooter : undefined}
+            footer={standardFooter}
         >
             <div className="space-y-4">
                 {bulkActionModal.type === 'sale' && (
-                    <>
-                        <div className="space-y-1.5">
-                            <label className="block text-[10px] font-bold text-[#605e5c] uppercase tracking-[0.05em] mb-1">
-                                Client Full Name
-                            </label>
-                            <input
-                                autoFocus
-                                type="text"
-                                value={bulkActionValue}
-                                onChange={(e) => setBulkActionValue(e.target.value)}
-                                className="w-full px-3 py-2 bg-white border border-[#edebe9] rounded-md text-sm text-[#323130] placeholder-[#a19f9d] focus:outline-none focus:border-[#0078d4] focus:ring-1 focus:ring-[#0078d4] transition-all"
-                                placeholder="Enter customer name..."
-                            />
-                        </div>
-
-                        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                            <div className="space-y-1.5">
-                                <label className="block text-[10px] font-bold text-[#605e5c] uppercase tracking-[0.05em] mb-1">
-                                    Primary Email <span className="text-[#a4262c]">*</span>
-                                </label>
-                                <input
-                                    type="email"
-                                    value={bulkClientEmail || ''}
-                                    onChange={(e) => setBulkClientEmail?.(e.target.value)}
-                                    className="w-full px-3 py-2 bg-white border border-[#edebe9] rounded-md text-sm text-[#323130] placeholder-[#a19f9d] focus:outline-none focus:border-[#0078d4] focus:ring-1 focus:ring-[#0078d4] transition-all"
-                                    placeholder="client@mail.com"
-                                />
-                            </div>
-
-                            <div className="space-y-1.5">
-                                <label className="block text-[10px] font-bold text-[#605e5c] uppercase tracking-[0.05em] mb-1">
-                                    Mobile Contact <span className="text-[#a4262c]">*</span>
-                                </label>
-                                <input
-                                    type="text"
-                                    value={bulkClientContact || ''}
-                                    onChange={(e) => setBulkClientContact?.(e.target.value)}
-                                    className="w-full px-3 py-2 bg-white border border-[#edebe9] rounded-md text-sm text-[#323130] placeholder-[#a19f9d] focus:outline-none focus:border-[#0078d4] focus:ring-1 focus:ring-[#0078d4] transition-all"
-                                    placeholder="+63 000 000 0000"
-                                />
+                    <div className="space-y-6">
+                        {/* Customer Information Card */}
+                        <div className="bg-white p-6 border border-[#E1E1E1] rounded-sm shadow-sm">
+                            <h4 className="text-xs font-semibold text-[#605E5C] uppercase tracking-widest mb-4 flex items-center gap-2">
+                                <div className="w-1 h-4 bg-[#0078D4]" />
+                                Customer Information
+                            </h4>
+                            <div className="space-y-4">
+                                <div className="space-y-1">
+                                    <label className="text-[11px] font-semibold text-[#605E5C] uppercase tracking-wider">Client Full Name</label>
+                                    <input
+                                        autoFocus
+                                        type="text"
+                                        value={bulkActionValue}
+                                        onChange={(e) => setBulkActionValue(e.target.value)}
+                                        className="w-full px-3 py-2 bg-white border border-[#8A8886] rounded-sm text-sm text-[#323130] focus:outline-none focus:border-[#0078D4] focus:ring-1 focus:ring-[#0078D4] transition-all"
+                                        placeholder="Enter customer name..."
+                                    />
+                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div className="space-y-1">
+                                        <label className="text-[11px] font-semibold text-[#605E5C] uppercase tracking-wider">Primary Email *</label>
+                                        <input
+                                            type="email"
+                                            value={bulkClientEmail || ''}
+                                            onChange={(e) => setBulkClientEmail?.(e.target.value)}
+                                            className="w-full px-3 py-2 bg-white border border-[#8A8886] rounded-sm text-sm text-[#323130] focus:outline-none focus:border-[#0078D4] focus:ring-1 focus:ring-[#0078D4] transition-all"
+                                            placeholder="client@mail.com"
+                                        />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className="text-[11px] font-semibold text-[#605E5C] uppercase tracking-wider">Mobile Contact *</label>
+                                        <PhoneInput
+                                            value={bulkClientContact || ''}
+                                            onChange={(val) => setBulkClientContact?.(val)}
+                                        />
+                                    </div>
+                                </div>
                             </div>
                         </div>
 
-                        <div className="space-y-1.5">
-                            <label className="block text-[10px] font-bold text-[#605e5c] uppercase tracking-[0.05em] mb-1">Event / Exhibition Alignment</label>
+                        {/* Event Alignment Card */}
+                        <div className="bg-white p-6 border border-[#E1E1E1] rounded-sm shadow-sm">
+                            <h4 className="text-xs font-semibold text-[#605E5C] uppercase tracking-widest mb-4 flex items-center gap-2">
+                                <div className="w-1 h-4 bg-[#0078D4]" />
+                                Event Alignment
+                            </h4>
                             <select
-                                className="w-full px-3 py-2 bg-white border border-[#edebe9] rounded-md text-sm text-[#323130] focus:outline-none focus:border-[#0078d4] focus:ring-1 focus:ring-[#0078d4] transition-all cursor-pointer"
+                                className="w-full px-3 py-2 bg-white border border-[#8A8886] rounded-sm text-sm text-[#323130] focus:outline-none focus:border-[#0078D4] focus:ring-1 focus:ring-[#0078D4] cursor-pointer"
                                 value={bulkSaleEventId}
                                 onChange={(e) => setBulkSaleEventId(e.target.value)}
                             >
@@ -299,12 +301,11 @@ export const BulkActionModal: React.FC<BulkActionModalProps> = ({
                             </select>
                         </div>
 
-                        <div className="space-y-3">
-                            <div className="flex items-center justify-between border-b border-[#f3f2f1] pb-2">
-                                <label className="block text-[10px] font-bold text-[#605e5c] uppercase tracking-[0.2em]">
-                                    Financial Reconciliation
-                                </label>
-                                <span className="text-[10px] font-medium text-[#a19f9d] italic">Configure installments per asset</span>
+                        {/* Financial Reconciliation Section */}
+                        <div className="space-y-4">
+                            <div className="flex items-center justify-between px-2">
+                                <h4 className="text-xs font-semibold text-[#605E5C] uppercase tracking-widest">Financial Reconciliation</h4>
+                                <span className="text-[11px] text-[#A19F9D]">Batch size: {selectedIds.length} assets</span>
                             </div>
 
                             <div className="space-y-3">
@@ -312,33 +313,30 @@ export const BulkActionModal: React.FC<BulkActionModalProps> = ({
                                     const installmentEnabled = localInstallmentsEnabled[art.id] ?? bulkSaleInstallmentsEnabled?.[art.id] ?? !!bulkSaleDownpayments?.[art.id];
                                     const downpaymentValue = bulkSaleDownpayments?.[art.id] || '';
                                     const numericDownpayment = parseFloat(downpaymentValue || '0');
-                                    const remainingBalance = Math.max(
-                                        (art.price || 0) - (Number.isNaN(numericDownpayment) ? 0 : numericDownpayment),
-                                        0
-                                    );
+                                    const isFullPayment = !Number.isNaN(numericDownpayment) && numericDownpayment >= (art.price || 0);
+                                    const remainingBalance = Math.max((art.price || 0) - (Number.isNaN(numericDownpayment) ? 0 : numericDownpayment), 0);
 
                                     return (
-                                        <div key={art.id} className="rounded-lg border border-[#edebe9] bg-white p-4 hover:border-[#0078d4]/30 transition-all">
-                                            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                                                <div className="flex items-center gap-3">
-                                                    <div className="w-10 h-10 rounded bg-[#f3f2f1] flex items-center justify-center shrink-0">
-                                                        <ShoppingBag size={16} className="text-[#0078d4]" />
+                                        <div key={art.id} className="bg-white border border-slate-200 rounded-xl overflow-hidden hover:border-blue-400 transition-all shadow-[0_2px_8px_rgba(0,0,0,0.02)]">
+                                            <div className="p-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                                                <div className="flex items-center gap-4">
+                                                    <div className="w-12 h-12 bg-[#F3F3F3] rounded-sm flex items-center justify-center border border-[#E1E1E1]">
+                                                        <ShoppingBag size={20} className="text-[#0078D4]" />
                                                     </div>
-                                                    <div className="min-w-0">
-                                                        <div className="text-[13px] font-bold text-[#323130] line-clamp-1">{art.title}</div>
-                                                        <div className="text-[11px] text-[#605e5c] font-medium">
-                                                            {art.artist} <span className="text-[#c8c6c4] mx-1">•</span> <span className="font-bold">{art.code}</span>
+                                                    <div>
+                                                        <div className="text-sm font-bold text-[#323130]">{art.title}</div>
+                                                        <div className="text-[11px] text-[#605E5C] flex items-center gap-1">
+                                                            {art.artist} <span className="text-[#A19F9D]">•</span> <span className="font-semibold text-[#0078D4]">{art.code}</span>
                                                         </div>
                                                     </div>
                                                 </div>
 
-                                                <div className="flex items-center gap-6">
+                                                <div className="flex items-center gap-8">
                                                     <div className="text-right">
-                                                        <p className="text-[10px] font-bold text-[#a19f9d] uppercase tracking-wider">Asset Value</p>
-                                                        <p className="text-sm font-black text-[#323130]">₱{(art.price || 0).toLocaleString()}</p>
+                                                        <div className="text-[10px] font-semibold text-[#A19F9D] uppercase tracking-wider">Asset Value</div>
+                                                        <div className="text-sm font-bold text-[#323130]">₱{(art.price || 0).toLocaleString()}</div>
                                                     </div>
-
-                                                    <label className="flex items-center gap-2 px-3 py-1.5 bg-[#f3f2f1] hover:bg-[#edebe9] rounded-md cursor-pointer transition-colors border border-[#edebe9]">
+                                                    <label className="flex items-center gap-2 px-4 py-2 bg-slate-50 rounded-lg border border-slate-200 cursor-pointer hover:bg-slate-100 transition-all">
                                                         <input
                                                             type="checkbox"
                                                             checked={installmentEnabled}
@@ -354,21 +352,19 @@ export const BulkActionModal: React.FC<BulkActionModalProps> = ({
                                                                     });
                                                                 }
                                                             }}
-                                                            className="w-4 h-4 rounded border-[#edebe9] text-[#0078d4] focus:ring-[#0078d4] transition-all"
+                                                            className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-0"
                                                         />
-                                                        <span className="text-[10px] font-bold text-[#605e5c] uppercase tracking-wider">Installments</span>
+                                                        <span className="text-[10px] font-bold text-slate-600 uppercase tracking-widest">Installments</span>
                                                     </label>
                                                 </div>
                                             </div>
 
                                             {installmentEnabled && (
-                                                <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-[1fr_200px]">
+                                                <div className="bg-[#F9F9F9] border-t border-[#E1E1E1] p-4 grid grid-cols-1 md:grid-cols-2 gap-4">
                                                     <div className="space-y-1.5">
-                                                        <label className="block text-[10px] font-bold uppercase tracking-[0.14em] text-[#605e5c]">
-                                                            Downpayment Entry
-                                                        </label>
+                                                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Downpayment Entry</label>
                                                         <div className="relative">
-                                                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#a19f9d] text-sm">₱</span>
+                                                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm font-bold">₱</span>
                                                             <input
                                                                 type="text"
                                                                 value={downpaymentValue}
@@ -378,23 +374,16 @@ export const BulkActionModal: React.FC<BulkActionModalProps> = ({
                                                                         setBulkSaleDownpayments?.(prev => ({ ...prev, [art.id]: val }));
                                                                     }
                                                                 }}
-                                                                onBlur={() => {
-                                                                    if (downpaymentValue) {
-                                                                        const num = parseFloat(downpaymentValue);
-                                                                        if (!Number.isNaN(num)) {
-                                                                            setBulkSaleDownpayments?.(prev => ({ ...prev, [art.id]: num.toFixed(2) }));
-                                                                        }
-                                                                    }
-                                                                }}
-                                                                className="w-full rounded-md border border-[#edebe9] bg-white py-1.5 pl-7 pr-3 text-sm text-[#323130] focus:outline-none focus:border-[#0078d4] focus:ring-1 focus:ring-[#0078d4]"
+                                                                className="w-full pl-8 pr-3 py-2 bg-white border border-slate-200 rounded-lg text-sm font-bold text-slate-700 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all"
                                                                 placeholder="0.00"
                                                             />
                                                         </div>
                                                     </div>
-
-                                                    <div className="rounded-md border border-[#deecf9] bg-[#eff6fc] px-4 py-2 mt-auto">
-                                                        <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#0078d4]">Remaining Bal</div>
-                                                        <div className="text-[15px] font-black text-[#323130]">
+                                                    <div className={`p-4 rounded-lg border ${isFullPayment ? 'bg-emerald-50 border-emerald-100' : 'bg-blue-50 border-blue-100'} flex flex-col justify-center`}>
+                                                        <div className={`text-[10px] font-black uppercase tracking-widest mb-1 ${isFullPayment ? 'text-emerald-600' : 'text-blue-600'}`}>
+                                                            {isFullPayment ? 'Status: Full Payment' : 'Remaining Balance'}
+                                                        </div>
+                                                        <div className="text-lg font-black text-slate-800">
                                                             ₱{remainingBalance.toLocaleString()}
                                                         </div>
                                                     </div>
@@ -404,182 +393,150 @@ export const BulkActionModal: React.FC<BulkActionModalProps> = ({
                                     );
                                 })}
                             </div>
+                        </div>
 
-                            {totalPerArtworkDownpayment > 0 && (
-                                <div className="rounded-lg border border-[#dff6dd] bg-[#f0f9f0] px-4 py-3 border-l-4 border-l-[#107c10]">
-                                    <div className="flex items-center justify-between text-[11px] text-[#323130]">
-                                        <span className="font-bold uppercase tracking-[0.14em]">Combined Downpayment</span>
-                                        <span className="font-black text-[#107c10]">₱{totalPerArtworkDownpayment.toLocaleString()}</span>
-                                    </div>
-                                    <div className="mt-1 flex items-center justify-between text-[13px]">
-                                        <span className="text-[#605e5c] font-medium">Batch Net Receivables</span>
-                                        <span className="font-black text-[#323130]">
-                                            ₱{Math.max(totalSelectedValue - totalPerArtworkDownpayment, 0).toLocaleString()}
-                                        </span>
+                        {/* Summary Card */}
+                        {totalPerArtworkDownpayment > 0 && (
+                            <div className="bg-slate-50 border border-slate-200 rounded-xl p-5 shadow-sm">
+                                <div className="flex justify-between items-center mb-3">
+                                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Batch Collection Total</span>
+                                    <span className="text-lg font-black text-emerald-600">₱{totalPerArtworkDownpayment.toLocaleString()}</span>
+                                </div>
+                                <div className="flex justify-between items-center pt-3 border-t border-slate-200">
+                                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Net Project Receivables</span>
+                                    <span className="text-xl font-black text-slate-900">₱{Math.max(totalSelectedValue - totalPerArtworkDownpayment, 0).toLocaleString()}</span>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Attachments Section */}
+                        <div className="bg-white p-8 border border-slate-200 rounded-xl shadow-sm space-y-6">
+                            <h4 className="text-xs font-bold text-slate-900 uppercase tracking-widest flex items-center gap-3">
+                                <div className="w-1.5 h-4 bg-red-600 rounded-full" />
+                                Protocol Attachments
+                            </h4>
+                            
+                            <div className="flex bg-[#F3F3F3] p-1 rounded-sm border border-[#E1E1E1]">
+                                {(['itdr', 'rsa', 'orcr'] as const).map((tab) => (
+                                    <button
+                                        key={tab}
+                                        type="button"
+                                        onClick={() => setActiveBulkAttachmentTab(tab)}
+                                        className={`flex-1 py-1.5 text-[10px] font-bold uppercase tracking-widest rounded-sm transition-all ${activeBulkAttachmentTab === tab ? 'bg-white text-[#323130] shadow-sm border border-[#E1E1E1]' : 'text-[#605E5C] hover:bg-[#EDEBE9]'}`}
+                                    >
+                                        {tab === 'itdr' ? 'IT/DR' : tab === 'rsa' ? 'RSA/AR' : 'OR/CR'}
+                                    </button>
+                                ))}
+                            </div>
+
+                            <div className="space-y-3">
+                                <div className="flex items-center justify-between">
+                                    <label className={`text-[10px] font-bold uppercase tracking-widest ${activeBulkAttachmentTab === 'rsa' ? 'text-[#A4262C]' : 'text-[#605E5C]'}`}>
+                                        {activeBulkAttachmentTab === 'itdr' ? 'IT/DR Proof' : activeBulkAttachmentTab === 'rsa' ? 'RSA/AR Evidence (Mandatory)' : 'OR/CR Evidence'}
+                                    </label>
+                                    <span className="text-[10px] text-[#A19F9D] uppercase tracking-widest">{activeBulkPreviewImages.length} Attached</span>
+                                </div>
+
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <label className="flex flex-col items-center justify-center p-6 border-2 border-dashed border-[#E1E1E1] rounded-sm bg-[#F9F9F9] hover:bg-[#F3F3F3] hover:border-[#0078D4] transition-all cursor-pointer group h-40">
+                                        <input
+                                            key={activeBulkAttachmentTab}
+                                            type="file"
+                                            accept="image/*"
+                                            multiple
+                                            onChange={async (e) => {
+                                                const files = Array.from(e.target.files || []);
+                                                if (files.length === 0) return;
+                                                const dataUrls = await Promise.all(files.map(file => compressImage(file)));
+                                                const mergeAttachments = (existing: string | string[] | null | undefined) =>
+                                                    [...toAttachmentArray(existing), ...dataUrls];
+
+                                                if (activeBulkAttachmentTab === 'itdr') {
+                                                    const next = mergeAttachments(localBulkTempItdr ?? bulkTempItdr);
+                                                    setLocalBulkTempItdr(next);
+                                                    setBulkTempItdr(next);
+                                                } else if (activeBulkAttachmentTab === 'rsa') {
+                                                    const next = mergeAttachments(localBulkTempRsa ?? bulkTempRsa);
+                                                    setLocalBulkTempRsa(next);
+                                                    setBulkTempRsa(next);
+                                                } else {
+                                                    const next = mergeAttachments(localBulkTempOrcr ?? bulkTempOrcr);
+                                                    setLocalBulkTempOrcr(next);
+                                                    setBulkTempOrcr(next);
+                                                }
+                                                e.target.value = '';
+                                            }}
+                                            className="hidden"
+                                        />
+                                        <Upload size={24} className="text-[#A19F9D] mb-2 group-hover:text-[#0078D4] transition-colors" />
+                                        <span className="text-[10px] font-bold text-[#0078D4] uppercase tracking-widest">Upload Files</span>
+                                        <span className="text-[9px] text-[#A19F9D] mt-1">Multi-selection active</span>
+                                    </label>
+
+                                    <div className="h-40 overflow-y-auto custom-scrollbar border border-[#E1E1E1] rounded-sm bg-[#F3F3F3] p-2">
+                                        {activeBulkPreviewImages.length > 0 ? (
+                                            <div className="grid grid-cols-2 gap-2">
+                                                {activeBulkPreviewImages.map((image, index) => (
+                                                    <div key={`${image}-${index}`} className="relative aspect-square rounded-sm overflow-hidden border border-[#E1E1E1] bg-white group shadow-sm">
+                                                        <img src={image} className="w-full h-full object-cover" alt="Preview" />
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                const nextImages = activeBulkPreviewImages.filter((_, imageIndex) => imageIndex !== index);
+                                                                const nextValue = nextImages.length > 0 ? nextImages : null;
+                                                                if (activeBulkAttachmentTab === 'itdr') {
+                                                                    setLocalBulkTempItdr(nextValue);
+                                                                    setBulkTempItdr(nextValue);
+                                                                } else if (activeBulkAttachmentTab === 'rsa') {
+                                                                    setLocalBulkTempRsa(nextValue);
+                                                                    setBulkTempRsa(nextValue);
+                                                                } else {
+                                                                    setLocalBulkTempOrcr(nextValue);
+                                                                    setBulkTempOrcr(nextValue);
+                                                                }
+                                                            }}
+                                                            className="absolute top-1 right-1 p-1 bg-white border border-[#E1E1E1] rounded-sm text-[#A4262C] opacity-0 group-hover:opacity-100 transition-all hover:bg-[#FDE7E9]"
+                                                        >
+                                                            <Trash2 size={12} />
+                                                        </button>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        ) : (
+                                            <div className="w-full h-full flex flex-col items-center justify-center text-[#A19F9D] gap-1 opacity-60">
+                                                <AlertCircle size={16} />
+                                                <span className="text-[9px] font-bold uppercase tracking-widest">No Selection</span>
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
-                            )}
-                        </div>
-
-                        <label className="flex items-start space-x-3 cursor-pointer group p-3 rounded-lg border border-[#edebe9] bg-[#f3f2f1]/30 hover:border-[#0078d4] transition-all">
-                            <div className="mt-0.5">
-                                <input
-                                    type="checkbox"
-                                    checked={bulkActionExtra}
-                                    onChange={(e) => setBulkActionExtra(e.target.checked)}
-                                    className="w-4 h-4 rounded border-[#edebe9] text-[#0078d4] focus:ring-[#0078d4] transition-all"
-                                />
-                            </div>
-                            <div className="flex-1">
-                                <span className="text-[11px] font-bold text-[#323130] uppercase tracking-wide">Automated Logistic Dispatch</span>
-                                <p className="text-[10px] text-[#605e5c] mt-0.5 leading-relaxed">Transition artwork state to 'Delivered' immediately upon declaration completion.</p>
-                            </div>
-                        </label>
-
-                        <div className="space-y-4 pt-4 border-t border-neutral-100">
-                            <label className="block text-xs font-bold text-neutral-500 uppercase mb-2">Attachments (Required for Sale/Delivery)</label>
-                            <div className="flex flex-row p-1 bg-neutral-100 rounded-xl gap-1">
-                                <button
-                                    type="button"
-                                    onClick={() => setActiveBulkAttachmentTab('itdr')}
-                                    className={`flex-1 py-2 text-xs font-black uppercase tracking-widest rounded-xl transition-all ${activeBulkAttachmentTab === 'itdr' ? 'bg-white text-neutral-900 shadow-sm' : 'text-neutral-400'}`}
-                                >
-                                    IT/DR
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => setActiveBulkAttachmentTab('rsa')}
-                                    className={`flex-1 py-2 text-xs font-black uppercase tracking-widest rounded-xl transition-all ${activeBulkAttachmentTab === 'rsa' ? 'bg-white text-neutral-900 shadow-sm' : 'text-neutral-400'}`}
-                                >
-                                    RSA / AR
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => setActiveBulkAttachmentTab('orcr')}
-                                    className={`flex-1 py-2 text-xs font-black uppercase tracking-widest rounded-xl transition-all ${activeBulkAttachmentTab === 'orcr' ? 'bg-white text-neutral-900 shadow-sm' : 'text-neutral-400'}`}
-                                >
-                                    OR / CR
-                                </button>
-                            </div>
-
-                            <div className="space-y-2">
-                                <label className={`text-[10px] font-bold uppercase tracking-widest ${((activeBulkAttachmentTab === 'itdr' && bulkActionExtra) || activeBulkAttachmentTab === 'rsa') ? 'text-[#a4262c]' : 'text-[#605e5c]'}`}>
-                                    {activeBulkAttachmentTab === 'itdr' ? (bulkActionExtra ? 'IT/DR Proof (Mandatory for Delivery)' : 'IT/DR Proof') : activeBulkAttachmentTab === 'rsa' ? 'RSA / AR Evidence (Mandatory)' : 'OR / CR Evidence'}
-                                </label>
-                                <input
-                                    key={activeBulkAttachmentTab}
-                                    type="file"
-                                    accept="image/*"
-                                    multiple
-                                    onChange={async (e) => {
-                                        const files = Array.from(e.target.files || []);
-                                        if (files.length === 0) return;
-                                        const dataUrls = await Promise.all(files.map(file => compressImage(file)));
-                                        const mergeAttachments = (existing: string | string[] | null | undefined) =>
-                                            bulkActionModal.type === 'sale'
-                                                ? [...toAttachmentArray(existing), ...dataUrls]
-                                                : dataUrls[0] || null;
-
-                                        if (activeBulkAttachmentTab === 'itdr') {
-                                            const next = mergeAttachments(localBulkTempItdr ?? bulkTempItdr);
-                                            setLocalBulkTempItdr(next);
-                                            setBulkTempItdr(next);
-                                        } else if (activeBulkAttachmentTab === 'rsa') {
-                                            const next = mergeAttachments(localBulkTempRsa ?? bulkTempRsa);
-                                            setLocalBulkTempRsa(next);
-                                            setBulkTempRsa(next);
-                                        } else {
-                                            const next = mergeAttachments(localBulkTempOrcr ?? bulkTempOrcr);
-                                            setLocalBulkTempOrcr(next);
-                                            setBulkTempOrcr(next);
-                                        }
-                                        e.target.value = '';
-                                    }}
-                                    className="block w-full text-xs text-[#605e5c] file:mr-4 file:py-1.5 file:px-4 file:rounded-md file:border-0 file:text-[10px] file:font-bold file:bg-[#323130] file:text-white hover:file:bg-[#000]"
-                                />
-
-                                {activeBulkPreviewImages.length > 0 ? (
-                                    <div className={`mt-3 ${bulkActionModal.type === 'sale' ? 'grid grid-cols-2 gap-3 max-h-64 overflow-y-auto pr-2 custom-scrollbar' : ''}`}>
-                                        {activeBulkPreviewImages.map((image, index) => (
-                                            <div key={`${image}-${index}`} className="relative group rounded-xl overflow-hidden border border-neutral-200 shadow-sm transition-all hover:shadow-md hover:border-neutral-400">
-                                                <img
-                                                    src={image}
-                                                    alt={`Preview ${index + 1}`}
-                                                    className={`w-full ${bulkActionModal.type === 'sale' ? 'h-32 object-cover' : 'h-52 object-contain'} bg-neutral-50 transition-transform duration-500 group-hover:scale-105`}
-                                                />
-                                                <div className="absolute inset-0 bg-neutral-900/0 group-hover:bg-neutral-900/10 transition-colors pointer-events-none" />
-                                                <button
-                                                    type="button"
-                                                    onClick={() => {
-                                                        const nextImages = activeBulkPreviewImages.filter((_, imageIndex) => imageIndex !== index);
-                                                        const nextValue = bulkActionModal.type === 'sale' ? (nextImages.length > 0 ? nextImages : null) : null;
-                                                        if (activeBulkAttachmentTab === 'itdr') {
-                                                            setLocalBulkTempItdr(nextValue);
-                                                            setBulkTempItdr(nextValue);
-                                                        } else if (activeBulkAttachmentTab === 'rsa') {
-                                                            setLocalBulkTempRsa(nextValue);
-                                                            setBulkTempRsa(nextValue);
-                                                        } else {
-                                                            setLocalBulkTempOrcr(nextValue);
-                                                            setBulkTempOrcr(nextValue);
-                                                        }
-                                                    }}
-                                                    className="absolute top-2 right-2 p-1.5 opacity-0 group-hover:opacity-100 transition-all transform translate-y-2 group-hover:translate-y-0 bg-white/95 text-red-600 rounded-lg shadow-xl hover:bg-white active:scale-95"
-                                                    title="Remove Image"
-                                                >
-                                                    <Trash2 size={14} />
-                                                </button>
-                                            </div>
-                                        ))}
-                                    </div>
-                                ) : (
-                                    <div className="w-full h-48 bg-neutral-50 rounded-xl border-2 border-dashed border-neutral-200 flex flex-col items-center justify-center text-neutral-400 gap-2 transition-colors hover:bg-neutral-100/50 hover:border-neutral-300">
-                                        <Upload size={24} strokeWidth={1.5} />
-                                        <span className="text-[10px] font-black uppercase tracking-[0.2em] opacity-60">No Payload Attached</span>
-                                    </div>
-                                )}
                             </div>
                         </div>
-                    </>
+                    </div>
                 )}
 
                 {bulkActionModal.type === 'reserve' && (
-                    <div className="space-y-4">
-                        <div className="flex flex-row p-1 bg-[#f3f2f1] rounded-md gap-1">
-                            <button
-                                onClick={() => setReservationTab('person')}
-                                className={`flex-1 py-1.5 text-[10px] font-bold uppercase tracking-widest rounded transition-all ${reservationTab === 'person'
-                                    ? 'bg-white text-[#0078d4] shadow-sm border border-[#edebe9]'
-                                    : 'text-[#605e5c] hover:bg-[#edebe9]'
-                                    }`}
-                            >
-                                Person
-                            </button>
-                            <button
-                                onClick={() => setReservationTab('event')}
-                                className={`flex-1 py-1.5 text-[10px] font-bold uppercase tracking-widest rounded transition-all ${reservationTab === 'event'
-                                    ? 'bg-white text-[#0078d4] shadow-sm border border-[#edebe9]'
-                                    : 'text-[#605e5c] hover:bg-[#edebe9]'
-                                    }`}
-                            >
-                                Event
-                            </button>
-                            <button
-                                onClick={() => setReservationTab('auction')}
-                                className={`flex-1 py-1.5 text-[10px] font-bold uppercase tracking-widest rounded transition-all ${reservationTab === 'auction'
-                                    ? 'bg-white text-[#0078d4] shadow-sm border border-[#edebe9]'
-                                    : 'text-[#605e5c] hover:bg-[#edebe9]'
-                                    }`}
-                            >
-                                Auction
-                            </button>
+                    <div className="space-y-6">
+                        <div className="bg-slate-100 p-1 rounded-lg border border-slate-200 flex">
+                            {(['person', 'event', 'auction'] as const).map((tab) => (
+                                <button
+                                    key={tab}
+                                    onClick={() => setReservationTab(tab)}
+                                    className={`flex-1 py-2 text-[10px] font-black uppercase tracking-widest rounded-md transition-all ${reservationTab === tab
+                                        ? 'bg-white text-blue-600 shadow-sm border border-slate-200/50'
+                                        : 'text-slate-500 hover:text-slate-700'
+                                        }`}
+                                >
+                                    {tab === 'person' ? 'Person' : tab === 'event' ? 'Event' : 'Auction'}
+                                </button>
+                            ))}
                         </div>
 
-                        <div className="space-y-4">
+                        <div className="bg-white p-6 border border-[#E1E1E1] rounded-sm shadow-sm space-y-6">
                             {reservationTab === 'person' && (
                                 <>
                                     <div className="space-y-1.5">
-                                        <label className="text-[10px] font-bold text-[#605e5c] uppercase tracking-widest">
+                                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">
                                             Client Identification
                                         </label>
                                         <input
@@ -587,78 +544,51 @@ export const BulkActionModal: React.FC<BulkActionModalProps> = ({
                                             type="text"
                                             value={reservationClient}
                                             onChange={e => setReservationClient(e.target.value)}
-                                            className="w-full px-3 py-2 bg-white border border-[#edebe9] rounded-md text-sm text-[#323130] focus:outline-none focus:border-[#0078d4] focus:ring-1 focus:ring-[#0078d4]"
+                                            className="w-full px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm font-bold text-slate-700 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all"
                                             placeholder="Enter full name..."
                                         />
                                     </div>
 
-                                    <div className="space-y-1.5">
-                                        <label className="text-[10px] font-bold text-[#605e5c] uppercase tracking-widest">
+                                    <div className="space-y-1">
+                                        <label className="text-[11px] font-semibold text-[#605E5C] uppercase tracking-wider">
                                             Expiration Period (Time-to-Live)
                                         </label>
-                                        <div className="grid grid-cols-3 gap-3">
-                                            <div className="space-y-1.5">
-                                                <input
-                                                    type="text"
-                                                    inputMode="numeric"
-                                                    className="w-full px-3 py-2 bg-white border border-[#edebe9] rounded-md text-sm font-bold text-center text-[#323130] focus:outline-none focus:border-[#0078d4] focus:ring-1 focus:ring-[#0078d4]"
-                                                    value={reservationDays}
-                                                    onFocus={(e) => e.target.select()}
-                                                    onChange={e => {
-                                                        const val = e.target.value.replace(/[^0-9]/g, '');
-                                                        setReservationDays(Math.max(0, parseInt(val || '0', 10)));
-                                                    }}
-                                                />
-                                                <p className="text-[9px] text-center font-bold text-[#a19f9d] uppercase tracking-widest">
-                                                    Days
-                                                </p>
-                                            </div>
-                                            <div className="space-y-1.5">
-                                                <input
-                                                    type="text"
-                                                    inputMode="numeric"
-                                                    className="w-full px-3 py-2 bg-white border border-[#edebe9] rounded-md text-sm font-bold text-center text-[#323130] focus:outline-none focus:border-[#0078d4] focus:ring-1 focus:ring-[#0078d4]"
-                                                    value={reservationHours}
-                                                    onFocus={(e) => e.target.select()}
-                                                    onChange={e => {
-                                                        const val = e.target.value.replace(/[^0-9]/g, '');
-                                                        setReservationHours(Math.max(0, parseInt(val || '0', 10)));
-                                                    }}
-                                                />
-                                                <p className="text-[9px] text-center font-bold text-[#a19f9d] uppercase tracking-widest">
-                                                    Hours
-                                                </p>
-                                            </div>
-                                            <div className="space-y-1.5">
-                                                <input
-                                                    type="text"
-                                                    inputMode="numeric"
-                                                    className="w-full px-3 py-2 bg-white border border-[#edebe9] rounded-md text-sm font-bold text-center text-[#323130] focus:outline-none focus:border-[#0078d4] focus:ring-1 focus:ring-[#0078d4]"
-                                                    value={reservationMinutes}
-                                                    onFocus={(e) => e.target.select()}
-                                                    onChange={e => {
-                                                        const val = e.target.value.replace(/[^0-9]/g, '');
-                                                        setReservationMinutes(Math.max(0, parseInt(val || '0', 10)));
-                                                    }}
-                                                />
-                                                <p className="text-[9px] text-center font-bold text-[#a19f9d] uppercase tracking-widest">
-                                                    Minutes
-                                                </p>
-                                            </div>
+                                        <div className="grid grid-cols-3 gap-4">
+                                            {(['Days', 'Hours', 'Minutes'] as const).map((unit) => (
+                                                <div key={unit} className="space-y-1">
+                                                    <input
+                                                        type="text"
+                                                        inputMode="numeric"
+                                                        className="w-full px-3 py-2 bg-white border border-[#8A8886] rounded-sm text-sm font-bold text-center text-[#323130] focus:border-[#0078D4] focus:ring-1 focus:ring-[#0078D4] outline-none"
+                                                        value={unit === 'Days' ? reservationDays : unit === 'Hours' ? reservationHours : reservationMinutes}
+                                                        onFocus={(e) => e.target.select()}
+                                                        onChange={e => {
+                                                            const val = e.target.value.replace(/[^0-9]/g, '');
+                                                            const num = Math.max(0, parseInt(val || '0', 10));
+                                                            if (unit === 'Days') setReservationDays(num);
+                                                            else if (unit === 'Hours') setReservationHours(num);
+                                                            else setReservationMinutes(num);
+                                                        }}
+                                                    />
+                                                    <p className="text-[10px] text-center font-semibold text-[#A19F9D] uppercase tracking-widest">
+                                                        {unit}
+                                                    </p>
+                                                </div>
+                                            ))}
                                         </div>
                                     </div>
                                 </>
                             )}
 
                             {reservationTab === 'event' && (
-                                <div className="space-y-1.5">
-                                    <label className="text-[10px] font-bold text-[#605e5c] uppercase tracking-widest">
+                                <div className="space-y-1">
+                                    <label className="text-[11px] font-semibold text-[#605E5C] uppercase tracking-wider">
                                         Select Allocated Event
                                     </label>
                                     <select
-                                        className="w-full px-3 py-2 bg-white border border-[#edebe9] rounded-md text-sm text-[#323130] focus:outline-none focus:border-[#0078d4] focus:ring-1 focus:ring-[#0078d4] cursor-pointer"
-                                        value={reservationEventName}
-                                        onChange={e => setReservationEventName(e.target.value)}
+                                        className="w-full px-3 py-2 bg-white border border-[#8A8886] rounded-sm text-sm text-[#323130] focus:border-[#0078D4] focus:ring-1 focus:ring-[#0078D4] outline-none cursor-pointer"
+                                        value={reservationEventId}
+                                        onChange={e => setReservationEventId(e.target.value)}
                                     >
                                         <option value="">Align with an exhibition...</option>
                                         {events
@@ -673,7 +603,7 @@ export const BulkActionModal: React.FC<BulkActionModalProps> = ({
                                                 return true;
                                             })
                                             .map(e => (
-                                                <option key={e.id} value={e.title}>
+                                                <option key={e.id} value={e.id}>
                                                     {e.title}
                                                 </option>
                                             ))}
@@ -683,11 +613,11 @@ export const BulkActionModal: React.FC<BulkActionModalProps> = ({
 
                             {reservationTab === 'auction' && (
                                 <div className="space-y-1">
-                                    <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">
+                                    <label className="text-[11px] font-semibold text-[#605E5C] uppercase tracking-wider">
                                         Select Auction Event
                                     </label>
                                     <select
-                                        className="w-full px-3 py-2 bg-white border border-[#edebe9] rounded-md text-sm text-[#323130] focus:outline-none focus:border-[#0078d4] focus:ring-1 focus:ring-[#0078d4] cursor-pointer"
+                                        className="w-full px-3 py-2 bg-white border border-[#8A8886] rounded-sm text-sm text-[#323130] focus:border-[#0078D4] focus:ring-1 focus:ring-[#0078D4] outline-none cursor-pointer"
                                         value={reservationAuctionId}
                                         onChange={e => setReservationAuctionId(e.target.value)}
                                     >
@@ -713,15 +643,15 @@ export const BulkActionModal: React.FC<BulkActionModalProps> = ({
                             )}
 
                             {reservationTab !== 'auction' && (
-                                <div className="space-y-1.5">
-                                    <label className="text-[10px] font-bold text-[#605e5c] uppercase tracking-widest">
+                                <div className="space-y-1">
+                                    <label className="text-[11px] font-semibold text-[#605E5C] uppercase tracking-wider">
                                         Justification & Remarks
                                     </label>
-                                    <textarea
+                                    <OptimizedTextarea
                                         value={reservationNotes}
-                                        onChange={e => setReservationNotes(e.target.value)}
+                                        onChange={(e: any) => setReservationNotes(e.target.value)}
                                         rows={3}
-                                        className="w-full px-3 py-2 bg-white border border-[#edebe9] rounded-md text-sm text-[#323130] focus:outline-none focus:border-[#0078d4] focus:ring-1 focus:ring-[#0078d4] resize-none placeholder-[#a19f9d]"
+                                        className="w-full px-3 py-2 bg-white border border-[#8A8886] rounded-sm text-sm text-[#323130] focus:border-[#0078D4] focus:ring-1 focus:ring-[#0078D4] outline-none resize-none placeholder-[#A19F9D]"
                                         placeholder="Enter allocation specifics..."
                                     />
                                 </div>
@@ -732,234 +662,196 @@ export const BulkActionModal: React.FC<BulkActionModalProps> = ({
 
                 {bulkActionModal.type === 'transfer' && (
                     <div className="space-y-6">
-                        <div className="space-y-1.5">
-                            <label className="block text-[10px] font-bold text-[#605e5c] uppercase tracking-widest mb-1">Destination Branch</label>
-                            <select
-                                value={bulkActionValue}
-                                onChange={(e) => setBulkActionValue(e.target.value)}
-                                className="w-full px-3 py-2 bg-white border border-[#edebe9] rounded-md text-sm text-[#323130] focus:outline-none focus:border-[#0078d4] focus:ring-1 focus:ring-[#0078d4] cursor-pointer"
-                            >
-                                <option value="">Synchronizing Target...</option>
-                                {branches.map(b => <option key={b} value={b}>{b}</option>)}
-                            </select>
+                        <div className="bg-white p-6 border border-[#E1E1E1] rounded-sm shadow-sm space-y-4">
+                            <h4 className="text-xs font-semibold text-[#605E5C] uppercase tracking-widest flex items-center gap-2">
+                                <div className="w-1 h-4 bg-[#0078D4]" />
+                                Destination Logistics
+                            </h4>
+                            <div className="space-y-1">
+                                <label className="text-[11px] font-semibold text-[#605E5C] uppercase tracking-wider">Target Branch</label>
+                                <select
+                                    value={bulkActionValue}
+                                    onChange={(e) => setBulkActionValue(e.target.value)}
+                                    className="w-full px-3 py-2 bg-white border border-[#8A8886] rounded-sm text-sm text-[#323130] focus:border-[#0078D4] focus:ring-1 focus:ring-[#0078D4] outline-none cursor-pointer"
+                                >
+                                    <option value="">Synchronizing Target...</option>
+                                    {branches.map(b => <option key={b} value={b}>{b}</option>)}
+                                </select>
+                            </div>
                         </div>
 
-                        <div className="space-y-4 pt-4 border-t border-neutral-100">
-                            <label className="block text-xs font-bold text-neutral-500 uppercase mb-2">Attachments (Required for Transfer)</label>
-                            <div className="flex p-1 bg-neutral-100 rounded-xl">
-                                <button
-                                    type="button"
-                                    onClick={() => setActiveBulkAttachmentTab('itdr')}
-                                    className={`flex-1 py-2 text-xs font-black uppercase tracking-widest rounded-xl transition-all ${activeBulkAttachmentTab === 'itdr' ? 'bg-white text-neutral-900 shadow-sm' : 'text-neutral-400'}`}
-                                >
-                                    IT/DR
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => setActiveBulkAttachmentTab('rsa')}
-                                    className={`flex-1 py-2 text-xs font-black uppercase tracking-widest rounded-xl transition-all ${activeBulkAttachmentTab === 'rsa' ? 'bg-white text-neutral-900 shadow-sm' : 'text-neutral-400'}`}
-                                >
-                                    RSA / AR
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => setActiveBulkAttachmentTab('orcr')}
-                                    className={`flex-1 py-2 text-xs font-black uppercase tracking-widest rounded-xl transition-all ${activeBulkAttachmentTab === 'orcr' ? 'bg-white text-neutral-900 shadow-sm' : 'text-neutral-400'}`}
-                                >
-                                    OR / CR
-                                </button>
+                        <div className="bg-white p-6 border border-[#E1E1E1] rounded-sm shadow-sm space-y-4">
+                            <h4 className="text-xs font-semibold text-[#605E5C] uppercase tracking-widest flex items-center gap-2">
+                                <div className="w-1 h-4 bg-[#A4262C]" />
+                                Protocol Evidence (Mandatory)
+                            </h4>
+                            
+                            <div className="flex bg-[#F3F3F3] p-1 rounded-sm border border-[#E1E1E1]">
+                                {(['itdr', 'rsa', 'orcr'] as const).map((tab) => (
+                                    <button
+                                        key={tab}
+                                        type="button"
+                                        onClick={() => setActiveBulkAttachmentTab(tab)}
+                                        className={`flex-1 py-1.5 text-[10px] font-bold uppercase tracking-widest rounded-sm transition-all ${activeBulkAttachmentTab === tab ? 'bg-white text-[#323130] shadow-sm border border-[#E1E1E1]' : 'text-[#605E5C] hover:bg-[#EDEBE9]'}`}
+                                    >
+                                        {tab === 'itdr' ? 'IT/DR' : tab === 'rsa' ? 'RSA/AR' : 'OR/CR'}
+                                    </button>
+                                ))}
                             </div>
 
-                            <div className="space-y-2">
-                                <label className={`text-[10px] font-bold uppercase tracking-widest ${activeBulkAttachmentTab === 'itdr' ? 'text-[#a4262c]' : 'text-[#605e5c]'}`}>
-                                    {activeBulkAttachmentTab === 'itdr' ? 'IT/DR Evidence (Mandatory)' : activeBulkAttachmentTab === 'rsa' ? 'RSA / AR Evidence' : 'OR / CR Evidence'}
-                                </label>
-                                <input
-                                    key={activeBulkAttachmentTab}
-                                    type="file"
-                                    accept="image/*"
-                                    multiple
-                                    onChange={async (e) => {
-                                        const files = Array.from(e.target.files || []);
-                                        if (files.length === 0) return;
-                                        const dataUrls = await Promise.all(files.map(file => compressImage(file)));
-                                        const mergeAttachments = (existing: string | string[] | null | undefined) =>
-                                            [...toAttachmentArray(existing), ...dataUrls];
+                            <div className="space-y-3">
+                                <div className="flex items-center justify-between">
+                                    <label className={`text-[10px] font-bold uppercase tracking-widest ${activeBulkAttachmentTab === 'itdr' ? 'text-[#A4262C]' : 'text-[#605E5C]'}`}>
+                                        {activeBulkAttachmentTab === 'itdr' ? 'IT/DR Evidence (Required)' : activeBulkAttachmentTab === 'rsa' ? 'RSA/AR Evidence' : 'OR/CR Evidence'}
+                                    </label>
+                                    <span className="text-[10px] text-[#A19F9D] uppercase tracking-widest">{activeBulkPreviewImages.length} Attached</span>
+                                </div>
 
-                                        if (activeBulkAttachmentTab === 'itdr') {
-                                            const next = mergeAttachments(localBulkTempItdr ?? bulkTempItdr);
-                                            setLocalBulkTempItdr(next);
-                                            setBulkTempItdr(next);
-                                        } else if (activeBulkAttachmentTab === 'rsa') {
-                                            const next = mergeAttachments(localBulkTempRsa ?? bulkTempRsa);
-                                            setLocalBulkTempRsa(next);
-                                            setBulkTempRsa(next);
-                                        } else {
-                                            const next = mergeAttachments(localBulkTempOrcr ?? bulkTempOrcr);
-                                            setLocalBulkTempOrcr(next);
-                                            setBulkTempOrcr(next);
-                                        }
-                                        e.target.value = '';
-                                    }}
-                                    className="block w-full text-xs text-[#605e5c] file:mr-4 file:py-1.5 file:px-4 file:rounded-md file:border-0 file:text-[10px] file:font-bold file:bg-[#323130] file:text-white hover:file:bg-[#000]"
-                                />
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <label className="flex flex-col items-center justify-center p-6 border-2 border-dashed border-[#E1E1E1] rounded-sm bg-[#F9F9F9] hover:bg-[#F3F3F3] hover:border-[#0078D4] transition-all cursor-pointer group h-40">
+                                        <input
+                                            key={activeBulkAttachmentTab}
+                                            type="file"
+                                            accept="image/*"
+                                            multiple
+                                            onChange={async (e) => {
+                                                const files = Array.from(e.target.files || []);
+                                                if (files.length === 0) return;
+                                                const dataUrls = await Promise.all(files.map(file => compressImage(file)));
+                                                const mergeAttachments = (existing: string | string[] | null | undefined) =>
+                                                    [...toAttachmentArray(existing), ...dataUrls];
 
-                                {activeBulkPreviewImages.length > 0 ? (
-                                    <div className="grid grid-cols-2 gap-2 max-h-56 overflow-y-auto pr-1 mt-2">
-                                        {activeBulkPreviewImages.map((image, index) => (
-                                            <div key={`${image}-${index}`} className="relative group">
-                                                <img
-                                                    src={image}
-                                                    alt={`Preview ${index + 1}`}
-                                                    className="w-full h-28 object-cover bg-[#f3f2f1] rounded-md border border-[#edebe9]"
-                                                />
-                                                <button
-                                                    type="button"
-                                                    onClick={() => {
-                                                        const nextImages = activeBulkPreviewImages.filter((_, imageIndex) => imageIndex !== index);
-                                                        const nextValue = nextImages.length > 0 ? nextImages : null;
-                                                        if (activeBulkAttachmentTab === 'itdr') {
-                                                            setLocalBulkTempItdr(nextValue);
-                                                            setBulkTempItdr(nextValue);
-                                                        } else if (activeBulkAttachmentTab === 'rsa') {
-                                                            setLocalBulkTempRsa(nextValue);
-                                                            setBulkTempRsa(nextValue);
-                                                        } else {
-                                                            setLocalBulkTempOrcr(nextValue);
-                                                            setBulkTempOrcr(nextValue);
-                                                        }
-                                                    }}
-                                                    className="absolute top-1 right-1 bg-red-500 hover:bg-red-600 text-white rounded-sm shadow-sm opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center p-1"
-                                                    title="Remove"
-                                                >
-                                                    <X size={12} strokeWidth={3} />
-                                                </button>
+                                                if (activeBulkAttachmentTab === 'itdr') {
+                                                    const next = mergeAttachments(localBulkTempItdr ?? bulkTempItdr);
+                                                    setLocalBulkTempItdr(next);
+                                                    setBulkTempItdr(next);
+                                                } else if (activeBulkAttachmentTab === 'rsa') {
+                                                    const next = mergeAttachments(localBulkTempRsa ?? bulkTempRsa);
+                                                    setLocalBulkTempRsa(next);
+                                                    setBulkTempRsa(next);
+                                                } else {
+                                                    const next = mergeAttachments(localBulkTempOrcr ?? bulkTempOrcr);
+                                                    setLocalBulkTempOrcr(next);
+                                                    setBulkTempOrcr(next);
+                                                }
+                                                e.target.value = '';
+                                            }}
+                                            className="hidden"
+                                        />
+                                        <Upload size={24} className="text-[#A19F9D] mb-2 group-hover:text-[#0078D4] transition-colors" />
+                                        <span className="text-[10px] font-bold text-[#0078D4] uppercase tracking-widest">Upload Proof</span>
+                                    </label>
+
+                                    <div className="h-40 overflow-y-auto custom-scrollbar border border-[#E1E1E1] rounded-sm bg-[#F3F3F3] p-2">
+                                        {activeBulkPreviewImages.length > 0 ? (
+                                            <div className="grid grid-cols-2 gap-2">
+                                                {activeBulkPreviewImages.map((image, index) => (
+                                                    <div key={`${image}-${index}`} className="relative aspect-square rounded-sm overflow-hidden border border-[#E1E1E1] bg-white group shadow-sm">
+                                                        <img src={image} className="w-full h-full object-cover" alt="Preview" />
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                const nextImages = activeBulkPreviewImages.filter((_, imageIndex) => imageIndex !== index);
+                                                                const nextValue = nextImages.length > 0 ? nextImages : null;
+                                                                if (activeBulkAttachmentTab === 'itdr') {
+                                                                    setLocalBulkTempItdr(nextValue);
+                                                                    setBulkTempItdr(nextValue);
+                                                                } else if (activeBulkAttachmentTab === 'rsa') {
+                                                                    setLocalBulkTempRsa(nextValue);
+                                                                    setBulkTempRsa(nextValue);
+                                                                } else {
+                                                                    setLocalBulkTempOrcr(nextValue);
+                                                                    setBulkTempOrcr(nextValue);
+                                                                }
+                                                            }}
+                                                            className="absolute top-1 right-1 p-1 bg-white border border-[#E1E1E1] rounded-sm text-[#A4262C] opacity-0 group-hover:opacity-100 transition-all hover:bg-[#FDE7E9]"
+                                                        >
+                                                            <Trash2 size={12} />
+                                                        </button>
+                                                    </div>
+                                                ))}
                                             </div>
-                                        ))}
+                                        ) : (
+                                            <div className="w-full h-full flex flex-col items-center justify-center text-[#A19F9D] gap-1 opacity-60">
+                                                <AlertCircle size={16} />
+                                                <span className="text-[9px] font-bold uppercase tracking-widest">No Selection</span>
+                                            </div>
+                                        )}
                                     </div>
-                                ) : (
-                                    <div className="w-full h-48 bg-[#f3f2f1] rounded-md border border-[#edebe9] flex items-center justify-center text-[#a19f9d] text-xs border-dashed mt-2">
-                                        No payload attached
-                                    </div>
-                                )}
+                                </div>
                             </div>
                         </div>
                     </div>
                 )}
 
                 {bulkActionModal.type === 'framer' && (
-                    <div className="space-y-6 text-sm text-neutral-800">
-                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                            <div className="lg:col-span-2 space-y-6">
-                                <div className="flex p-4 border border-[#fff4ce] bg-[#fffaf0] rounded-md border-l-4 border-l-[#ffb900]">
-                                    <div className="text-[#ffb900] mr-3">
-                                        <AlertTriangle size={20} />
-                                    </div>
-                                    <div>
-                                        <h4 className="font-bold text-[#323130] text-[13px] uppercase tracking-wide">Framing Protocol Authorization</h4>
-                                        <p className="text-[11px] text-[#605e5c] mt-1 leading-relaxed">
-                                            The selected assets will be transition to "For Framing" and routed to the secure framing queue. Entry of specific glass/frame requirements is mandatory for audit compliance.
-                                        </p>
-                                    </div>
-                                </div>
+                    <div className="space-y-6">
+                        <div className="p-5 bg-[#FFFAF0] border border-[#FFB900]/30 rounded-sm flex items-start gap-4 border-l-4 border-l-[#FFB900]">
+                            <AlertTriangle className="text-[#FFB900] shrink-0" size={24} />
+                            <div>
+                                <h4 className="text-sm font-bold text-[#323130] uppercase tracking-wide">Framing Protocol Authorization</h4>
+                                <p className="text-[12px] text-[#605E5C] mt-1 leading-relaxed">
+                                    Assets will transition to "For Framing" and routed to the secure framing queue. Entry of specific glass/frame requirements is mandatory for audit compliance.
+                                </p>
+                            </div>
+                        </div>
 
-                                <div className="border border-[#edebe9] rounded-md overflow-hidden bg-white shadow-sm">
-                                    <div className="p-4">
-                                        <label className="block text-[10px] font-bold text-[#605e5c] uppercase tracking-wider mb-2">
-                                            Job Requirements & Specs *
-                                        </label>
-                                        <textarea
-                                            value={framerDamageDetails}
-                                            onChange={(e) => setFramerDamageDetails(e.target.value)}
-                                            className="w-full text-sm placeholder-[#a19f9d] border border-[#edebe9] rounded-md p-3 focus:outline-none focus:border-[#0078d4] focus:ring-1 focus:ring-[#0078d4] resize-none min-h-[140px] text-[#323130]"
-                                            placeholder="Detail the frame profile, archival glass, and mounting specs..."
-                                        />
-                                    </div>
+                        <div className="grid grid-cols-1 md:grid-cols-[1fr_240px] gap-6">
+                            <div className="space-y-6">
+                                <div className="bg-white p-6 border border-[#E1E1E1] rounded-sm shadow-sm space-y-4">
+                                    <h4 className="text-xs font-semibold text-[#605E5C] uppercase tracking-widest flex items-center gap-2">
+                                        <div className="w-1 h-4 bg-[#0078D4]" />
+                                        Job Requirements & Specs *
+                                    </h4>
+                                    <OptimizedTextarea
+                                        value={framerDamageDetails}
+                                        onChange={(e: any) => setFramerDamageDetails(e.target.value)}
+                                        className="w-full text-sm placeholder-[#A19F9D] border border-[#8A8886] rounded-sm p-4 focus:border-[#0078D4] focus:ring-1 focus:ring-[#0078D4] outline-none resize-none min-h-[160px] text-[#323130]"
+                                        placeholder="Detail the frame profile, archival glass, and mounting specs..."
+                                    />
                                 </div>
                             </div>
 
-                            <div className="lg:col-span-1 border border-[#edebe9] rounded-md p-5 flex flex-col items-center bg-[#f3f2f1]/50 shadow-sm">
-                                <div className="flex items-center justify-center w-12 h-12 bg-white border border-[#edebe9] rounded-md shadow-sm mb-4">
-                                    <Wrench className="text-[#0078d4]" size={24} />
-                                </div>
+                            <div className="space-y-6">
+                                <div className="bg-white p-6 border border-[#E1E1E1] rounded-sm shadow-sm space-y-4">
+                                    <h4 className="text-xs font-semibold text-[#605E5C] uppercase tracking-widest text-center">Reference Proof</h4>
+                                    
+                                    <label className="flex flex-col items-center justify-center p-4 border-2 border-dashed border-[#E1E1E1] rounded-sm bg-[#F9F9F9] hover:bg-[#F3F3F3] hover:border-[#0078D4] transition-all cursor-pointer group">
+                                        <input
+                                            type="file"
+                                            accept="image/*"
+                                            multiple
+                                            className="hidden"
+                                            onChange={async (e) => {
+                                                const files = Array.from(e.target.files || []);
+                                                if (!files.length) return;
+                                                const newUrls = await Promise.all(files.map(f => compressImage(f)));
+                                                const existing = Array.isArray(bulkTempItdr) ? bulkTempItdr : (bulkTempItdr ? [bulkTempItdr] : []);
+                                                setBulkTempItdr([...existing, ...newUrls]);
+                                                e.target.value = '';
+                                            }}
+                                        />
+                                        <Upload size={20} className="text-[#A19F9D] mb-2 group-hover:text-[#0078D4] transition-colors" />
+                                        <span className="text-[10px] font-bold text-[#0078D4] uppercase tracking-widest">Attach</span>
+                                    </label>
 
-                                <p className="text-[10px] font-bold text-[#a19f9d] tracking-[0.2em] uppercase mb-1">
-                                    LOGISTICS GATE
-                                </p>
-                                <h3 className="font-bold text-[#323130] mb-6 text-center text-sm">
-                                    Framer Dispatch
-                                </h3>
-
-                                <div className="w-full mb-6">
-                                    <p className="text-[10px] font-bold text-[#605e5c] uppercase tracking-wider mb-2">
-                                        Reference / Photo Proof
-                                    </p>
-
-                                    <div className="space-y-3">
-                                        <label className="flex items-center justify-center w-full p-4 border border-dashed border-[#edebe9] rounded-md bg-white cursor-pointer hover:border-[#0078d4] hover:bg-[#eff6fc] transition-all group">
-                                            <input
-                                                type="file"
-                                                accept="image/*"
-                                                multiple
-                                                className="hidden"
-                                                onChange={async (e) => {
-                                                    const files = Array.from(e.target.files || []);
-                                                    if (!files.length) return;
-                                                    
-                                                    const newUrls = await Promise.all(files.map(f => compressImage(f)));
-                                                    const existing = Array.isArray(bulkTempItdr) ? bulkTempItdr : (bulkTempItdr ? [bulkTempItdr] : []);
-                                                    setBulkTempItdr([...existing, ...newUrls]);
-                                                    e.target.value = '';
-                                                }}
-                                            />
-                                            <div className="text-center">
-                                                <Upload size={20} className="text-[#a19f9d] mx-auto mb-2 group-hover:text-[#0078d4] transition-colors" />
-                                                <span className="text-[11px] font-bold text-[#0078d4] uppercase tracking-wide">Attach Photos</span>
+                                    <div className="max-h-[200px] overflow-y-auto custom-scrollbar pr-1 space-y-2">
+                                        {(Array.isArray(bulkTempItdr) ? bulkTempItdr : [bulkTempItdr]).filter(Boolean).map((url, i) => (
+                                            <div key={i} className="relative aspect-video border border-[#E1E1E1] rounded-sm overflow-hidden bg-[#F3F3F3] group">
+                                                <img src={url as string} className="w-full h-full object-cover" alt="Proof" />
+                                                <button 
+                                                    onClick={() => {
+                                                        const arr = Array.isArray(bulkTempItdr) ? bulkTempItdr : [bulkTempItdr!];
+                                                        const nextArr = arr.filter((_, idx) => idx !== i);
+                                                        setBulkTempItdr(nextArr.length > 0 ? nextArr : null);
+                                                    }}
+                                                    className="absolute top-1 right-1 p-1 bg-white/90 border border-[#E1E1E1] rounded-sm text-[#A4262C] opacity-0 group-hover:opacity-100 transition-all"
+                                                >
+                                                    <Trash2 size={12} />
+                                                </button>
                                             </div>
-                                        </label>
-
-                                        {bulkTempItdr && (Array.isArray(bulkTempItdr) ? bulkTempItdr : [bulkTempItdr]).length > 0 && (
-                                            <div className="grid grid-cols-2 gap-2 max-h-[160px] overflow-y-auto custom-scrollbar pr-1">
-                                                {(Array.isArray(bulkTempItdr) ? bulkTempItdr : [bulkTempItdr]).map((url, i) => (
-                                                    <div key={i} className="relative group border border-[#edebe9] rounded-sm overflow-hidden bg-white shadow-sm">
-                                                        <div className="h-16 w-full">
-                                                            <img src={url} className="w-full h-full object-cover opacity-90" alt={`Framer Reference ${i + 1}`} />
-                                                        </div>
-                                                        <button 
-                                                          onClick={() => {
-                                                              const arr = Array.isArray(bulkTempItdr) ? bulkTempItdr : [bulkTempItdr!];
-                                                              const nextArr = arr.filter((_, idx) => idx !== i);
-                                                              setBulkTempItdr(nextArr.length > 0 ? nextArr : null);
-                                                          }}
-                                                          className="absolute top-1 right-1 bg-red-500 hover:bg-red-600 text-white rounded-sm shadow-sm opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center p-1"
-                                                          title="Remove photo"
-                                                        >
-                                                            <X size={12} strokeWidth={3} />
-                                                        </button>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        )}
+                                        ))}
                                     </div>
-                                </div>
-
-                                <div className="mt-auto w-full">
-                                    <button
-                                        onClick={onSubmit}
-                                        disabled={!framerDamageDetails.trim()}
-                                        className="w-full py-2.5 bg-amber-600 hover:bg-amber-700 disabled:bg-neutral-100 disabled:text-neutral-400 disabled:border-neutral-200 border border-transparent text-white text-sm font-semibold rounded-sm transition-all shadow-sm flex items-center justify-center gap-2"
-                                    >
-                                        AUTHORIZE DISPATCH
-                                    </button>
-                                    <button
-                                        onClick={() => {
-                                            onClose();
-                                            resetBulkModalState();
-                                        }}
-                                        className="w-full mt-3 py-2 text-sm font-medium text-neutral-500 hover:text-neutral-800 transition-colors"
-                                    >
-                                        Cancel Setup
-                                    </button>
                                 </div>
                             </div>
                         </div>
@@ -1009,9 +901,9 @@ export const BulkActionModal: React.FC<BulkActionModalProps> = ({
                                             <label className="block text-[10px] font-bold text-[#605e5c] uppercase tracking-wider mb-2">
                                                 Reason for Protocol {returnType === 'Artist Reclaim' && '*'}
                                             </label>
-                                            <textarea
+                                            <OptimizedTextarea
                                                 value={returnReason}
-                                                onChange={(e) => setReturnReason(e.target.value)}
+                                                onChange={(e: any) => setReturnReason(e.target.value)}
                                                 className={`w-full text-sm placeholder-[#a19f9d] border border-[#edebe9] rounded-md p-3 focus:outline-none resize-none min-h-[100px] text-[#323130] transition-all ${returnType === 'Artist Reclaim' ? 'focus:border-[#a4262c] focus:ring-1 focus:ring-[#a4262c]' : 'focus:border-[#0078d4] focus:ring-1 focus:ring-[#0078d4]'}`}
                                                 placeholder={returnType === 'Artist Reclaim' ? 'Specify de-classification reasoning...' : 'Detail the retouch requirements...'}
                                             />
@@ -1100,20 +992,9 @@ export const BulkActionModal: React.FC<BulkActionModalProps> = ({
                                     </div>
                                 </div>
 
-                                <div className="mt-auto w-full">
-                                    <button
-                                        onClick={onSubmit}
-                                        disabled={!returnReason.trim() || (returnType === 'Artist Reclaim' && normalizedReturnProofImages.length === 0)}
-                                        className={`w-full py-2.5 disabled:bg-neutral-100 disabled:text-neutral-400 disabled:border-neutral-200 border border-transparent text-white text-sm font-semibold rounded-sm transition-all shadow-sm flex items-center justify-center gap-2 ${returnType === 'Artist Reclaim' ? 'bg-red-600 hover:bg-red-700' : 'bg-[#3B82F6] hover:bg-[#2563EB]'}`}
-                                    >
-                                        {returnType === 'Artist Reclaim' ? 'AUTHORIZE VOID' : 'SCHEDULE RETOUCH'}
-                                    </button>
-                                    <button
-                                        onClick={onClose}
-                                        className="w-full mt-3 py-2 text-sm font-medium text-neutral-500 hover:text-neutral-800 transition-colors"
-                                    >
-                                        Cancel Setup
-                                    </button>
+                                <div className="p-4 bg-[#F3F3F3] border border-[#E1E1E1] rounded-sm flex items-center justify-center gap-2">
+                                    <Clock size={16} className="text-[#0078D4]" />
+                                    <span className="text-[10px] font-bold text-[#605E5C] uppercase tracking-widest">Awaiting Authorization</span>
                                 </div>
                             </div>
                         </div>
@@ -1121,80 +1002,24 @@ export const BulkActionModal: React.FC<BulkActionModalProps> = ({
                 )}
 
                 {bulkActionModal.type === 'delete' && (
-                    <div className="p-4 bg-[#fde7e9]/50 border border-[#fde7e9] text-[#a4262c] rounded-md text-[13px] flex items-start gap-3 border-l-4 border-l-[#a4262c]">
-                        <AlertCircle className="w-5 h-5 flex-shrink-0" />
-                        <div className="space-y-1">
-                            <p className="font-bold uppercase tracking-wide">Critical System Warning</p>
-                            <p className="text-[#605e5c] leading-relaxed">This action is irreversible. The selected assets will be permanently purged from the registry and audit trails will mark this as a manual deletion.</p>
+                    <div className="bg-[#FDE7E9] border-l-4 border-[#A4262C] p-6 rounded-sm border-y border-r border-y-[#A4262C]/20 border-r-[#A4262C]/20">
+                        <div className="flex gap-4">
+                            <AlertCircle className="text-[#A4262C] shrink-0" size={24} />
+                            <div className="space-y-2">
+                                <h4 className="text-sm font-bold text-[#A4262C] uppercase tracking-wide">Irreversible System Purge</h4>
+                                <p className="text-[13px] text-[#323130] leading-relaxed">
+                                    You are about to permanently delete <span className="font-bold">{selectedIds.length}</span> selected assets from the central registry. This action cannot be undone and will be recorded in the audit trail.
+                                </p>
+                                <p className="text-[12px] text-[#605E5C] font-medium italic">
+                                    Please ensure all physical inventory has been reconciled before proceeding.
+                                </p>
+                            </div>
                         </div>
                     </div>
                 )}
 
-                {(bulkActionModal.type === 'framer' || bulkActionModal.type === 'return' || bulkActionModal.type === 'sale') ? (
-                    <div className={`pt-6 pb-2 mt-4 ${bulkActionModal.type === 'framer' || bulkActionModal.type === 'return' || bulkActionModal.type === 'sale' ? 'hidden' : 'flex flex-col sm:flex-row items-stretch sm:items-center justify-center gap-3 sm:gap-6'}`}>
-                        <button
-                            onClick={() => {
-                                onClose();
-                                resetBulkModalState();
-                            }}
-                            className="w-full sm:w-auto px-6 py-3 rounded-xl font-bold text-xs uppercase tracking-widest text-neutral-600 bg-white border border-neutral-200 hover:bg-neutral-50 hover:text-neutral-900 hover:border-neutral-300 transition-all order-2 sm:order-1"
-                        >
-                            Back to Cart
-                        </button>
-                        <button
-                            onClick={onSubmit}
-                            disabled={bulkActionModal.type === 'framer' ? !framerDamageDetails : (!returnReason || !returnProofImage)}
-                            className="w-full sm:w-auto px-8 sm:px-10 py-3 sm:py-4 rounded-full font-bold text-xs uppercase tracking-widest text-white bg-neutral-500 hover:bg-neutral-600 disabled:opacity-50 disabled:cursor-not-allowed shadow-xl shadow-neutral-500/20 transition-all transform hover:-translate-y-1 order-1 sm:order-2"
-                        >
-                            {bulkActionModal.type === 'framer' ? 'Send to Framer' : 'Confirm Return'}
-                        </button>
-                    </div>
-                ) : bulkActionModal.type === 'sale' ? null : (
-                    /* Standard Footer for other actions */
-                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between pt-6 border-t border-[#edebe9] mt-6 gap-4 sm:gap-0">
-                        <p className="text-[10px] font-bold text-[#a19f9d] uppercase tracking-[0.2em] hidden sm:block">
-                            {bulkActionModal.type === 'delete' ? 'System De-Classification' : `Authorized ${bulkActionModal.type} operation`}
-                        </p>
-                        <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
-                            <button
-                                onClick={closeAndReset}
-                                className="w-full sm:w-auto px-6 py-2.5 rounded-md font-bold text-[11px] uppercase tracking-widest text-[#605e5c] bg-white border border-[#edebe9] hover:bg-[#f3f2f1] transition-all order-2 sm:order-1"
-                            >
-                                Back to Workspace
-                            </button>
-                            <button
-                                onClick={onSubmit}
-                                disabled={
-                                    bulkActionModal.type === 'delete' ? false :
-                                        bulkActionModal.type === 'reserve' ? (
-                                            reservationTab === 'person' ? !reservationClient :
-                                                reservationTab === 'event' ? !reservationEventName :
-                                                    !reservationAuctionId
-                                        ) :
-                                            bulkActionModal.type === 'sale' ? (
-                                                !bulkActionValue || (bulkActionExtra ? (!bulkTempItdr || !bulkTempRsa) : !bulkTempRsa)
-                                            ) :
-                                                bulkActionModal.type === 'transfer' ? (!bulkActionValue || !bulkTempItdr) :
-                                                    bulkActionModal.type === 'framer' ? !framerDamageDetails :
-                                                        bulkActionModal.type === 'return' ? (!returnReason || (returnType === 'Artist Reclaim' && normalizedReturnProofImages.length === 0)) :
-                                                            true
-                                }
-                                className={`w-full sm:w-auto px-8 py-2.5 rounded-md font-bold text-[11px] uppercase tracking-widest shadow-sm transition-all disabled:bg-[#f3f2f1] disabled:text-[#c8c6c4] disabled:border-[#edebe9] disabled:shadow-none disabled:cursor-not-allowed order-1 sm:order-2 ${bulkActionModal.type === 'delete'
-                                    ? 'bg-[#a4262c] text-white hover:bg-[#821f24]'
-                                    : 'bg-[#0078d4] text-white hover:bg-[#005a9e]'
-                                    }`}
-                            >
-                                {bulkActionModal.type === 'sale' ? 'Authorize Sale' :
-                                    bulkActionModal.type === 'delete' ? 'Authorize Deletion' :
-                                        bulkActionModal.type === 'reserve' ? (reservationTab === 'auction' ? 'Sync to Auction' : 'Authorize Reservation') :
-                                            bulkActionModal.type === 'framer' ? 'Authorize Dispatch' :
-                                                bulkActionModal.type === 'return' ? (returnType === 'Artist Reclaim' ? 'Authorize Void' : 'Authorize Retouch') :
-                                                    'Complete Action'}
-                            </button>
-                        </div>
-                    </div>
-                )}
+                {/* Footer is now handled by standardFooter via standard modal footer prop */}
             </div>
-        </Modal >
+        </Modal>
     );
 };

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityLog,
   AppNotification,
@@ -13,9 +13,12 @@ import {
   SaleRecord,
   TransferRecord,
   TransferRequest,
-  UserAccount
+  UserAccount,
+  ArtworkStatus
 } from '../types';
 import { IS_DEMO_MODE } from '../constants';
+import { supabase } from '../supabase';
+import { mapToSnakeCase } from '../utils/supabaseUtils';
 import {
   compactArtworkForCache,
   hydrateCachedArtwork,
@@ -63,9 +66,9 @@ export const useDataSync = ({ activeTab, currentUser, selectedArtworkId }: UseDa
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
 
-  const shouldLoadFullArtworks = ['inventory', 'operations', 'master-view', 'galleria', 'analytics', 'sales-history', 'sales-approval', 'snapshots', 'audit-logs', 'import-history', 'framer', 'returned'].includes(activeTab) || !!selectedArtworkId;
-  const shouldLoadFullBusinessData = ['inventory', 'operations', 'master-view', 'galleria', 'analytics', 'sales-history', 'sales-approval', 'snapshots', 'framer', 'returned'].includes(activeTab) || !!selectedArtworkId;
-  const shouldSyncOperationalData = ['operations', 'audit-logs', 'import-history', 'analytics', 'snapshots', 'master-view', 'framer', 'returned'].includes(activeTab);
+  const shouldLoadFullArtworks = ['inventory', 'operations', 'artwork-transfer', 'master-view', 'galleria', 'analytics', 'sales-history', 'approvals', 'requests', 'snapshots', 'audit-logs', 'import-history', 'framer', 'returned', 'deliveries', 'delivery-requests'].includes(activeTab) || !!selectedArtworkId;
+  const shouldLoadFullBusinessData = ['inventory', 'operations', 'artwork-transfer', 'master-view', 'galleria', 'analytics', 'sales-history', 'approvals', 'requests', 'snapshots', 'framer', 'returned', 'deliveries', 'delivery-requests'].includes(activeTab) || !!selectedArtworkId;
+  const shouldSyncOperationalData = ['operations', 'artwork-transfer', 'audit-logs', 'import-history', 'analytics', 'snapshots', 'master-view', 'framer', 'returned', 'deliveries', 'delivery-requests'].includes(activeTab);
   const shouldSyncMessaging = activeTab === 'chat';
 
   const handleSyncError = useCallback((error: any, context: string) => {
@@ -197,7 +200,8 @@ export const useDataSync = ({ activeTab, currentUser, selectedArtworkId }: UseDa
     setImportLogs,
     setReturnRecords,
     setFramerRecords,
-    setTransfers
+    setTransfers,
+    setTransferRequests
   });
 
   useMessagingSync({
@@ -209,25 +213,132 @@ export const useDataSync = ({ activeTab, currentUser, selectedArtworkId }: UseDa
     setMessages
   });
 
+  // Self-healing: repair artworks that are in an event's artworkIds but have wrong status
+  const hasRepairedRef = useRef(false);
+  useEffect(() => {
+    if (hasRepairedRef.current || IS_DEMO_MODE || !currentUser?.id) return;
+    if (artworks.length === 0 || events.length === 0 || isLoadingArtworks || isLoadingEvents) return;
+
+    // Mark as repaired IMMEDIATELY to prevent re-entrant loops if state changes during scan
+    hasRepairedRef.current = true;
+
+    const artworksToRepair: { id: string; eventId: string; eventTitle: string; eventType: string }[] = [];
+
+    for (const event of events) {
+      if (!event.artworkIds || event.artworkIds.length === 0) continue;
+      for (const artId of event.artworkIds) {
+        // Skip if we already tagged this art for repair in this pass
+        if (artworksToRepair.some(r => r.id === artId)) continue;
+
+        const art = artworks.find(a => a.id === artId);
+        if (!art) continue;
+
+        const isPersonReserved = art.status === ArtworkStatus.RESERVED && (art.remarks || '').includes('Type: Person');
+        
+        const needsRepair = 
+          !isPersonReserved && (
+            art.status === ArtworkStatus.AVAILABLE || 
+            (art.status === ArtworkStatus.RESERVED && !art.reservedForEventId)
+          );
+
+        if (needsRepair) {
+          artworksToRepair.push({
+            id: artId,
+            eventId: event.id,
+            eventTitle: event.title,
+            eventType: event.type || 'Exhibition'
+          });
+        }
+      }
+    }
+
+    if (artworksToRepair.length === 0) return;
+
+    console.log(`[DataSync] Auto-repairing ${artworksToRepair.length} artworks with inconsistent event status`);
+
+    // Fix local state
+    setArtworks(prev => prev.map(a => {
+      const repair = artworksToRepair.find(r => r.id === a.id);
+      if (!repair) return a;
+      return {
+        ...a,
+        status: ArtworkStatus.RESERVED,
+        reservedForEventId: repair.eventId,
+        reservedForEventName: repair.eventTitle,
+        remarks: `[Reserved For ${repair.eventType}: ${repair.eventTitle}]`
+      };
+    }));
+    setAllArtworksIncludingDeleted(prev => prev.map(a => {
+      const repair = artworksToRepair.find(r => r.id === a.id);
+      if (!repair) return a;
+      return {
+        ...a,
+        status: ArtworkStatus.RESERVED,
+        reservedForEventId: repair.eventId,
+        reservedForEventName: repair.eventTitle,
+        remarks: `[Reserved For ${repair.eventType}: ${repair.eventTitle}]`
+      };
+    }));
+
+    // Fix Supabase in background
+    const repairIds = artworksToRepair.map(r => r.id);
+    const groupedByEvent = artworksToRepair.reduce((acc, r) => {
+      if (!acc[r.eventId]) acc[r.eventId] = { ids: [], title: r.eventTitle, type: r.eventType };
+      acc[r.eventId].ids.push(r.id);
+      return acc;
+    }, {} as Record<string, { ids: string[]; title: string; type: string }>);
+
+    Object.entries(groupedByEvent).forEach(async ([eventId, group]) => {
+      try {
+        await supabase.from('artworks').update(mapToSnakeCase({
+          status: ArtworkStatus.RESERVED,
+          reservedForEventId: eventId,
+          reservedForEventName: group.title,
+          remarks: `[Reserved For ${group.type}: ${group.title}]`,
+          updatedAt: new Date().toISOString()
+        })).in('id', group.ids);
+        console.log(`[DataSync] Repaired ${group.ids.length} artworks for event "${group.title}"`);
+      } catch (err) {
+        console.error('[DataSync] Repair failed for event', eventId, err);
+      }
+    });
+  }, [artworks, events, isLoadingArtworks, isLoadingEvents, currentUser?.id]);
+
   useEffect(() => {
     if (!IS_DEMO_MODE) return;
-    import('../data').then(data => {
-      setArtworks(data.INITIAL_ARTWORKS);
-      setAccounts(data.INITIAL_ACCOUNTS);
-      setEvents(data.INITIAL_EVENTS);
-      setSales(data.INITIAL_SALES);
-      setLogs(data.INITIAL_LOGS);
-      setIsLoadingArtworks(false);
-      setIsLoadingUsers(false);
-      setIsLoadingEvents(false);
-      setIsLoadingSales(false);
+    // Load demo data if state is empty
+    if (artworks.length === 0) {
+      import('../data').then(data => {
+        setArtworks(data.INITIAL_ARTWORKS);
+        setAccounts(data.INITIAL_ACCOUNTS);
+        setEvents(data.INITIAL_EVENTS);
+        setSales(data.INITIAL_SALES);
+        setLogs(data.INITIAL_LOGS);
+        setIsLoadingArtworks(false);
+        setIsLoadingUsers(false);
+        setIsLoadingEvents(false);
+        setIsLoadingSales(false);
+      });
+    }
+  }, [artworks.length]);
+
+  const hydratedTransferRequests = useMemo(() => {
+    return transferRequests.map(req => {
+      const artwork = artworks.find(a => String(a.id) === String(req.artworkId));
+      if (!artwork) return req;
+      return {
+        ...req,
+        artworkTitle: req.artworkTitle || artwork.title,
+        artworkCode: req.artworkCode || artwork.code,
+        artworkImage: req.artworkImage || artwork.imageUrl
+      };
     });
-  }, []);
+  }, [transferRequests, artworks]);
 
   return {
     artworks, allArtworksIncludingDeleted, sales, branches, branchAddresses, branchCategories, branchLogos,
     exclusiveBranches, syncError, logs, accounts, isLoadingArtworks, isLoadingSales, isLoadingEvents, isLoadingUsers,
-    transferRequests, transfers, events, audits, importLogs, preventDuplicateImports, notifications,
+    transferRequests: hydratedTransferRequests, transfers, events, audits, importLogs, preventDuplicateImports, notifications,
     returnRecords, framerRecords, conversations, messages, setArtworks, setAllArtworksIncludingDeleted, setSales,
     setBranches, setBranchAddresses, setBranchCategories, setBranchLogos, setExclusiveBranches,
     setEvents, setAccounts, setLogs, setSyncError, setAudits, setIsLoadingArtworks, setIsLoadingSales, setIsLoadingEvents,

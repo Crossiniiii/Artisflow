@@ -3,12 +3,12 @@ import { mapToSnakeCase, mapFromSnakeCase } from '../utils/supabaseUtils';
 import {
   Artwork, ArtworkStatus, Branch, SaleRecord,
   ImportRecord, ImportFailedItem, UserRole,
-  FramerRecord, ReturnRecord, SaleStatus
+  FramerRecord, ReturnRecord, SaleStatus, DeliveryRequestStatus
 } from '../types';
 import { IS_DEMO_MODE } from '../constants';
-import { buildNewArtwork } from '../services/inventoryService';
+import { buildNewArtwork, getArtworkClassification } from '../services/inventoryService';
 import { buildMonthlyAudit } from '../services/auditService';
-import { buildBulkSale, applyCancelSale, applySingleSale, applyDelivery } from '../services/salesService';
+import { buildBulkSale, applyCancelSale, applySingleSale, applyDelivery, applyDispatch } from '../services/salesService';
 import { useData } from '../contexts/DataContext';
 import { useAuth } from '../contexts/AuthContext';
 import { useUI } from '../contexts/UIContext';
@@ -39,7 +39,7 @@ export const useArtworkOperations = () => {
 
   const { currentUser } = useAuth();
   const userRole = currentUser?.role ?? UserRole.ADMIN;
-  const { setImportStatus } = useUI();
+  const { setImportStatus, setGatePassSaleId } = useUI();
   const { pushNotification } = useNotifications();
   const { logActivity } = useActivityLogs();
   const currentUserName = currentUser?.name || currentUser?.fullName || 'Admin';
@@ -212,6 +212,11 @@ export const useArtworkOperations = () => {
     });
 
     try {
+      // Recalculate classification if dimensions changed
+      if (updates.dimensions) {
+        updates.type = getArtworkClassification(updates.dimensions);
+      }
+
       // Upload any new base64 image to Storage before saving
       if (updates.imageUrl?.startsWith('data:image/')) {
         updates.imageUrl = await uploadBase64ToStorage(updates.imageUrl, 'images', 'artworks') || updates.imageUrl;
@@ -478,6 +483,7 @@ export const useArtworkOperations = () => {
 
     const agentName = currentUser?.name || 'Unknown';
     const agentId = currentUser?.id;
+    const previousArtworks = [...artworks];
     const { updatedArtworks, newSales } = buildBulkSale(
       artworks,
       ids,
@@ -506,7 +512,15 @@ export const useArtworkOperations = () => {
       return { ...sale, itdrUrl: itdrUpload, rsaUrl: rsaUpload, orCrUrl: orcrUpload };
     }));
 
-    await supabase.from('artworks').update(mapToSnakeCase({ status: ArtworkStatus.FOR_SALE_APPROVAL })).in('id', ids);
+    const { error: artError } = await supabase.from('artworks').update(mapToSnakeCase({ status: ArtworkStatus.FOR_SALE_APPROVAL })).in('id', ids);
+    if (artError) {
+      console.error('Bulk Sale Artwork Update Error:', artError);
+      setArtworks(previousArtworks);
+      setSales(prev => prev.filter(s => !newSales.some(ns => ns.id === s.id)));
+      pushNotification('Bulk Sale Failed', 'Could not update artwork status. Sales not recorded.', 'system');
+      return false;
+    }
+
     const persistedSales = processedNewSales.map(({ agentId: _ignoredAgentId, ...sale }) => ({
       ...sale,
       // Serialize attachment arrays to JSON strings for text columns
@@ -516,7 +530,16 @@ export const useArtworkOperations = () => {
       // Serialize nested snapshot object
       artworkSnapshot: sale.artworkSnapshot ? JSON.stringify(sale.artworkSnapshot) : null
     }));
-    await supabase.from('sales').insert(mapToSnakeCase(persistedSales));
+    
+    const { error: saleError } = await supabase.from('sales').insert(mapToSnakeCase(persistedSales));
+    if (saleError) {
+      console.error('Bulk Sale Record Error:', saleError);
+      // Rollback artwork status if possible (not trivial for bulk, but at least revert local)
+      setArtworks(previousArtworks);
+      setSales(prev => prev.filter(s => !newSales.some(ns => ns.id === s.id)));
+      pushNotification('Bulk Sale Record Failed', 'Artwork statuses updated but sales records failed.', 'system');
+      return false;
+    }
   };
 
   const handleCancelSale = async (artworkId: string) => {
@@ -637,13 +660,14 @@ export const useArtworkOperations = () => {
           itdrImageUrl: Array.isArray(sale.itdrUrl) ? sale.itdrUrl[0] : sale.itdrUrl,
           rsaImageUrl: Array.isArray(sale.rsaUrl) ? sale.rsaUrl[0] : sale.rsaUrl,
           orCrImageUrl: Array.isArray(sale.orCrUrl) ? sale.orCrUrl[0] : sale.orCrUrl
-        }, ArtworkStatus.FOR_SALE_APPROVAL);
+        }, [ArtworkStatus.FOR_SALE_APPROVAL, ArtworkStatus.AVAILABLE]);
 
         if (!success) throw new Error('Artwork status sync failed. It may have been updated by another process.');
       }
 
       logActivity(sale.artworkId, 'Sale Approved', `Approved sale to ${sale.clientName}`, artworks.find(a => String(a.id) === String(sale.artworkId)));
       setImportStatus(prev => ({ ...prev, message: 'Sale approved successfully!', progress: { current: 100, total: 100 } }));
+      setGatePassSaleId(saleId);
       return true;
     } catch (error: any) {
       console.error('Approve Sale Error:', error);
@@ -1004,7 +1028,59 @@ export const useArtworkOperations = () => {
     }
   };
 
-  const handleDeliver = async (id: string, itdr: string | string[] = '', rsa: string | string[] = '', orcr: string | string[] = '') => {
+  const handleUpdateSale = async (saleId: string, updates: Partial<SaleRecord>) => {
+    const sale = sales.find(s => s.id === saleId);
+    if (!sale) return false;
+
+    setSales(prev => prev.map(s => s.id === saleId ? { ...s, ...updates } : s));
+    
+    if (IS_DEMO_MODE) return true;
+
+    try {
+      const { error } = await supabase
+        .from('sales')
+        .update(mapToSnakeCase(updates))
+        .eq('id', saleId);
+      
+      if (error) throw error;
+      return true;
+    } catch (error) {
+      console.error('Update Sale Error:', error);
+      pushNotification('Update Failed', 'Sale record could not be updated.', 'system');
+      return false;
+    }
+  };
+
+  const handleDispatch = async (artworkId: string) => {
+    const sale = sales.find(s => String(s.artworkId) === String(artworkId) && !s.isCancelled);
+    if (!sale) return false;
+
+    const { updatedSales } = applyDispatch(sales, artworkId, currentUser?.name || 'Logistics');
+    setSales(updatedSales);
+    
+    const art = artworks.find(a => String(a.id) === String(artworkId));
+    logActivity(artworkId, 'Dispatched', `Item is out for delivery to ${sale.clientName}`, art);
+
+    if (IS_DEMO_MODE) return true;
+
+    try {
+      const updatedSale = updatedSales.find(s => s.id === sale.id);
+      if (updatedSale) {
+        const { error } = await supabase
+          .from('sales')
+          .update(mapToSnakeCase(updatedSale))
+          .eq('id', sale.id);
+        if (error) throw error;
+      }
+      return true;
+    } catch (error) {
+      console.error('Dispatch Error:', error);
+      pushNotification('Dispatch Failed', 'Could not record dispatch event.', 'system');
+      return false;
+    }
+  };
+
+  const handleDeliver = async (id: string, itdr: string | string[] = '', rsa: string | string[] = '', orcr: string | string[] = '', carrier?: string, referenceNumber?: string) => {
     // Helper to serialize attachments
     const serializeAttachmentLocal = (val: string | string[] | undefined | null): string => {
       if (!val) return '';
@@ -1022,11 +1098,16 @@ export const useArtworkOperations = () => {
     const rsaStrFinal = serializeAttachmentLocal(secureRsaArr);
     const orcrStrFinal = serializeAttachmentLocal(secureOrcrArr);
 
-    const { updatedArtworks, updatedSales } = applyDelivery(artworks, sales, id, itdrStrFinal, rsaStrFinal, orcrStrFinal);
+    const { updatedArtworks, updatedSales } = applyDelivery(artworks, sales, id, itdrStrFinal, rsaStrFinal, orcrStrFinal, carrier, referenceNumber);
     setArtworks(updatedArtworks);
     setSales(updatedSales);
     const art = updatedArtworks.find(a => a.id === id);
     const sale = updatedSales.find(s => s.artworkId === id);
+    
+    // Add audit log
+    if (art) {
+      logActivity(id, 'Delivered', `Artwork delivered to ${sale?.clientName || 'Client'}. ${carrier ? `Carrier: ${carrier}. ` : ''}${referenceNumber ? `Ref: ${referenceNumber}.` : ''}`, art);
+    }
     if (IS_DEMO_MODE) return true;
     if (!art || !sale) return false;
 
@@ -1037,6 +1118,7 @@ export const useArtworkOperations = () => {
       orCrImageUrl: orcrStrFinal
     })).eq('id', id);
     await supabase.from('sales').update(mapToSnakeCase(sale)).eq('id', sale.id);
+    return true;
   };
 
   const handleConfirmAudit = async () => {
@@ -1701,9 +1783,15 @@ export const useArtworkOperations = () => {
       }
     },
     handleUpdateArtwork, handleBulkUpdateArtworks: async (ids: string[], u: any) => {
-      setArtworks(prev => prev.map(a => ids.includes(a.id) ? { ...a, ...u } : a));
+      // Recalculate classification if dimensions are part of the bulk update
+      const finalUpdates = { ...u };
+      if (finalUpdates.dimensions) {
+        finalUpdates.type = getArtworkClassification(finalUpdates.dimensions);
+      }
+
+      setArtworks(prev => prev.map(a => ids.includes(a.id) ? { ...a, ...finalUpdates } : a));
       if (IS_DEMO_MODE) return;
-      await supabase.from('artworks').update(mapToSnakeCase(u)).in('id', ids);
+      await supabase.from('artworks').update(mapToSnakeCase(finalUpdates)).in('id', ids);
     },
     handleDeleteArtwork, handleBulkDelete,
     handleReserveArtwork, handleBulkReserve,
@@ -1719,6 +1807,8 @@ export const useArtworkOperations = () => {
     handleApprovePaymentEdit,
     handleDeclinePaymentEdit,
     handleAddInstallment,
+    handleUpdateSale,
+    handleDispatch,
     handleDeliver,
     handleConfirmAudit,
     handleReturnArtwork, handleBulkReturnArtwork, handleReturnToGallery,

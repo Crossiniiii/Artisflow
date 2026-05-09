@@ -15,8 +15,9 @@ import { generateUUID } from '../utils/idUtils';
 import { 
   Calculator, Calendar, FileText, Trash2, ChevronDown, ChevronUp, Printer, 
   CheckCircle, Check, AlertCircle, Download, FileSpreadsheet, ImageIcon, 
-  Edit, Save, Plus, X, Minus, Loader2, ArrowLeft, Filter, Shield, RotateCcw, ShoppingBag
+  Edit, Save, Plus, X, Minus, Loader2, ArrowLeft, Filter, Shield, RotateCcw, ShoppingBag, Search
 } from 'lucide-react';
+import { ExportDropdown } from '../components/ExportDropdown';
 
 interface MonitoringSummaryPageProps {
   artworks: Artwork[];
@@ -27,65 +28,6 @@ interface MonitoringSummaryPageProps {
   onBack?: () => void;
   permissions?: any;
 }
-
-const ExportDropdown = React.memo(({ onExportExcel, onExportPDF, onExportImage }: { onExportExcel: () => void, onExportPDF: () => void, onExportImage: () => void }) => {
-  const [isOpen, setIsOpen] = useState(false);
-  const dropdownRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setIsOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
-  return (
-    <div className="relative z-20" ref={dropdownRef}>
-      <button
-        onClick={() => setIsOpen((v) => !v)}
-        className="flex items-center space-x-2 bg-white border border-neutral-200 text-neutral-700 px-4 py-2 rounded-md hover:bg-neutral-50 hover:text-neutral-900 hover:border-neutral-300 transition-all shadow-sm hover:shadow-md font-bold text-sm"
-        title="Export Options"
-      >
-        <Download size={16} />
-        <span className="hidden sm:inline">Export</span>
-        <ChevronDown size={14} className={`ml-1 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
-      </button>
-      {isOpen && (
-        <div className="absolute right-0 mt-2 w-56 bg-white border border-neutral-100 rounded-md shadow-xl shadow-neutral-200/50 p-2 z-50 animate-in fade-in zoom-in-95 duration-75">
-          <button
-            onClick={() => { setIsOpen(false); onExportExcel(); }}
-            className="w-full flex items-center gap-3 px-4 py-3 text-neutral-600 hover:bg-neutral-100 hover:text-neutral-900 font-bold rounded-md transition-colors text-sm"
-          >
-            <FileSpreadsheet size={16} />
-            <span>Excel Report</span>
-          </button>
-          <button
-            onClick={() => { setIsOpen(false); onExportPDF(); }}
-            className="w-full flex items-center gap-3 px-4 py-3 text-neutral-600 hover:bg-neutral-100 hover:text-neutral-900 font-bold rounded-md transition-colors text-sm"
-          >
-            <FileText size={16} />
-            <div className="flex flex-col items-start text-left">
-              <span>PDF Document</span>
-              <span className="text-[10px] text-neutral-400 font-normal">A4 / Long Bond</span>
-            </div>
-          </button>
-          <button
-            onClick={() => { setIsOpen(false); onExportImage(); }}
-            className="w-full flex items-center gap-3 px-4 py-3 text-neutral-600 hover:bg-neutral-100 hover:text-neutral-900 font-bold rounded-md transition-colors text-sm"
-          >
-            <ImageIcon size={16} />
-            <div className="flex flex-col items-start text-left">
-              <span>Image Capture</span>
-            </div>
-          </button>
-        </div>
-      )}
-    </div>
-  );
-});
 
 const MonitoringSummaryPage: React.FC<MonitoringSummaryPageProps> = ({
   artworks,
@@ -145,6 +87,12 @@ const MonitoringSummaryPage: React.FC<MonitoringSummaryPageProps> = ({
   const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
+  // Search & Filters
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filterType, setFilterType] = useState<'all' | 'exhibit' | 'auction'>('all');
+  const [filterClient, setFilterClient] = useState<string>('all');
+  const [rowSearchQuery, setRowSearchQuery] = useState('');
+
   // Confirmation Modal State
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [isCheckModalOpen, setIsCheckModalOpen] = useState(false);
@@ -161,22 +109,69 @@ const MonitoringSummaryPage: React.FC<MonitoringSummaryPageProps> = ({
     loadDashboardData();
   }, []);
 
+  const uniqueClients = useMemo(() => {
+    const clients = new Set<string>();
+    allSummaries.forEach(s => {
+      const allTransactions = [...(s.itemsIn || []), ...(s.itemsOutSold || []), ...(s.itemsOutTransfer || [])];
+      allTransactions.forEach(t => {
+        if (t.clientBranch) clients.add(t.clientBranch);
+      });
+    });
+    return Array.from(clients).sort();
+  }, [allSummaries]);
+
   // Derived state for filtered summaries
   const filteredSummaries = useMemo(() => {
     let result = [...allSummaries];
+    
     if (filterMonth !== 'all') {
       result = result.filter(s => s.month === filterMonth);
     }
     if (filterYear !== 'all') {
       result = result.filter(s => s.year === filterYear);
     }
+    if (filterClient !== 'all') {
+      result = result.filter(s => {
+        const allTransactions = [...(s.itemsIn || []), ...(s.itemsOutSold || []), ...(s.itemsOutTransfer || [])];
+        return allTransactions.some(t => t.clientBranch === filterClient);
+      });
+    }
+
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      result = result.filter(s => {
+        // Search report ID
+        if (s.id.toLowerCase().includes(q)) return true;
+        
+        // Search transactions
+        const allTransactions = [...(s.itemsIn || []), ...(s.itemsOutSold || []), ...(s.itemsOutTransfer || [])];
+        return allTransactions.some(t => 
+          (t.clientBranch || '').toLowerCase().includes(q) ||
+          (t.referenceNo || '').toLowerCase().includes(q) ||
+          (t.artworkTitle || '').toLowerCase().includes(q)
+        );
+      });
+    }
+
+    if (filterType !== 'all') {
+      result = result.filter(s => {
+        const allTransactions = [...(s.itemsIn || []), ...(s.itemsOutSold || []), ...(s.itemsOutTransfer || [])];
+        return allTransactions.some(t => {
+          const text = ((t.clientBranch || '') + ' ' + (t.referenceNo || '')).toLowerCase();
+          if (filterType === 'exhibit') return text.includes('exhibit') || text.includes('exhibition');
+          if (filterType === 'auction') return text.includes('auction');
+          return true;
+        });
+      });
+    }
+
     // Sort by date desc (newest first)
     result.sort((a, b) => {
       if (a.year !== b.year) return b.year - a.year;
       return b.month - a.month;
     });
     return result;
-  }, [allSummaries, filterMonth, filterYear]);
+  }, [allSummaries, filterMonth, filterYear, searchQuery, filterType]);
 
   const loadDashboardData = async () => {
     setIsLoadingDashboard(true);
@@ -798,21 +793,34 @@ const MonitoringSummaryPage: React.FC<MonitoringSummaryPageProps> = ({
                   <div className="flex items-center gap-2" data-html2canvas-ignore="true">
                     {!isEditing && (
                       <>
-                        <button
-                          onClick={handleDeleteSummary}
-                          className="p-2 text-neutral-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-colors"
-                          title="Delete this report"
-                        >
-                          <Trash2 size={16} />
-                        </button>
-                        <div className="h-6 w-px bg-neutral-200 mx-1"></div>
-                        <button
-                          onClick={handleEditReport}
-                          className="flex items-center space-x-2 bg-neutral-100 text-neutral-700 px-4 py-2 rounded-md hover:bg-neutral-200 transition-colors font-bold text-sm"
-                        >
-                          <Edit size={16} />
-                          <span>Edit Report</span>
-                        </button>
+                      <div className="relative group" data-html2canvas-ignore="true">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400 group-hover:text-neutral-600 transition-colors" size={14} />
+                        <input
+                          type="text"
+                          placeholder="Search rows..."
+                          value={rowSearchQuery}
+                          onChange={(e) => setRowSearchQuery(e.target.value)}
+                          className="pl-9 pr-4 py-2 bg-neutral-100 border-none rounded-lg text-[11px] font-bold w-40 focus:w-64 focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all duration-300 outline-none"
+                        />
+                      </div>
+                      <div className="h-6 w-px bg-neutral-200 mx-1" data-html2canvas-ignore="true"></div>
+                      <button
+                        onClick={handleDeleteSummary}
+                        className="p-2 text-neutral-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-colors"
+                        title="Delete this report"
+                        data-html2canvas-ignore="true"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                      <div className="h-6 w-px bg-neutral-200 mx-1" data-html2canvas-ignore="true"></div>
+                      <button
+                        onClick={handleEditReport}
+                        className="flex items-center space-x-2 bg-neutral-100 text-neutral-700 px-4 py-2 rounded-md hover:bg-neutral-200 transition-colors font-bold text-sm"
+                        data-html2canvas-ignore="true"
+                      >
+                        <Edit size={16} />
+                        <span>Edit Report</span>
+                      </button>
 
                         {!activeSummary.isPhysicalCheckConfirmed ? (
                           <button
@@ -845,121 +853,310 @@ const MonitoringSummaryPage: React.FC<MonitoringSummaryPageProps> = ({
                 </div>
               </div>
 
-              {/* PREMIUM REPORT LAYOUT */}
-              <div className="bg-white rounded-2xl border border-neutral-100 shadow-xl overflow-hidden min-h-[800px] flex flex-col">
-                {/* Header Section */}
-                <div className="bg-neutral-900 px-10 py-12 text-white relative overflow-hidden">
-                   <div className="absolute top-0 right-0 w-64 h-64 bg-blue-500/10 blur-[100px] rounded-full -mr-32 -mt-32" />
-                   <div className="relative z-10 flex justify-between items-end">
-                      <div>
-                        <div className="flex items-center gap-3 mb-2 opacity-60">
-                           <Calculator size={14} />
-                           <span className="text-[10px] font-black uppercase tracking-[0.3em]">Monthly Registry Summary</span>
-                        </div>
-                        <h2 className="text-4xl font-black tracking-tighter">
-                           {getMonthName(activeSummary.month)} <span className="text-blue-400">{activeSummary.year}</span>
-                        </h2>
+              {/* CLASSIC SPREADSHEET FORM LAYOUT */}
+              <div className="bg-gradient-to-b from-blue-50/80 to-white rounded-2xl border border-blue-100 shadow-lg overflow-hidden min-h-[600px] flex flex-col">
+                <div className="p-8 pb-6 flex-1 flex flex-col">
+                  {/* Form Header */}
+                  <div className="flex justify-between items-start mb-6">
+                    <div>
+                      <div className="flex items-center gap-3">
+                        <h2 className="text-lg font-black text-neutral-800 uppercase tracking-wide">INVENTORY MONITORING FORM</h2>
+                        {activeSummary.isPhysicalCheckConfirmed && (
+                          <span className="flex items-center gap-1.5 bg-emerald-100 text-emerald-700 px-3 py-1 rounded-md text-[10px] font-bold border border-emerald-200">
+                            <Shield size={12} className="fill-emerald-600 text-white" />
+                            Verified by {activeSummary.physicalCheckConfirmedBy || 'Unknown'}
+                          </span>
+                        )}
                       </div>
-                      <div className="text-right">
-                         <p className="text-[10px] font-black uppercase tracking-widest opacity-40 mb-1">Generated by</p>
-                         <p className="text-sm font-bold">{activeSummary.createdBy}</p>
-                      </div>
-                   </div>
-                </div>
+                      <p className="text-neutral-500 text-sm mt-1">As of {getMonthName(activeSummary.month)} {activeSummary.year}</p>
+                    </div>
+                  </div>
 
-                <div className="p-10 flex-1 flex flex-col">
-                  {/* Summary Cards */}
-                  <div className="grid grid-cols-4 gap-6 mb-12">
-                    {[
-                      { label: 'Beginning Inventory', value: activeSummary.beginningInventory, icon: Calculator, editable: 'beginningInventory' },
-                      { label: 'Total Items In', value: activeSummary.totalItemsIn, icon: Plus },
-                      { label: 'Sold (In Gallery)', value: activeSummary.soldPiecesStillInGallery, icon: ShoppingBag, editable: 'soldPiecesStillInGallery' },
-                      { label: 'Total Stock', value: activeSummary.totalInventory, icon: Shield, highlight: true }
-                    ].map((stat, i) => (
-                      <div key={i} className={`p-6 rounded-2xl border transition-all ${stat.highlight ? 'bg-neutral-900 border-neutral-900 text-white shadow-lg' : 'bg-neutral-50 shadow-sm border-neutral-100'}`}>
-                        <div className="flex items-center gap-2 mb-3">
-                           <stat.icon size={14} className={stat.highlight ? 'text-blue-400' : 'text-neutral-400'} />
-                           <span className={`text-[10px] font-black uppercase tracking-widest ${stat.highlight ? 'opacity-60' : 'text-neutral-400'}`}>{stat.label}</span>
-                        </div>
-                        {isEditing && (stat as any).editable ? (
+                  {/* Main Table */}
+                  <div className="border border-blue-200/60 rounded-lg overflow-hidden bg-white">
+                    {/* Table Header */}
+                    <div className="grid grid-cols-12 bg-white border-b-2 border-blue-200/60 text-xs font-bold text-neutral-600 uppercase tracking-wider">
+                      <div className="col-span-1 px-4 py-3 border-r border-blue-100/60"></div>
+                      <div className="col-span-3 px-4 py-3 border-r border-blue-100/60 text-center">DATE</div>
+                      <div className="col-span-3 px-4 py-3 border-r border-blue-100/60 text-center">IT / DR#</div>
+                      <div className="col-span-3 px-4 py-3 border-r border-blue-100/60 text-center">CLIENT / BRANCH</div>
+                      <div className="col-span-2 px-4 py-3 text-center">No. of Items</div>
+                    </div>
+
+                    {/* Beginning Inventory Row */}
+                    <div className="grid grid-cols-12 bg-blue-50/80 border-b border-blue-200/40">
+                      <div className="col-span-10 px-4 py-3 font-bold text-neutral-800 text-sm italic">Beginning Inventory</div>
+                      <div className="col-span-2 px-4 py-2 flex items-center justify-center">
+                        {isEditing ? (
                           <input
                             type="text"
                             inputMode="numeric"
-                            value={(editingSummary as any)[(stat as any).editable]}
+                            value={(editingSummary as any).beginningInventory}
                             onFocus={(e) => e.target.select()}
-                            onChange={(e) => updateField((stat as any).editable as any, parseInt(e.target.value.replace(/\D/g, ''), 10) || 0)}
-                            className={`w-full bg-transparent border-b ${stat.highlight ? 'border-white/20 focus:border-white' : 'border-neutral-200 focus:border-neutral-900'} focus:outline-none text-2xl font-black tracking-tight`}
+                            onChange={(e) => updateField('beginningInventory', parseInt(e.target.value.replace(/\D/g, ''), 10) || 0)}
+                            className="w-20 text-center bg-white border border-blue-200 rounded px-2 py-1 text-sm font-bold text-neutral-900 focus:outline-none focus:ring-2 focus:ring-blue-400"
                           />
                         ) : (
-                          <p className="text-3xl font-black tracking-tighter">{stat.value}</p>
+                          <span className="inline-block w-20 text-center bg-white border border-blue-200 rounded px-2 py-1 text-sm font-bold text-neutral-900">{activeSummary.beginningInventory}</span>
                         )}
                       </div>
-                    ))}
-                  </div>
+                    </div>
 
-                  {/* Transactions Blocks */}
-                  <div className="space-y-16">
-                    {[
-                      { title: 'Artworks Received', section: 'itemsIn' as const, color: 'bg-blue-600' },
-                      { title: 'Artworks Released (Sales)', section: 'itemsOutSold' as const, color: 'bg-emerald-600' },
-                      { title: 'Artworks Released (Transfers)', section: 'itemsOutTransfer' as const, color: 'bg-amber-600' }
-                    ].map((block) => (
-                      <div key={block.section} className="relative">
-                         <div className="flex items-center justify-between mb-6">
-                            <div className="flex items-center gap-4">
-                               <div className={`w-1 h-6 rounded-full ${block.color}`} />
-                               <h3 className="text-xs font-black text-neutral-900 uppercase tracking-[0.2em]">{block.title}</h3>
-                            </div>
-                            {isEditing && (
-                              <button 
-                                onClick={() => addRow(block.section)}
-                                className="flex items-center gap-2 px-4 py-2 bg-neutral-900 text-white text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-neutral-800 transition-all hover:-translate-y-0.5 shadow-lg"
-                              >
-                                <Plus size={12} /> Add Entry
-                              </button>
-                            )}
-                         </div>
-
-                         <div className="bg-white rounded-2xl border border-neutral-100 overflow-hidden shadow-sm">
-                            <div className="grid grid-cols-12 bg-neutral-50 border-b border-neutral-100 px-6 py-4 text-[10px] font-black text-neutral-400 uppercase tracking-widest text-center">
-                               <div className="col-span-1">Ref</div>
-                               <div className="col-span-2 text-left">Date</div>
-                               <div className="col-span-3 text-left">Document #</div>
-                               <div className="col-span-5 text-left">Recipient / Branch</div>
-                               <div className="col-span-1">Qty</div>
-                            </div>
-                            
-                            {activeSummary[block.section].map((item, idx) => renderTransactionRow(item, idx, block.section))}
-                            
-                            {activeSummary[block.section].length === 0 && (
-                              <div className="py-12 bg-white flex flex-col items-center justify-center gap-2 opacity-20">
-                                 <ShoppingBag size={24} />
-                                 <p className="text-[10px] font-black uppercase tracking-widest">No Movements recorded</p>
-                              </div>
-                            )}
-
-                            <div className="grid grid-cols-12 bg-neutral-50 px-6 py-4 border-t border-neutral-100">
-                               <div className="col-span-11 text-right">
-                                  <span className="text-[10px] font-black text-neutral-400 uppercase tracking-widest mr-6">Section Total</span>
-                               </div>
-                               <div className="col-span-1 text-center font-black text-neutral-900">
-                                  {(activeSummary as any)[`total${block.section[0].toUpperCase()}${block.section.slice(1)}`]}
-                                </div>
-                            </div>
-                         </div>
+                    {/* Items In Section */}
+                    <div className="border-b border-blue-200/40">
+                      <div className="grid grid-cols-12 bg-white">
+                        <div className="col-span-10 px-4 py-2.5">
+                          <span className="text-sm font-bold text-red-600 italic">Items In</span>
+                        </div>
+                        <div className="col-span-2 px-4 py-2 flex items-center justify-end">
+                          {isEditing && (
+                            <button onClick={() => addRow('itemsIn')} className="text-[11px] text-blue-600 hover:text-blue-800 font-bold flex items-center gap-1 transition-colors">
+                              <Plus size={12} /> Add Row
+                            </button>
+                          )}
+                        </div>
                       </div>
-                    ))}
-                  </div>
+                      {activeSummary.itemsIn
+                        .filter(item => {
+                          if (filterClient !== 'all' && item.clientBranch !== filterClient) return false;
+                          if (filterType === 'exhibit') {
+                            const text = ((item.clientBranch || '') + ' ' + (item.referenceNo || '')).toLowerCase();
+                            if (!text.includes('exhibit') && !text.includes('exhibition')) return false;
+                          }
+                          if (filterType === 'auction') {
+                            const text = ((item.clientBranch || '') + ' ' + (item.referenceNo || '')).toLowerCase();
+                            if (!text.includes('auction')) return false;
+                          }
+                          if (!rowSearchQuery.trim()) return true;
+                          const q = rowSearchQuery.toLowerCase();
+                          return (item.referenceNo || '').toLowerCase().includes(q) ||
+                            (item.clientBranch || '').toLowerCase().includes(q) ||
+                            (item.artworkTitle || '').toLowerCase().includes(q);
+                        })
+                        .map((item, idx) => (
+                        <div key={`in-${idx}`} className="grid grid-cols-12 border-t border-blue-100/40 bg-white hover:bg-blue-50/30 transition-colors">
+                          <div className="col-span-1 px-4 py-2 border-r border-blue-100/40 flex items-center justify-center">
+                            {isEditing ? (
+                              <button onClick={() => removeRow('itemsIn', idx)} className="text-neutral-300 hover:text-red-500 transition-colors"><Trash2 size={13} /></button>
+                            ) : (
+                              <span className="text-[10px] text-neutral-300">{idx + 1}</span>
+                            )}
+                          </div>
+                          <div className="col-span-3 px-4 py-2 border-r border-blue-100/40">
+                            {isEditing ? (
+                              <input type="date" value={item.date} onChange={(e) => updateRow('itemsIn', idx, 'date', e.target.value)} className="w-full bg-transparent text-sm text-neutral-700 focus:outline-none" />
+                            ) : (
+                              <span className="text-sm text-neutral-600">{item.date}</span>
+                            )}
+                          </div>
+                          <div className="col-span-3 px-4 py-2 border-r border-blue-100/40">
+                            {isEditing ? (
+                              <input type="text" value={item.referenceNo} onChange={(e) => updateRow('itemsIn', idx, 'referenceNo', e.target.value)} placeholder="IT/DR #" className="w-full bg-transparent text-sm font-bold text-neutral-800 focus:outline-none placeholder:text-neutral-300" />
+                            ) : (
+                              <span className="text-sm font-bold text-neutral-800">{item.referenceNo}</span>
+                            )}
+                          </div>
+                          <div className="col-span-3 px-4 py-2 border-r border-blue-100/40">
+                            {isEditing ? (
+                              <input type="text" value={item.clientBranch} onChange={(e) => updateRow('itemsIn', idx, 'clientBranch', e.target.value)} placeholder="Client/Branch" className="w-full bg-transparent text-sm text-neutral-600 focus:outline-none placeholder:text-neutral-300" />
+                            ) : (
+                              <span className="text-sm text-neutral-600">{item.clientBranch || '-'}</span>
+                            )}
+                          </div>
+                          <div className="col-span-2 px-4 py-2 text-center">
+                            {isEditing ? (
+                              <input type="text" inputMode="numeric" value={item.quantity} onFocus={(e) => e.target.select()} onChange={(e) => updateRow('itemsIn', idx, 'quantity', Math.max(1, parseInt(e.target.value.replace(/\D/g, ''), 10) || 0))} className="w-16 mx-auto block text-center bg-transparent text-sm font-bold text-neutral-900 focus:outline-none border-b border-neutral-200 focus:border-blue-400" />
+                            ) : (
+                              <span className="text-sm font-bold text-neutral-900">{item.quantity}</span>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
 
-                  {/* Footer */}
-                  <div className="mt-20 pt-10 border-t border-neutral-100 flex flex-col items-center">
-                     <p className="text-[10px] font-black text-neutral-400 uppercase tracking-[0.3em] mb-4">Official Inventory Document</p>
-                     <div className="flex items-center gap-2 text-xs font-bold text-neutral-300">
-                        <span>AS OF</span>
-                        <span className="text-neutral-900">
-                          {new Date(activeSummary.year, activeSummary.month, 0).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+                    {/* Items Out (SOLD) Section */}
+                    <div className="border-b border-blue-200/40">
+                      <div className="grid grid-cols-12 bg-white">
+                        <div className="col-span-10 px-4 py-2.5">
+                          <span className="text-sm font-bold text-red-600 italic">Items Out (SOLD)</span>
+                        </div>
+                        <div className="col-span-2 px-4 py-2 flex items-center justify-end">
+                          {isEditing && (
+                            <button onClick={() => addRow('itemsOutSold')} className="text-[11px] text-blue-600 hover:text-blue-800 font-bold flex items-center gap-1 transition-colors">
+                              <Plus size={12} /> Add Row
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                      {activeSummary.itemsOutSold
+                        .filter(item => {
+                          if (filterClient !== 'all' && item.clientBranch !== filterClient) return false;
+                          if (filterType === 'exhibit') {
+                            const text = ((item.clientBranch || '') + ' ' + (item.referenceNo || '')).toLowerCase();
+                            if (!text.includes('exhibit') && !text.includes('exhibition')) return false;
+                          }
+                          if (filterType === 'auction') {
+                            const text = ((item.clientBranch || '') + ' ' + (item.referenceNo || '')).toLowerCase();
+                            if (!text.includes('auction')) return false;
+                          }
+                          if (!rowSearchQuery.trim()) return true;
+                          const q = rowSearchQuery.toLowerCase();
+                          return (item.referenceNo || '').toLowerCase().includes(q) ||
+                            (item.clientBranch || '').toLowerCase().includes(q) ||
+                            (item.artworkTitle || '').toLowerCase().includes(q);
+                        })
+                        .map((item, idx) => (
+                        <div key={`sold-${idx}`} className="grid grid-cols-12 border-t border-blue-100/40 bg-white hover:bg-blue-50/30 transition-colors">
+                          <div className="col-span-1 px-4 py-2 border-r border-blue-100/40 flex items-center justify-center">
+                            {isEditing ? (
+                              <button onClick={() => removeRow('itemsOutSold', idx)} className="text-neutral-300 hover:text-red-500 transition-colors"><Trash2 size={13} /></button>
+                            ) : (
+                              <span className="text-[10px] text-neutral-300">{idx + 1}</span>
+                            )}
+                          </div>
+                          <div className="col-span-3 px-4 py-2 border-r border-blue-100/40">
+                            {isEditing ? (
+                              <input type="date" value={item.date} onChange={(e) => updateRow('itemsOutSold', idx, 'date', e.target.value)} className="w-full bg-transparent text-sm text-neutral-700 focus:outline-none" />
+                            ) : (
+                              <span className="text-sm text-neutral-600">{item.date}</span>
+                            )}
+                          </div>
+                          <div className="col-span-3 px-4 py-2 border-r border-blue-100/40">
+                            {isEditing ? (
+                              <input type="text" value={item.referenceNo} onChange={(e) => updateRow('itemsOutSold', idx, 'referenceNo', e.target.value)} placeholder="IT/DR #" className="w-full bg-transparent text-sm font-bold text-neutral-800 focus:outline-none placeholder:text-neutral-300" />
+                            ) : (
+                              <span className="text-sm font-bold text-neutral-800">{item.referenceNo}</span>
+                            )}
+                          </div>
+                          <div className="col-span-3 px-4 py-2 border-r border-blue-100/40">
+                            {isEditing ? (
+                              <input type="text" value={item.clientBranch} onChange={(e) => updateRow('itemsOutSold', idx, 'clientBranch', e.target.value)} placeholder="Client/Branch" className="w-full bg-transparent text-sm text-neutral-600 focus:outline-none placeholder:text-neutral-300" />
+                            ) : (
+                              <span className="text-sm text-neutral-600">{item.clientBranch || '-'}</span>
+                            )}
+                          </div>
+                          <div className="col-span-2 px-4 py-2 text-center">
+                            {isEditing ? (
+                              <input type="text" inputMode="numeric" value={item.quantity} onFocus={(e) => e.target.select()} onChange={(e) => updateRow('itemsOutSold', idx, 'quantity', Math.max(1, parseInt(e.target.value.replace(/\D/g, ''), 10) || 0))} className="w-16 mx-auto block text-center bg-transparent text-sm font-bold text-neutral-900 focus:outline-none border-b border-neutral-200 focus:border-blue-400" />
+                            ) : (
+                              <span className="text-sm font-bold text-neutral-900">{item.quantity}</span>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Items Out (Transfer and Pullout) Section */}
+                    <div className="border-b border-blue-200/40">
+                      <div className="grid grid-cols-12 bg-white">
+                        <div className="col-span-10 px-4 py-2.5">
+                          <span className="text-sm font-bold text-red-600 italic">Items out (Transfer and Pullout)</span>
+                        </div>
+                        <div className="col-span-2 px-4 py-2 flex items-center justify-end">
+                          {isEditing && (
+                            <button onClick={() => addRow('itemsOutTransfer')} className="text-[11px] text-blue-600 hover:text-blue-800 font-bold flex items-center gap-1 transition-colors">
+                              <Plus size={12} /> Add Row
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                      {activeSummary.itemsOutTransfer
+                        .filter(item => {
+                          if (filterClient !== 'all' && item.clientBranch !== filterClient) return false;
+                          if (filterType === 'exhibit') {
+                            const text = ((item.clientBranch || '') + ' ' + (item.referenceNo || '')).toLowerCase();
+                            if (!text.includes('exhibit') && !text.includes('exhibition')) return false;
+                          }
+                          if (filterType === 'auction') {
+                            const text = ((item.clientBranch || '') + ' ' + (item.referenceNo || '')).toLowerCase();
+                            if (!text.includes('auction')) return false;
+                          }
+                          if (!rowSearchQuery.trim()) return true;
+                          const q = rowSearchQuery.toLowerCase();
+                          return (item.referenceNo || '').toLowerCase().includes(q) ||
+                            (item.clientBranch || '').toLowerCase().includes(q) ||
+                            (item.artworkTitle || '').toLowerCase().includes(q);
+                        })
+                        .map((item, idx) => (
+                        <div key={`transfer-${idx}`} className="grid grid-cols-12 border-t border-blue-100/40 bg-white hover:bg-blue-50/30 transition-colors">
+                          <div className="col-span-1 px-4 py-2 border-r border-blue-100/40 flex items-center justify-center">
+                            {isEditing ? (
+                              <button onClick={() => removeRow('itemsOutTransfer', idx)} className="text-neutral-300 hover:text-red-500 transition-colors"><Trash2 size={13} /></button>
+                            ) : (
+                              <span className="text-[10px] text-neutral-300">{idx + 1}</span>
+                            )}
+                          </div>
+                          <div className="col-span-3 px-4 py-2 border-r border-blue-100/40">
+                            {isEditing ? (
+                              <input type="date" value={item.date} onChange={(e) => updateRow('itemsOutTransfer', idx, 'date', e.target.value)} className="w-full bg-transparent text-sm text-neutral-700 focus:outline-none" />
+                            ) : (
+                              <span className="text-sm text-neutral-600">{item.date}</span>
+                            )}
+                          </div>
+                          <div className="col-span-3 px-4 py-2 border-r border-blue-100/40">
+                            {isEditing ? (
+                              <input type="text" value={item.referenceNo} onChange={(e) => updateRow('itemsOutTransfer', idx, 'referenceNo', e.target.value)} placeholder="IT/DR #" className="w-full bg-transparent text-sm font-bold text-neutral-800 focus:outline-none placeholder:text-neutral-300" />
+                            ) : (
+                              <span className="text-sm font-bold text-neutral-800">{item.referenceNo}</span>
+                            )}
+                          </div>
+                          <div className="col-span-3 px-4 py-2 border-r border-blue-100/40">
+                            {isEditing ? (
+                              <input type="text" value={item.clientBranch} onChange={(e) => updateRow('itemsOutTransfer', idx, 'clientBranch', e.target.value)} placeholder="Client/Branch" className="w-full bg-transparent text-sm text-neutral-600 focus:outline-none placeholder:text-neutral-300" />
+                            ) : (
+                              <span className="text-sm text-neutral-600">{item.clientBranch || '-'}</span>
+                            )}
+                          </div>
+                          <div className="col-span-2 px-4 py-2 text-center">
+                            {isEditing ? (
+                              <input type="text" inputMode="numeric" value={item.quantity} onFocus={(e) => e.target.select()} onChange={(e) => updateRow('itemsOutTransfer', idx, 'quantity', Math.max(1, parseInt(e.target.value.replace(/\D/g, ''), 10) || 0))} className="w-16 mx-auto block text-center bg-transparent text-sm font-bold text-neutral-900 focus:outline-none border-b border-neutral-200 focus:border-blue-400" />
+                            ) : (
+                              <span className="text-sm font-bold text-neutral-900">{item.quantity}</span>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Available Row */}
+                    <div className="grid grid-cols-12 bg-white border-b border-blue-200/40">
+                      <div className="col-span-10 px-4 py-3 font-bold text-neutral-800 text-sm">Available</div>
+                      <div className="col-span-2 px-4 py-3 text-center font-bold text-neutral-900 text-sm">{activeSummary.availableInventory}</div>
+                    </div>
+
+                    {/* Sold pieces still in Gallery Row */}
+                    <div className="grid grid-cols-12 bg-white border-b border-blue-200/40">
+                      <div className="col-span-10 px-4 py-3 font-bold text-neutral-800 text-sm">Sold pieces that still in the Gallery</div>
+                      <div className="col-span-2 px-4 py-2 flex items-center justify-center">
+                        {isEditing ? (
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            value={(editingSummary as any).soldPiecesStillInGallery}
+                            onFocus={(e) => e.target.select()}
+                            onChange={(e) => updateField('soldPiecesStillInGallery', parseInt(e.target.value.replace(/\D/g, ''), 10) || 0)}
+                            className="w-20 text-center bg-white border border-blue-200 rounded px-2 py-1 text-sm font-bold text-neutral-900 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                          />
+                        ) : (
+                          <span className="inline-block w-20 text-center bg-white border border-blue-200 rounded px-2 py-1 text-sm font-bold text-neutral-900">{activeSummary.soldPiecesStillInGallery}</span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Total Inventory Row */}
+                    <div className="grid grid-cols-12 bg-white border-b border-blue-200/40">
+                      <div className="col-span-10 px-4 py-3 font-bold text-red-600 text-sm italic">Total Inventory</div>
+                      <div className="col-span-2 px-4 py-3 text-center font-bold text-red-600 text-sm">{activeSummary.totalInventory}</div>
+                    </div>
+
+                    {/* As of Footer */}
+                    <div className="grid grid-cols-12 bg-white">
+                      <div className="col-span-12 px-4 py-2.5">
+                        <span className="text-sm text-red-500 italic">
+                          As of {new Date(activeSummary.year, activeSummary.month, 0).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
                         </span>
-                     </div>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -995,13 +1192,57 @@ const MonitoringSummaryPage: React.FC<MonitoringSummaryPageProps> = ({
                   </button>
                 )}
               </div>
-              <div className="flex items-center gap-3">
-                {/* Filters */}
+              <div className="flex flex-col md:flex-row md:items-center gap-4">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" size={16} />
+                  <input
+                    type="text"
+                    placeholder="Search by client, event, or artwork..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="pl-10 pr-4 py-2 bg-neutral-100 border-none rounded-xl text-sm font-medium w-full md:w-64 focus:ring-2 focus:ring-neutral-900 focus:bg-white transition-all"
+                  />
+                </div>
+
+                <div className="flex items-center gap-1 bg-neutral-100 p-1 rounded-xl">
+                  <button
+                    onClick={() => setFilterType('all')}
+                    className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${filterType === 'all' ? 'bg-white text-neutral-900 shadow-sm' : 'text-neutral-500 hover:text-neutral-700'}`}
+                  >
+                    All
+                  </button>
+                  <button
+                    onClick={() => setFilterType('exhibit')}
+                    className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${filterType === 'exhibit' ? 'bg-white text-neutral-900 shadow-sm' : 'text-neutral-500 hover:text-neutral-700'}`}
+                  >
+                    Exhibits
+                  </button>
+                  <button
+                    onClick={() => setFilterType('auction')}
+                    className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${filterType === 'auction' ? 'bg-white text-neutral-900 shadow-sm' : 'text-neutral-500 hover:text-neutral-700'}`}
+                  >
+                    Auctions
+                  </button>
+                </div>
+
+                <div className="flex items-center gap-2 bg-neutral-100 p-1 rounded-xl">
+                  <select
+                    value={filterClient}
+                    onChange={(e) => setFilterClient(e.target.value)}
+                    className="bg-transparent text-sm font-bold text-neutral-600 px-3 py-1.5 focus:outline-none cursor-pointer max-w-[150px]"
+                  >
+                    <option value="all">All Clients</option>
+                    {uniqueClients.map(c => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                  </select>
+                </div>
+
                 <div className="flex items-center gap-2 bg-neutral-100 p-1 rounded-xl">
                   <select
                     value={filterMonth}
                     onChange={(e) => setFilterMonth(e.target.value === 'all' ? 'all' : Number(e.target.value))}
-                    className="bg-transparent text-sm font-bold text-neutral-600 px-3 py-1.5 focus:outline-none"
+                    className="bg-transparent text-sm font-bold text-neutral-600 px-3 py-1.5 focus:outline-none cursor-pointer"
                   >
                     <option value="all">All Months</option>
                     {Array.from({ length: 12 }, (_, i) => i + 1).map(m => (
@@ -1012,7 +1253,7 @@ const MonitoringSummaryPage: React.FC<MonitoringSummaryPageProps> = ({
                   <select
                     value={filterYear}
                     onChange={(e) => setFilterYear(e.target.value === 'all' ? 'all' : Number(e.target.value))}
-                    className="bg-transparent text-sm font-bold text-neutral-600 px-3 py-1.5 focus:outline-none"
+                    className="bg-transparent text-sm font-bold text-neutral-600 px-3 py-1.5 focus:outline-none cursor-pointer"
                   >
                     <option value="all">All Years</option>
                     {Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - 2 + i).map(y => (

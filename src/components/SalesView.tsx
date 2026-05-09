@@ -12,9 +12,10 @@ interface SalesViewProps {
   permissions?: UserPermissions;
   onAddInstallment?: (saleId: string, amount: number, date: string, reference?: string) => void;
   onDeleteSale?: (saleId: string) => void | Promise<boolean | void>;
+  onViewArtwork?: (id: string) => void;
 }
 
-const SalesView: React.FC<SalesViewProps> = ({ sales, artworks, branches, onAddInstallment, onDeleteSale }) => {
+const SalesView: React.FC<SalesViewProps> = ({ sales, artworks, branches, onAddInstallment, onDeleteSale, onViewArtwork }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedBranch, setSelectedBranch] = useState<string>('All');
   const [paymentStatus, setPaymentStatus] = useState<'Fully Paid' | 'Partially Paid'>('Fully Paid');
@@ -26,12 +27,52 @@ const SalesView: React.FC<SalesViewProps> = ({ sales, artworks, branches, onAddI
   const [installmentReference, setInstallmentReference] = useState('');
   const [imageOverrides, setImageOverrides] = useState<Record<string, string>>({});
 
-  const validSales = sales.filter(s => {
-    if (s.isCancelled) return false;
-    // Exclude sales still pending approval or declined
-    if (s.status === SaleStatus.FOR_SALE_APPROVAL || s.status === SaleStatus.DECLINED) return false;
-    return true;
-  });
+  const allValidSales = useMemo(() => {
+    const baseValidSales = sales.filter(s => {
+      if (s.isCancelled) return false;
+      // Exclude sales still pending approval or declined
+      if (s.status === SaleStatus.FOR_SALE_APPROVAL || s.status === SaleStatus.DECLINED) return false;
+      return true;
+    });
+
+    const existingSaleArtworkIds = new Set(baseValidSales.map(s => s.artworkId));
+    
+    const virtualSales = artworks
+      .filter(a => (a.status === 'Sold' || a.status === 'Delivered') && !existingSaleArtworkIds.has(a.id))
+      .map(a => {
+        const soldToMatch = a.remarks?.match(/\[Sold To: (.*?)\]/);
+        const clientName = soldToMatch ? soldToMatch[1] : 'Imported Client';
+
+        return {
+          id: `virtual-${a.id}`,
+          artworkId: a.id,
+          clientName: clientName,
+          clientEmail: '',
+          clientContact: '',
+          agentName: 'System Import',
+          saleDate: a.createdAt || new Date().toISOString(),
+          isDelivered: a.status === 'Delivered',
+          deliveryDate: a.status === 'Delivered' ? a.createdAt : undefined,
+          status: SaleStatus.APPROVED,
+          downpayment: a.price || 0,
+          installments: [],
+          isDownpayment: false,
+          artworkSnapshot: {
+               title: a.title,
+               artist: a.artist,
+               code: a.code,
+               imageUrl: a.imageUrl,
+               price: a.price,
+               currentBranch: a.currentBranch,
+               medium: a.medium,
+               dimensions: a.dimensions,
+               year: a.year
+          }
+        } as SaleRecord;
+      });
+
+    return [...baseValidSales, ...virtualSales];
+  }, [sales, artworks]);
 
   const getDisplayArtwork = (sale: SaleRecord) => {
     const liveArtwork = artworks.find(a => a.id === sale.artworkId);
@@ -50,13 +91,13 @@ const SalesView: React.FC<SalesViewProps> = ({ sales, artworks, branches, onAddI
   };
 
   useEffect(() => {
-    const missingIds = validSales
+    const missingIds = allValidSales
       .map(sale => sale.artworkId)
       .filter(Boolean)
       .filter((artworkId, index, ids) => ids.indexOf(artworkId) === index)
       .filter(artworkId => {
         const liveArtwork = artworks.find(a => a.id === artworkId);
-        const snapshot = validSales.find(s => s.artworkId === artworkId)?.artworkSnapshot;
+        const snapshot = allValidSales.find(s => s.artworkId === artworkId)?.artworkSnapshot;
         return !imageOverrides[artworkId] && !(liveArtwork?.imageUrl) && !(snapshot?.imageUrl);
       });
 
@@ -95,10 +136,10 @@ const SalesView: React.FC<SalesViewProps> = ({ sales, artworks, branches, onAddI
     return () => {
       cancelled = true;
     };
-  }, [validSales, artworks, imageOverrides]);
+  }, [allValidSales, artworks, imageOverrides]);
 
   const stats = useMemo(() => {
-    const totalSalesCount = validSales.length;
+    const totalSalesCount = allValidSales.length;
     let totalGrossAmount = 0;
     let totalCollectedRevenue = 0;
     let fullPaymentsRevenue = 0;
@@ -106,7 +147,7 @@ const SalesView: React.FC<SalesViewProps> = ({ sales, artworks, branches, onAddI
     let pendingBalance = 0;
     let downpaymentCount = 0;
 
-    validSales.forEach(sale => {
+    allValidSales.forEach(sale => {
       const art = getDisplayArtwork(sale);
       if (!art) return;
 
@@ -140,9 +181,9 @@ const SalesView: React.FC<SalesViewProps> = ({ sales, artworks, branches, onAddI
       pendingBalance,
       downpaymentCount
     };
-  }, [validSales, artworks]);
+  }, [allValidSales, artworks]);
 
-  const filteredSales = validSales.filter(sale => {
+  const filteredSales = allValidSales.filter(sale => {
     const art = getDisplayArtwork(sale);
     if (!art) return false;
 
@@ -278,7 +319,7 @@ const SalesView: React.FC<SalesViewProps> = ({ sales, artworks, branches, onAddI
       </div>
 
       {/* Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+      <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' }}>
         {filteredSales.length === 0 ? (
           <div className="col-span-full flex flex-col items-center justify-center py-24 text-neutral-400 bg-white rounded-3xl border border-dashed border-neutral-200">
             <Banknote size={48} className="mb-4 opacity-20" />
@@ -296,6 +337,9 @@ const SalesView: React.FC<SalesViewProps> = ({ sales, artworks, branches, onAddI
             const isPartial = !!(sale.downpayment && (totalPaid < price || price === 0));
             const displayImage = art.imageUrl || '';
 
+            const balance = Math.max(0, price - totalPaid);
+            const progress = price > 0 ? Math.min(100, Math.round((totalPaid / price) * 100)) : 100;
+
             return (
               <div
                 key={sale.id}
@@ -308,103 +352,117 @@ const SalesView: React.FC<SalesViewProps> = ({ sales, artworks, branches, onAddI
                     setSelectedSaleDetail(sale);
                   }
                 }}
-                className="h-full overflow-hidden rounded-2xl border border-neutral-200 bg-white text-left transition-all duration-300 hover:-translate-y-1 hover:shadow-xl focus:outline-none focus:ring-2 focus:ring-neutral-300"
+                className="group flex flex-col overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 cursor-pointer focus:outline-none focus:ring-2 focus:ring-neutral-300"
               >
-                <div className="flex items-stretch flex-1 overflow-hidden">
-                  <div className="w-1/3 min-h-[160px] bg-neutral-100 relative shrink-0">
-                    {displayImage && !displayImage.includes('picsum.photos') ? (
-                      <OptimizedImage
-                        src={displayImage || undefined}
-                        alt={art.title}
-                        containerClassName="absolute inset-0 h-full w-full"
-                        className="h-full w-full object-cover"
-                      />
-                    ) : (
-                      <div className="w-full h-full flex flex-col items-center justify-center text-neutral-300">
-                        <Package size={24} className="mb-2 opacity-50" />
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-neutral-400 text-center px-2">No Image</span>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="flex-1 p-5 flex flex-col justify-between ml-2">
-                    <div>
-                      <div className="flex items-start justify-between mb-2">
-                        <span className="text-[10px] bg-neutral-100 border border-neutral-200 text-neutral-500 px-1.5 py-0.5 rounded font-bold tracking-wider">{art.code}</span>
-                        <div className="flex items-center gap-2">
-                          {isPartial ? (
-                            <span className="text-[10px] bg-orange-100 text-orange-700 px-2 py-1 rounded-md font-bold uppercase tracking-wider">Installment</span>
-                          ) : (
-                            <span className="text-[10px] bg-emerald-100 text-emerald-700 px-2 py-1 rounded-md font-bold uppercase tracking-wider">Fully Paid</span>
-                          )}
-                          {onDeleteSale && (
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                void onDeleteSale(sale.id);
-                              }}
-                              className="h-8 w-8 shrink-0 rounded-lg border border-red-200 bg-red-50 text-red-600 transition-colors hover:bg-red-100 hover:text-red-700"
-                              aria-label={`Delete sale record for ${art.title}`}
-                              title="Delete sale record"
-                            >
-                              <Trash2 size={14} className="mx-auto" />
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                      <h4 className="text-base font-bold text-neutral-900 leading-tight mb-1 line-clamp-1">{art.title}</h4>
-                      <p className="text-xs text-neutral-500 font-medium line-clamp-1 mb-3">by {art.artist}</p>
-
-                      <div className="flex items-center gap-2 mb-1">
-                        <User size={14} className="text-neutral-400" />
-                        <span className="text-sm font-semibold text-neutral-700 line-clamp-1">{sale.clientName}</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Calendar size={14} className="text-neutral-400" />
-                        <span className="text-xs text-neutral-500 font-medium">{new Date(sale.saleDate).toLocaleDateString()}</span>
-                      </div>
+                {/* Image */}
+                <div className="relative w-full aspect-[3/2] bg-neutral-100 overflow-hidden shrink-0">
+                  {displayImage && !displayImage.includes('picsum.photos') ? (
+                    <OptimizedImage
+                      src={displayImage || undefined}
+                      alt={art.title}
+                      containerClassName="absolute inset-0 h-full w-full"
+                      className="h-full w-full object-cover group-hover:scale-105 transition-transform duration-500"
+                    />
+                  ) : (
+                    <div className="w-full h-full flex flex-col items-center justify-center text-neutral-300">
+                      <Package size={28} className="mb-2 opacity-50" />
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-neutral-400">No Image</span>
                     </div>
-
-                    <div className="mt-4 pt-3 border-t border-neutral-50">
+                  )}
+                  {/* Overlay Badges */}
+                  <div className="absolute top-3 left-3 right-3 flex items-start justify-between">
+                    <span className="text-[9px] font-black bg-black/55 text-white backdrop-blur-sm px-2 py-1 rounded-md uppercase tracking-widest">
+                      {art.code}
+                    </span>
+                    <div className="flex items-center gap-1.5">
                       {isPartial ? (
-                        <div className="space-y-1">
-                          <div className="flex items-center justify-between text-xs">
-                            <span className="text-neutral-500">Total Price:</span>
-                            <span className="text-neutral-900 font-medium">₱{price.toLocaleString()}</span>
-                          </div>
-                          <div className="flex items-center justify-between text-xs font-bold">
-                            <span className="text-emerald-600">Paid so far:</span>
-                            <span className="text-emerald-700">₱{((sale.downpayment || 0) + (sale.installments || []).reduce((s, i) => s + i.amount, 0)).toLocaleString()}</span>
-                          </div>
-                          <div className="flex items-center justify-between text-xs font-bold">
-                            <span className="text-orange-600">Balance:</span>
-                            <span className="text-orange-700">₱{(price - ((sale.downpayment || 0) + (sale.installments || []).reduce((s, i) => s + i.amount, 0))).toLocaleString()}</span>
-                          </div>
-                          {onAddInstallment && (
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setSelectedPartialSale(sale);
-                                setInstallmentAmount('');
-                                setInstallmentDate(new Date().toISOString().split('T')[0]);
-                                setInstallmentReference('');
-                                setIsInstallmentModalOpen(true);
-                              }}
-                              className="mt-3 w-full py-2 bg-neutral-100 hover:bg-neutral-200 text-neutral-700 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-colors"
-                            >
-                              <PlusCircle size={14} /> Add Installment
-                            </button>
-                          )}
-                        </div>
+                        <span className="text-[9px] bg-orange-500 text-white px-2 py-1 rounded-md font-black uppercase tracking-wider shadow-sm">Installment</span>
                       ) : (
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs text-neutral-500 font-bold uppercase tracking-wider">Total Value</span>
-                          <span className="text-lg font-black text-emerald-600">₱{price.toLocaleString()}</span>
-                        </div>
+                        <span className="text-[9px] bg-emerald-500 text-white px-2 py-1 rounded-md font-black uppercase tracking-wider shadow-sm">Fully Paid</span>
+                      )}
+                      {onDeleteSale && (
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); void onDeleteSale(sale.id); }}
+                          className="h-6 w-6 flex items-center justify-center rounded-md bg-red-50/80 backdrop-blur-sm text-red-600 hover:bg-red-100 transition-colors border border-red-200/60"
+                          aria-label={`Delete sale record for ${art.title}`}
+                        >
+                          <Trash2 size={11} />
+                        </button>
                       )}
                     </div>
+                  </div>
+                </div>
+
+                {/* Body */}
+                <div className="flex flex-col flex-1 p-3 gap-2">
+                  {/* Title & Artist */}
+                  <div>
+                    <h4 className="text-sm font-black text-neutral-900 leading-tight line-clamp-1 group-hover:text-neutral-700 transition-colors">{art.title}</h4>
+                    <p className="text-[11px] text-neutral-400 font-medium mt-0.5 line-clamp-1">by {art.artist}</p>
+                  </div>
+
+                  {/* Client & Date */}
+                  <div className="flex flex-col gap-1.5">
+                    <div className="flex items-center gap-2">
+                      <User size={12} className="text-neutral-400 shrink-0" />
+                      <span className="text-xs font-semibold text-neutral-700 line-clamp-1">{sale.clientName}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Calendar size={12} className="text-neutral-400 shrink-0" />
+                      <span className="text-[11px] text-neutral-500 font-medium">{new Date(sale.saleDate).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+                    </div>
+                  </div>
+
+                  {/* Price / Progress Footer */}
+                  <div className="mt-auto pt-3 border-t border-neutral-100">
+                    {isPartial ? (
+                      <div className="space-y-2.5">
+                        <div className="space-y-1">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider">Collected</span>
+                            <span className="text-[10px] font-black text-neutral-700">{progress}%</span>
+                          </div>
+                          <div className="h-1.5 w-full bg-neutral-100 rounded-full overflow-hidden">
+                            <div
+                              className="h-full bg-gradient-to-r from-orange-400 to-orange-500 rounded-full transition-all duration-500"
+                              style={{ width: `${progress}%` }}
+                            />
+                          </div>
+                        </div>
+                        <div className="flex items-end justify-between">
+                          <div>
+                            <p className="text-[10px] text-neutral-400 font-bold uppercase">Balance</p>
+                            <p className="text-base font-black text-orange-600">₱{balance.toLocaleString()}</p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-[10px] text-neutral-400 font-bold uppercase">Paid</p>
+                            <p className="text-base font-black text-emerald-600">₱{totalPaid.toLocaleString()}</p>
+                          </div>
+                        </div>
+                        {onAddInstallment && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedPartialSale(sale);
+                              setInstallmentAmount('');
+                              setInstallmentDate(new Date().toISOString().split('T')[0]);
+                              setInstallmentReference('');
+                              setIsInstallmentModalOpen(true);
+                            }}
+                            className="w-full py-2 bg-orange-50 hover:bg-orange-100 text-orange-700 rounded-xl text-[11px] font-black uppercase tracking-wider flex items-center justify-center gap-1.5 transition-colors border border-orange-200"
+                          >
+                            <PlusCircle size={13} /> Add Installment
+                          </button>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] text-neutral-400 font-bold uppercase tracking-wider">Total Value</span>
+                        <span className="text-lg font-black text-emerald-600">₱{price.toLocaleString()}</span>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -415,10 +473,10 @@ const SalesView: React.FC<SalesViewProps> = ({ sales, artworks, branches, onAddI
 
       {selectedSaleDetail && selectedSaleDetailArtwork && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4 backdrop-blur-sm">
-          <div className="flex max-h-[90vh] w-full max-w-5xl flex-col overflow-hidden rounded-[24px] border border-neutral-200 bg-white shadow-2xl">
+          <div className="flex max-h-[90vh] w-full max-w-5xl flex-col overflow-hidden rounded-md border border-neutral-200 bg-white shadow-2xl">
             <div className="flex items-start justify-between border-b border-neutral-100 bg-neutral-50/70 px-6 py-5">
               <div className="flex items-center gap-4">
-                <div className="relative h-16 w-16 overflow-hidden rounded-2xl border border-neutral-200 bg-neutral-100">
+                <div className="relative h-16 w-16 overflow-hidden rounded-md border border-neutral-200 bg-neutral-100">
                   {selectedSaleDetailArtwork.imageUrl ? (
                     <OptimizedImage
                       src={selectedSaleDetailArtwork.imageUrl}
@@ -438,18 +496,31 @@ const SalesView: React.FC<SalesViewProps> = ({ sales, artworks, branches, onAddI
                   <p className="text-sm font-medium text-neutral-500">by {selectedSaleDetailArtwork.artist}</p>
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={() => setSelectedSaleDetail(null)}
-                className="rounded-full p-2 text-neutral-400 transition-colors hover:bg-neutral-200 hover:text-neutral-800"
-              >
-                <X size={20} />
-              </button>
+              <div className="flex items-center gap-3">
+                {onViewArtwork && (
+                  <button
+                    onClick={() => {
+                      setSelectedSaleDetail(null);
+                      onViewArtwork(selectedSaleDetailArtwork.id);
+                    }}
+                    className="flex items-center gap-2 rounded-lg bg-neutral-100 px-4 py-2 text-sm font-bold text-neutral-700 transition-all hover:bg-neutral-200 hover:text-neutral-900"
+                  >
+                    View Master Record
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setSelectedSaleDetail(null)}
+                  className="rounded-full p-2 text-neutral-400 transition-colors hover:bg-neutral-200 hover:text-neutral-800"
+                >
+                  <X size={20} />
+                </button>
+              </div>
             </div>
 
             <div className="grid flex-1 grid-cols-1 gap-6 overflow-y-auto p-6 lg:grid-cols-[1.1fr_0.9fr]">
               <div className="space-y-6">
-                <div className="overflow-hidden rounded-3xl border border-neutral-200 bg-neutral-50">
+                <div className="overflow-hidden rounded-md border border-neutral-200 bg-neutral-50">
                   <div className="relative aspect-[4/3] w-full bg-white">
                     {selectedSaleDetailArtwork.imageUrl ? (
                       <OptimizedImage
@@ -468,19 +539,19 @@ const SalesView: React.FC<SalesViewProps> = ({ sales, artworks, branches, onAddI
                 </div>
 
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  <div className="rounded-2xl border border-neutral-200 bg-white p-4">
+                  <div className="rounded-md border border-neutral-200 bg-white p-4">
                     <p className="text-[10px] font-black uppercase tracking-[0.18em] text-neutral-400">Artwork Code</p>
                     <p className="mt-2 text-sm font-bold text-neutral-900">{selectedSaleDetailArtwork.code || 'N/A'}</p>
                   </div>
-                  <div className="rounded-2xl border border-neutral-200 bg-white p-4">
+                  <div className="rounded-md border border-neutral-200 bg-white p-4">
                     <p className="text-[10px] font-black uppercase tracking-[0.18em] text-neutral-400">Branch</p>
                     <p className="mt-2 text-sm font-bold text-neutral-900">{selectedSaleDetailArtwork.currentBranch || 'Unknown'}</p>
                   </div>
-                  <div className="rounded-2xl border border-neutral-200 bg-white p-4">
+                  <div className="rounded-md border border-neutral-200 bg-white p-4">
                     <p className="text-[10px] font-black uppercase tracking-[0.18em] text-neutral-400">Medium</p>
                     <p className="mt-2 text-sm font-bold text-neutral-900">{selectedSaleDetailArtwork.medium || 'Unspecified'}</p>
                   </div>
-                  <div className="rounded-2xl border border-neutral-200 bg-white p-4">
+                  <div className="rounded-md border border-neutral-200 bg-white p-4">
                     <p className="text-[10px] font-black uppercase tracking-[0.18em] text-neutral-400">Year / Size</p>
                     <p className="mt-2 text-sm font-bold text-neutral-900">{[selectedSaleDetailArtwork.year, selectedSaleDetailArtwork.dimensions].filter(Boolean).join(' • ') || 'N/A'}</p>
                   </div>
@@ -488,7 +559,7 @@ const SalesView: React.FC<SalesViewProps> = ({ sales, artworks, branches, onAddI
               </div>
 
               <div className="space-y-4">
-                <div className="rounded-3xl border border-neutral-200 bg-white p-5 shadow-sm">
+                <div className="rounded-md border border-neutral-200 bg-white p-5 shadow-sm">
                   <div className="flex items-center justify-between">
                     <p className="text-[10px] font-black uppercase tracking-[0.18em] text-neutral-400">Payment Status</p>
                     {(selectedSaleDetail.downpayment || 0) + (selectedSaleDetail.installments || []).reduce((sum, installment) => sum + installment.amount, 0) < (selectedSaleDetailArtwork.price || 0) && (selectedSaleDetail.downpayment || 0) > 0 ? (
@@ -533,7 +604,7 @@ const SalesView: React.FC<SalesViewProps> = ({ sales, artworks, branches, onAddI
                   </div>
                 </div>
 
-                <div className="rounded-3xl border border-neutral-200 bg-white p-5 shadow-sm">
+                <div className="rounded-md border border-neutral-200 bg-white p-5 shadow-sm">
                   <p className="text-[10px] font-black uppercase tracking-[0.18em] text-neutral-400">Client Details</p>
                   <div className="mt-4 space-y-3">
                     <div className="flex items-center gap-3 text-sm text-neutral-700">
@@ -559,7 +630,7 @@ const SalesView: React.FC<SalesViewProps> = ({ sales, artworks, branches, onAddI
                   </div>
                 </div>
 
-                <div className="rounded-3xl border border-neutral-200 bg-white p-5 shadow-sm">
+                <div className="rounded-md border border-neutral-200 bg-white p-5 shadow-sm">
                   <div className="flex items-center justify-between">
                     <p className="text-[10px] font-black uppercase tracking-[0.18em] text-neutral-400">Installment History</p>
                     <span className="text-xs font-bold text-neutral-400">{(selectedSaleDetail.installments || []).length} entries</span>
@@ -567,7 +638,7 @@ const SalesView: React.FC<SalesViewProps> = ({ sales, artworks, branches, onAddI
                   <div className="mt-4 space-y-3">
                     {(selectedSaleDetail.installments || []).length > 0 ? (
                       selectedSaleDetail.installments!.map((installment) => (
-                        <div key={installment.id} className="rounded-2xl border border-neutral-100 bg-neutral-50 px-4 py-3">
+                        <div key={installment.id} className="rounded-md border border-neutral-100 bg-neutral-50 px-4 py-3">
                           <div className="flex items-center justify-between">
                             <span className="text-sm font-bold text-neutral-900">₱{installment.amount.toLocaleString()}</span>
                             <span className="text-xs font-medium text-neutral-500">{new Date(installment.date).toLocaleDateString()}</span>
@@ -576,7 +647,7 @@ const SalesView: React.FC<SalesViewProps> = ({ sales, artworks, branches, onAddI
                         </div>
                       ))
                     ) : (
-                      <div className="rounded-2xl border border-dashed border-neutral-200 bg-neutral-50 px-4 py-6 text-center text-sm text-neutral-400">
+                      <div className="rounded-md border border-dashed border-neutral-200 bg-neutral-50 px-4 py-6 text-center text-sm text-neutral-400">
                         No installment entries yet.
                       </div>
                     )}
@@ -591,7 +662,7 @@ const SalesView: React.FC<SalesViewProps> = ({ sales, artworks, branches, onAddI
       {/* Add Installment Modal */}
       {isInstallmentModalOpen && selectedPartialSale && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+          <div className="bg-white rounded-md w-full max-w-md shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
             <div className="flex items-center justify-between p-6 border-b border-neutral-100 bg-neutral-50/50">
               <h3 className="text-xl font-black text-neutral-900 tracking-tight">Log Installment</h3>
               <button
@@ -617,7 +688,7 @@ const SalesView: React.FC<SalesViewProps> = ({ sales, artworks, branches, onAddI
                     if (parts[0] && parts[0].length > 1) parts[0] = parts[0].replace(/^0+/, '') || '0';
                     setInstallmentAmount(parts.join('.'));
                   }}
-                  className="w-full bg-neutral-50 border border-neutral-200 rounded-xl px-4 py-3 text-neutral-900 focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:border-transparent transition-all"
+                  className="w-full bg-neutral-50 border border-neutral-200 rounded-md px-4 py-3 text-neutral-900 focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:border-transparent transition-all"
                   placeholder="0.00"
                 />
               </div>
@@ -629,7 +700,7 @@ const SalesView: React.FC<SalesViewProps> = ({ sales, artworks, branches, onAddI
                   value={installmentDate}
                   onChange={(e) => setInstallmentDate(e.target.value)}
                   max={new Date().toISOString().split('T')[0]}
-                  className="w-full bg-neutral-50 border border-neutral-200 rounded-xl px-4 py-3 text-neutral-900 focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:border-transparent transition-all"
+                  className="w-full bg-neutral-50 border border-neutral-200 rounded-md px-4 py-3 text-neutral-900 focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:border-transparent transition-all"
                 />
               </div>
 
@@ -639,7 +710,7 @@ const SalesView: React.FC<SalesViewProps> = ({ sales, artworks, branches, onAddI
                   type="text"
                   value={installmentReference}
                   onChange={(e) => setInstallmentReference(e.target.value)}
-                  className="w-full bg-neutral-50 border border-neutral-200 rounded-xl px-4 py-3 text-neutral-900 focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:border-transparent transition-all"
+                  className="w-full bg-neutral-50 border border-neutral-200 rounded-md px-4 py-3 text-neutral-900 focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:border-transparent transition-all"
                   placeholder="e.g., Bank Transfer Ref #12345"
                 />
               </div>
@@ -648,7 +719,7 @@ const SalesView: React.FC<SalesViewProps> = ({ sales, artworks, branches, onAddI
             <div className="p-6 bg-neutral-50 border-t border-neutral-100 flex items-center justify-end gap-3">
               <button
                 onClick={() => setIsInstallmentModalOpen(false)}
-                className="px-6 py-2.5 rounded-xl font-bold text-sm text-neutral-600 hover:bg-neutral-200 transition-colors"
+                className="px-6 py-2.5 rounded-md font-bold text-sm text-neutral-600 hover:bg-neutral-200 transition-colors"
               >
                 Cancel
               </button>
@@ -663,7 +734,7 @@ const SalesView: React.FC<SalesViewProps> = ({ sales, artworks, branches, onAddI
                   setIsInstallmentModalOpen(false);
                 }}
                 disabled={!installmentAmount || !installmentDate}
-                className="px-6 py-2.5 rounded-xl font-bold text-sm bg-neutral-900 text-white hover:bg-black disabled:opacity-50 transition-all flex items-center gap-2"
+                className="px-6 py-2.5 rounded-md font-bold text-sm bg-neutral-900 text-white hover:bg-black disabled:opacity-50 transition-all flex items-center gap-2"
               >
                 <PlusCircle size={16} /> Save Installment
               </button>

@@ -13,17 +13,30 @@ interface ModalProps {
 
 export const Modal: React.FC<ModalProps> = ({ children, onClose, title, footer, maxWidth = 'max-w-2xl', variant = 'sharp' }) => {
     return createPortal(
-        <div className="fixed inset-0 z-[150] flex items-center justify-center bg-black/60 backdrop-blur-sm p-3 sm:p-4">
-            <div className={`bg-white w-full ${maxWidth} shadow-2xl max-h-[90vh] flex flex-col animate-in fade-in zoom-in duration-150 ${variant === 'sharp' ? 'rounded-md shadow-lg shadow-black/5' : 'rounded-3xl'}`}>
-                <div className={`px-4 py-4 sm:px-6 sm:py-5 flex justify-between items-center bg-white flex-shrink-0 ${variant === 'sharp' ? 'border-b border-neutral-200' : 'border-b border-neutral-100 rounded-t-3xl'}`}>
-                    <h3 className={`text-base font-semibold text-neutral-900 ${variant === 'sharp' ? 'tracking-tight' : 'font-bold'}`}>{title}</h3>
-                    <button onClick={onClose} className="text-neutral-400 hover:text-neutral-600 transition-colors">
+        <div 
+            className="fixed inset-0 z-[150] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4 sm:p-6"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="modal-title"
+        >
+            <div className={`bg-white w-full ${maxWidth} shadow-[0_32px_80px_rgba(0,0,0,0.3),0_8px_32px_rgba(0,0,0,0.1)] max-h-[92vh] flex flex-col animate-in fade-in zoom-in duration-200 border border-slate-200 rounded-xl overflow-hidden`}>
+                <div className="px-8 py-5 flex justify-between items-center bg-white border-b border-[#F3F3F3] flex-shrink-0">
+                    <h3 
+                        id="modal-title"
+                        className="text-xl font-semibold text-[#323130] tracking-tight"
+                    >
+                        {title}
+                    </h3>
+                    <button 
+                        onClick={onClose} 
+                        className="p-2 text-[#605E5C] hover:bg-[#EDEBE9] rounded-sm transition-colors"
+                    >
                         <XCircle size={20} />
                     </button>
                 </div>
-                <div className={`overflow-y-auto custom-scrollbar flex-1 ${variant === 'sharp' ? 'p-5' : 'p-4 sm:p-8'}`}>{children}</div>
+                <div className="overflow-y-auto custom-scrollbar flex-1 p-8 bg-[#F3F3F3]">{children}</div>
                 {footer && (
-                    <div className={`flex-shrink-0 p-4 sm:px-6 sm:py-4 bg-white border-t border-neutral-100 ${variant === 'sharp' ? '' : 'rounded-b-3xl'}`}>
+                    <div className="flex-shrink-0 px-8 py-6 bg-white border-t border-[#E1E1E1]">
                         {footer}
                     </div>
                 )}

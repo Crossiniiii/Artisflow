@@ -28,6 +28,8 @@ interface UIContextType {
   setInventoryInitialStatus: React.Dispatch<React.SetStateAction<string | undefined>>;
   isMobileMenuOpen: boolean;
   setIsMobileMenuOpen: React.Dispatch<React.SetStateAction<boolean>>;
+  gatePassSaleId: string | null;
+  setGatePassSaleId: React.Dispatch<React.SetStateAction<string | null>>;
   historyStack: HistoryState[];
   setHistoryStack: React.Dispatch<React.SetStateAction<HistoryState[]>>;
   selectedArtworkId: string | null;
@@ -36,6 +38,8 @@ interface UIContextType {
   setOperationsView: React.Dispatch<React.SetStateAction<'inventory' | 'events' | 'branches' | 'returned' | 'framer' | 'auctions' | 'reservations' | 'monitoring' | 'sales'>>;
   importStatus: ImportStatus;
   setImportStatus: React.Dispatch<React.SetStateAction<ImportStatus>>;
+  isMasterViewOpen: boolean;
+  setIsMasterViewOpen: React.Dispatch<React.SetStateAction<boolean>>;
   targetSaleId: string | null;
   setTargetSaleId: React.Dispatch<React.SetStateAction<string | null>>;
 }
@@ -47,10 +51,12 @@ export const UIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [showProfile, setShowProfile] = useState(false);
   const [inventoryInitialStatus, setInventoryInitialStatus] = useState<string | undefined>(undefined);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [gatePassSaleId, setGatePassSaleId] = useState<string | null>(null);
   const [historyStack, setHistoryStack] = useState<HistoryState[]>([]);
   const [selectedArtworkId, setSelectedArtworkId] = useState<string | null>(null);
   const [operationsView, setOperationsView] = useState<'inventory' | 'events' | 'branches' | 'returned' | 'framer' | 'auctions' | 'reservations' | 'monitoring' | 'sales'>('branches');
   const [importStatus, setImportStatus] = useState<ImportStatus>({ isVisible: false });
+  const [isMasterViewOpen, setIsMasterViewOpen] = useState(false);
   const [targetSaleId, setTargetSaleId] = useState<string | null>(null);
 
   return (
@@ -60,10 +66,12 @@ export const UIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
         showProfile, setShowProfile,
         inventoryInitialStatus, setInventoryInitialStatus,
         isMobileMenuOpen, setIsMobileMenuOpen,
+        gatePassSaleId, setGatePassSaleId,
         historyStack, setHistoryStack,
         selectedArtworkId, setSelectedArtworkId,
         operationsView, setOperationsView,
         importStatus, setImportStatus,
+        isMasterViewOpen, setIsMasterViewOpen,
         targetSaleId, setTargetSaleId
       }}
     >

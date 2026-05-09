@@ -39,6 +39,16 @@ export const useArtworkSync = ({
     const artworkBackoffKey = `artisflow-artwork-sync-backoff:${currentUser.id}`;
     const artworkImageBackoffKey = `artisflow-artwork-image-sync-backoff:${currentUser.id}`;
 
+    const parseArtworkRecord = (art: any): Artwork => {
+      const a = mapFromSnakeCase(art);
+      return {
+        ...a,
+        itdrImageUrl: typeof a.itdrImageUrl === 'string' && a.itdrImageUrl.startsWith('[') ? JSON.parse(a.itdrImageUrl) : (a.itdrImageUrl || []),
+        rsaImageUrl: typeof a.rsaImageUrl === 'string' && a.rsaImageUrl.startsWith('[') ? JSON.parse(a.rsaImageUrl) : (a.rsaImageUrl || []),
+        orCrImageUrl: typeof a.orCrImageUrl === 'string' && a.orCrImageUrl.startsWith('[') ? JSON.parse(a.orCrImageUrl) : (a.orCrImageUrl || [])
+      };
+    };
+
     const syncArtworks = async () => {
       const lastFailureRaw = window.sessionStorage.getItem(artworkBackoffKey);
       const lastFailureAt = lastFailureRaw ? Number(lastFailureRaw) : 0;
@@ -59,12 +69,30 @@ export const useArtworkSync = ({
           from += ARTWORK_SYNC_PAGE_SIZE;
         }
 
-        const allMapped = mapFromSnakeCase(pagedRows) as Artwork[];
+        const allMapped = pagedRows.map(parseArtworkRecord);
         const uniqueAllMapped = Array.from(new Map(allMapped.map(item => [String(item.id), item])).values());
         const activeArtworks = uniqueAllMapped.filter((a: any) => !a.deletedAt);
 
         if (shouldLoadFullArtworks) {
           setAllArtworksIncludingDeleted(uniqueAllMapped);
+        } else {
+          // Merge minimal data into master list to ensure navigation works for sold/deleted items
+          setAllArtworksIncludingDeleted(prev => {
+            const newMap = new Map(prev.map(a => [String(a.id), a]));
+            uniqueAllMapped.forEach(a => {
+              const existing = newMap.get(String(a.id));
+              if (existing) {
+                // Only update if we are not downgrading a full record to a minimal record
+                // (minimal records are missing 'dimensions' as a proxy for detail)
+                if (!existing.dimensions || a.dimensions) {
+                  newMap.set(String(a.id), { ...existing, ...a });
+                }
+              } else {
+                newMap.set(String(a.id), a);
+              }
+            });
+            return Array.from(newMap.values());
+          });
         }
         setArtworks(activeArtworks);
 
@@ -147,7 +175,10 @@ export const useArtworkSync = ({
     void syncArtworks();
     const globalChannel = getGlobalSyncChannel();
     globalChannel.on('postgres_changes', { event: '*', schema: 'public', table: 'artworks' }, (payload) => {
-        const updatedItem = mapFromSnakeCase([payload.new || payload.old])[0] as Artwork;
+        const rawItem = payload.new || payload.old;
+        if (!rawItem) return;
+        
+        const updatedItem = parseArtworkRecord(rawItem);
         if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
           const normalized = updatedItem.imageUrl?.startsWith('data:image')
             ? { ...updatedItem, imageUrl: repairBase64Image(updatedItem.imageUrl) ?? '' }

@@ -44,16 +44,14 @@ export const useAccountOperations = () => {
       }
 
       if (acc.email && !IS_DEMO_MODE) {
-        (async () => {
-          try {
-            await sendStaffWelcomeEmail({
-              to: acc.email as string,
-              name: baseName || ''
-            });
-          } catch (error) {
-            console.error('Error sending staff welcome email', error);
-          }
-        })();
+        // Send welcome email asynchronously without blocking the UI
+        sendStaffWelcomeEmail({
+          to: acc.email as string,
+          name: baseName || ''
+        }).catch(err => {
+          // sendStaffWelcomeEmail handles its own internal logging, 
+          // so we just catch the promise rejection here.
+        });
       }
       pushNotification('Account Provisioned', `New user account created for ${baseName}.`, 'system');
     } catch (error: any) {

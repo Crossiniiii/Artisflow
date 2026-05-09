@@ -15,7 +15,3 @@ export const parseAttachmentString = (value?: string | string[] | null): string[
   return [value];
 };
 
-export const serializeAttachmentList = (values?: string[]): string | null => {
-  if (!values || values.length === 0) return null;
-  return JSON.stringify(values);
-};

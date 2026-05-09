@@ -15,7 +15,8 @@ import {
   Calendar,
   MessageSquare,
   AlertCircle,
-  RotateCcw
+  RotateCcw,
+  CreditCard
 } from 'lucide-react';
 
 import { UserRole, UserPermissions } from './types';
@@ -23,7 +24,6 @@ import { UserRole, UserPermissions } from './types';
 // Set this to true to run the app with local data only (bypassing Firestore)
 export const IS_DEMO_MODE = false;
 
-export const BRANCHES: string[] = ['Main Gallery', 'East Branch', 'West Branch', 'Private Collection'];
 
 export const BRANCH_CATEGORIES = [
   'Gallery',
@@ -35,35 +35,32 @@ export const BRANCH_CATEGORIES = [
 ];
 
 export const APP_TABS = [
+  { id: 'finance', label: 'Finance' },
   { id: 'dashboard', label: 'Dashboard' },
   { id: 'analytics', label: 'Inventory Insights' },
   { id: 'import-history', label: 'Import History' },
   { id: 'snapshots', label: 'Artwork Timeline' },
   { id: 'operations', label: 'Gallery Operations' },
   { id: 'sales-history', label: 'Sales History' },
+  { id: 'deliveries', label: 'Deliveries' },
   { id: 'artwork-transfer', label: 'Artwork T/R' },
   { id: 'audit-logs', label: 'System Audit Logs' },
   { id: 'accounts', label: 'User Accounts' },
   { id: 'chat', label: 'Inbox' },
-  { id: 'sales-approval', label: 'Sales Approval' },
-  { id: 'payment-approval', label: 'Payment Approval' }
+  { id: 'approvals', label: 'Approvals' },
+  { id: 'requests', label: 'My Requests' }
 ];
 
-export const ROLE_PERMISSIONS = {
-  INVENTORY_PERSONNEL: { add: true, edit: true, transfer: true, sell: false, deliver: false, manageUsers: false, manageEvents: false },
-  SALES_AGENT: { add: false, edit: false, transfer: false, sell: true, deliver: true, manageUsers: false, manageEvents: false },
-  ADMIN: { add: true, edit: true, transfer: true, sell: true, deliver: true, manageUsers: true, manageEvents: true },
-  EXCLUSIVE: { add: false, edit: false, transfer: false, sell: false, deliver: false, manageUsers: false, manageEvents: false }
-};
+
 
 export const getDefaultAccessibleTabs = (role: UserRole): string[] => {
   switch (role) {
     case UserRole.ADMIN:
-      return ['dashboard', 'analytics', 'import-history', 'snapshots', 'operations', 'sales-history', 'sales-approval', 'payment-approval', 'artwork-transfer', 'audit-logs', 'accounts', 'chat'];
+      return ['finance', 'dashboard', 'analytics', 'import-history', 'snapshots', 'operations', 'sales-history', 'deliveries', 'approvals', 'artwork-transfer', 'audit-logs', 'accounts', 'chat'];
     case UserRole.INVENTORY_PERSONNEL:
-      return ['dashboard', 'analytics', 'import-history', 'snapshots', 'operations', 'sales-history', 'artwork-transfer', 'accounts', 'chat'];
+      return ['finance', 'dashboard', 'analytics', 'import-history', 'snapshots', 'operations', 'sales-history', 'deliveries', 'artwork-transfer', 'accounts', 'chat'];
     case UserRole.SALES_AGENT:
-      return ['dashboard', 'sales-history', 'artwork-transfer', 'accounts', 'chat'];
+      return ['dashboard', 'sales-history', 'deliveries', 'artwork-transfer', 'requests', 'accounts', 'chat'];
     case UserRole.EXCLUSIVE:
       return ['dashboard'];
     default:
@@ -179,6 +176,7 @@ export const getDefaultPermissions = (role: UserRole): UserPermissions => {
 
 export const ICONS = {
   Dashboard: <LayoutDashboard size={20} />,
+  Finance: <CreditCard size={20} />,
   Inventory: <Box size={20} />,
   Sales: <ShoppingCart size={20} />,
   Transfers: <ArrowRightLeft size={20} />,

@@ -5,18 +5,21 @@ import ExcelJS from 'exceljs';
 import { Artwork, ArtworkStatus, Branch, ExhibitionEvent, SaleRecord, isInTransitStatus, UserPermissions, ReturnType } from '../types';
 import { ICONS } from '../constants';
 import { Upload, AlertCircle, CheckCircle2, X, Download, XCircle, Edit, Trash2, ShoppingBag, Clock, ArrowRightLeft, Image as ImageIcon, RotateCcw, ChevronRight, ArrowLeft, Sparkles, Plus, ClipboardCheck, Eye, Wrench, ChevronDown, Info, AlertTriangle } from 'lucide-react';
+import { PhoneInput } from '../components/PhoneInput';
 
 import { createPortal } from 'react-dom';
 import { useActionProcessing } from '../hooks/useActionProcessing';
 import LoadingOverlay from '../components/LoadingOverlay';
 import { Modal } from '../components/Modal';
 import { BulkActionModal } from '../components/modals/BulkActionModal';
+import { OptimizedTextarea } from '../components/OptimizedTextarea';
 
 // Internal Components
 import { InventoryStats } from '../components/inventory/InventoryStats';
 import { InventoryFilters } from '../components/inventory/InventoryFilters';
 import { InventoryCard } from '../components/inventory/InventoryCard';
 import { InventoryImportModal } from '../components/inventory/InventoryImportModal';
+import { getArtworkClassification } from '../services/inventoryService';
 
 interface InventoryProps {
   artworks: Artwork[];
@@ -56,6 +59,7 @@ interface InventoryProps {
 }
 
 const Inventory: React.FC<InventoryProps> = ({
+
   artworks,
   branches,
   onView,
@@ -86,6 +90,9 @@ const Inventory: React.FC<InventoryProps> = ({
   const [artistFilter, setArtistFilter] = useState<string>('All');
   const [mediumFilter, setMediumFilter] = useState<string>('All');
   const [sizeFilter, setSizeFilter] = useState<string>('');
+  const [exhibitFilter, setExhibitFilter] = useState('All');
+  const [clientFilter, setClientFilter] = useState('');
+
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingArtwork, setEditingArtwork] = useState<Artwork | null>(null);
   const [showImportModal, setShowImportModal] = useState(false);
@@ -113,6 +120,8 @@ const Inventory: React.FC<InventoryProps> = ({
   const [selectedStatus, setSelectedStatus] = useState<ArtworkStatus | string>('Available');
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [uploadingImage, setUploadingImage] = useState(false);
+  const [artworkArtist, setArtworkArtist] = useState('');
+  const [artworkDimensions, setArtworkDimensions] = useState('');
 
   // Attachments
   const [activeBulkAttachmentTab, setActiveBulkAttachmentTab] = useState<'itdr' | 'rsa' | 'orcr'>('itdr');
@@ -151,14 +160,24 @@ const Inventory: React.FC<InventoryProps> = ({
   const monthNames = useMemo(() => ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'], []);
 
   React.useEffect(() => {
+    if (statusFilter !== ArtworkStatus.SOLD && paymentTypeFilter !== 'All') {
+      setPaymentTypeFilter('All');
+    }
+  }, [statusFilter, paymentTypeFilter]);
+
+  React.useEffect(() => {
     if (editingArtwork) {
       setSelectedStatus(editingArtwork.status);
       setImagePreview(editingArtwork.imageUrl);
+      setArtworkArtist(editingArtwork.artist || '');
+      setArtworkDimensions(editingArtwork.dimensions || '');
     } else {
       setSelectedStatus('Available');
       setImagePreview(null);
+      setArtworkArtist('');
+      setArtworkDimensions('');
     }
-  }, [editingArtwork]);
+  }, [editingArtwork, showAddModal]);
 
   const [errorModal, setErrorModal] = useState<{ title: string, message: string, onConfirm?: () => void } | null>(null);
 
@@ -240,12 +259,15 @@ const Inventory: React.FC<InventoryProps> = ({
   };
 
   // Set default sheet filter to the first available sheet (preferably 'AVAILABLE')
+  const [hasSetInitialSheet, setHasSetInitialSheet] = useState(false);
+
   React.useEffect(() => {
-    if (sheetFilter === 'All' && availableSheets.length > 0) {
+    if (!hasSetInitialSheet && availableSheets.length > 0) {
       const preferred = availableSheets.find(s => s.toUpperCase().includes('AVAILABLE')) || availableSheets[0];
       setSheetFilter(preferred);
+      setHasSetInitialSheet(true);
     }
-  }, [availableSheets, sheetFilter]);
+  }, [availableSheets, hasSetInitialSheet]);
 
   const baseFilteredArtworks = useMemo(() => {
     return artworks.filter(art => {
@@ -253,7 +275,17 @@ const Inventory: React.FC<InventoryProps> = ({
         art.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
         art.artist.toLowerCase().includes(searchTerm.toLowerCase()) ||
         art.code.toLowerCase().includes(searchTerm.toLowerCase());
-      const matchesBranch = branchFilter === 'All' || art.currentBranch === branchFilter;
+      const matchesExhibit = exhibitFilter === 'All' || art.reservedForEventId === exhibitFilter;
+      const matchesClient = !clientFilter || (art.remarks || '').toLowerCase().includes(clientFilter.toLowerCase());
+      const matchesBranch = branchFilter === 'All' || 
+        (art.currentBranch && branchFilter && (
+          art.currentBranch.trim().toLowerCase() === branchFilter.trim().toLowerCase() ||
+          art.currentBranch.toLowerCase().includes(branchFilter.toLowerCase()) ||
+          branchFilter.toLowerCase().includes(art.currentBranch.toLowerCase()) ||
+          // Handle parenthetical names like "Galerie Joaquin - (Sanso's Room)" matching "Sanso's Room"
+          (art.currentBranch.includes('(') && art.currentBranch.includes(branchFilter))
+        ));
+
       const matchesArtist = artistFilter === 'All' || art.artist === artistFilter;
       const matchesMedium = mediumFilter === 'All' || art.medium === mediumFilter;
       const matchesSize = !sizeFilter || (art.dimensions && art.dimensions.toLowerCase().includes(sizeFilter.toLowerCase()));
@@ -269,9 +301,9 @@ const Inventory: React.FC<InventoryProps> = ({
           matchesDate = effM === parseInt(dateMonthFilter, 10);
         }
       }
-      return matchesSearch && matchesBranch && matchesDate && matchesArtist && matchesMedium && matchesSize;
+      return matchesSearch && matchesBranch && matchesDate && matchesArtist && matchesMedium && matchesSize && matchesExhibit && matchesClient;
     });
-  }, [artworks, searchTerm, branchFilter, dateMonthFilter, dateYearFilter, artistFilter, mediumFilter, sizeFilter]);
+  }, [artworks, searchTerm, branchFilter, dateMonthFilter, dateYearFilter, artistFilter, mediumFilter, sizeFilter, exhibitFilter, clientFilter]);
 
   const filteredArtworks = useMemo(() => {
     return baseFilteredArtworks.filter(art => {
@@ -282,7 +314,7 @@ const Inventory: React.FC<InventoryProps> = ({
       const matchesSheet = sheetFilter === 'All' || art.sheetName === sheetFilter;
 
       let matchesPaymentType = true;
-      if (paymentTypeFilter !== 'All') {
+      if (statusFilter === ArtworkStatus.SOLD && paymentTypeFilter !== 'All') {
         const matchingSale = (sales || []).find(s => s.artworkId === art.id && !s.isCancelled);
         if (paymentTypeFilter === 'Downpayment') {
           matchesPaymentType = !!(matchingSale?.downpayment !== undefined && matchingSale.downpayment < art.price);
@@ -359,6 +391,103 @@ const Inventory: React.FC<InventoryProps> = ({
     });
 
     writeFile(workbook, `ArtisFlow_Inventory_${new Date().toISOString().split('T')[0]}.xlsx`);
+  };
+
+  const handleExportPDF = async () => {
+    setIsProcessing(true);
+    setProcessMessage('Preparing PDF document...');
+    setProcessProgress(20);
+
+    try {
+      const element = document.getElementById('inventory-grid');
+      if (!element) {
+        console.error('Inventory grid element not found');
+        return;
+      }
+
+      setProcessProgress(40);
+      const html2canvas = (await import('html2canvas')).default;
+      const { jsPDF } = await import('jspdf');
+
+      const canvas = await html2canvas(element, {
+        scale: 2,
+        useCORS: true,
+        backgroundColor: '#f8fafc',
+        windowWidth: element.scrollWidth,
+        windowHeight: element.scrollHeight,
+        logging: false,
+        onclone: (clonedDoc) => {
+          const clonedElement = clonedDoc.getElementById('inventory-grid');
+          if (clonedElement) {
+            clonedElement.style.padding = '20px';
+          }
+        }
+      });
+
+      setProcessProgress(70);
+      const imgData = canvas.toDataURL('image/jpeg', 0.95);
+      const pdf = new jsPDF({
+        orientation: 'portrait',
+        unit: 'pt',
+        format: 'a4'
+      });
+
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+
+      pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight);
+      
+      setProcessProgress(90);
+      pdf.save(`ArtisFlow_Inventory_${new Date().toISOString().split('T')[0]}.pdf`);
+      setProcessProgress(100);
+    } catch (error) {
+      console.error('Error exporting PDF:', error);
+      alert('Failed to generate PDF. Please try again.');
+    } finally {
+      setTimeout(() => {
+        setIsProcessing(false);
+        setProcessProgress(0);
+      }, 500);
+    }
+  };
+
+  const handleExportImage = async () => {
+    setIsProcessing(true);
+    setProcessMessage('Capturing high-resolution image...');
+    setProcessProgress(30);
+
+    try {
+      const element = document.getElementById('inventory-grid');
+      if (!element) {
+        console.error('Inventory grid element not found');
+        return;
+      }
+
+      const html2canvas = (await import('html2canvas')).default;
+      const canvas = await html2canvas(element, {
+        scale: 2,
+        useCORS: true,
+        backgroundColor: '#f8fafc',
+        windowWidth: element.scrollWidth,
+        windowHeight: element.scrollHeight,
+        logging: false
+      });
+
+      setProcessProgress(80);
+      const link = document.createElement('a');
+      link.download = `ArtisFlow_Inventory_${new Date().toISOString().split('T')[0]}.png`;
+      link.href = canvas.toDataURL('image/png', 1.0);
+      link.click();
+      setProcessProgress(100);
+    } catch (error) {
+      console.error('Error exporting image:', error);
+      alert('Failed to capture image. Please try again.');
+    } finally {
+      setTimeout(() => {
+        setIsProcessing(false);
+        setProcessProgress(0);
+      }, 500);
+    }
   };
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -451,7 +580,8 @@ const Inventory: React.FC<InventoryProps> = ({
             const isTitle = ['title', 'particulars', 'description', 'subject', 'artwork'].some(k => lowerKey.includes(k));
             const isArtist = ['artist', 'name', 'painter', 'author'].some(k => lowerKey.includes(k));
             const isMedium = ['medium', 'material', 'type', 'substrate'].some(k => lowerKey.includes(k));
-            const isDimensions = ['dimensions', 'size', 'dims', 'measure'].some(k => lowerKey.includes(k));
+            const isDimensions = /(dimensions|size|dims|measure)/.test(lowerKey) && (!/frame/.test(lowerKey) || /w\s*[\/\\]\s*o/.test(lowerKey) || /without/.test(lowerKey));
+            const isSizeFrame = /frame/.test(lowerKey) && !/w\s*[\/\\]\s*o/.test(lowerKey) && !/without/.test(lowerKey);
             const isBranch = ['branch', 'location', 'gallery', 'site'].some(k => lowerKey.includes(k));
             // Only match "id" if the column header is significantly like an ID field, to avoid false positives with "paid"
             const isCode = ['code', 'sku', 'item', 'ref'].some(k => lowerKey.includes(k)) || lowerKey === 'id';
@@ -462,14 +592,43 @@ const Inventory: React.FC<InventoryProps> = ({
               if (!isNaN(num) && num !== null) entry.price = num;
             } else if (isTitle && !entry.title) entry.title = String(value || '').trim();
             else if (isArtist && !entry.artist) entry.artist = String(value || '').trim();
-            else if (isMedium) entry.medium = String(value || '').trim();
-            else if (isDimensions) entry.dimensions = String(value || '').trim();
-            else if (isBranch) entry.currentBranch = String(value || '').trim();
-            else if (isCode) entry.code = String(value || '').trim();
+            else if (isMedium && !entry.medium) entry.medium = String(value || '').trim();
+            else if (isDimensions && !entry.dimensions) entry.dimensions = String(value || '').trim();
+            else if (isSizeFrame && !entry.sizeFrame) entry.sizeFrame = String(value || '').trim();
+            else if (isBranch && !entry.currentBranch) entry.currentBranch = String(value || '').trim();
+            else if (isCode && !entry.code) entry.code = String(value || '').trim();
             else if (lowerKey.includes('year') || lowerKey.includes('date')) entry.year = value instanceof Date ? value.toISOString().split('T')[0] : String(value || '').trim();
             else if (lowerKey.includes('status')) entry.status = String(value || '').trim();
             else if (lowerKey.includes('remarks')) entry.remarks = String(value || '').trim();
           });
+
+          let finalDim = entry.dimensions || '';
+          let finalFrame = entry.sizeFrame || '';
+
+          // Clean hyphens and format inches
+          if (finalDim && finalDim !== 'null' && finalDim !== 'undefined' && !finalDim.includes('---')) {
+            if (!finalDim.toLowerCase().includes('inch') && !finalDim.toLowerCase().includes('"')) {
+                finalDim += ' Inches';
+            }
+            entry.dimensions = finalDim;
+          } else {
+            finalDim = '';
+            entry.dimensions = '';
+          }
+
+          if (finalFrame && finalFrame !== 'null' && finalFrame !== 'undefined' && !finalFrame.includes('---')) {
+            if (!finalFrame.toLowerCase().includes('inch') && !finalFrame.toLowerCase().includes('"')) {
+                finalFrame += ' Inches';
+            }
+            entry.sizeFrame = finalFrame;
+          } else {
+            finalFrame = '';
+            entry.sizeFrame = '';
+          }
+
+          // Classification
+          entry.type = getArtworkClassification(finalDim);
+          if (!entry.type && finalFrame) entry.type = 'Painting'; // Fallback if frame is present but dimensions are weird
           if (rowImages[rowNumber]) entry.imageUrl = rowImages[rowNumber];
           if (!entry.title && (entry.particulars || entry.description)) entry.title = entry.particulars || entry.description;
           if (!entry.title && entry.code) entry.title = `Untitled (${entry.code})`;
@@ -710,14 +869,22 @@ const Inventory: React.FC<InventoryProps> = ({
         filteredCount={filteredArtworks.length}
         handleSelectAll={handleSelectAll}
         exportInventory={exportInventory}
+        exportPDF={handleExportPDF}
+        exportImage={handleExportImage}
         handleFileChange={handleFileChange}
         fileInputRef={fileInputRef}
         setShowAddModal={setShowAddModal}
+        exhibitFilter={exhibitFilter}
+        setExhibitFilter={setExhibitFilter}
+        clientFilter={clientFilter}
+        setClientFilter={setClientFilter}
+        events={events}
+
       />
 
       <InventoryStats inventoryInsights={inventoryInsights} />
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-4">
+      <div id="inventory-grid" className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-4 p-1">
         {filteredArtworks.map((art) => {
           const matchingSale = (sales || []).find(s => s.artworkId === art.id && !s.isCancelled);
           return (
@@ -816,7 +983,22 @@ const Inventory: React.FC<InventoryProps> = ({
                 </div>
                 <div>
                   <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Artist</label>
-                  <input name="artist" defaultValue={editingArtwork?.artist} required className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all" />
+                  <input 
+                    name="artist" 
+                    value={artworkArtist}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setArtworkArtist(val);
+                      const targetArtists = ['Ramon Orlina', 'Marge Organo'];
+                      if (targetArtists.some(a => a.toLowerCase() === val.trim().toLowerCase())) {
+                        if (artworkDimensions && !artworkDimensions.toLowerCase().includes('in')) {
+                          setArtworkDimensions(prev => prev.trim() + ' in');
+                        }
+                      }
+                    }}
+                    required 
+                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all" 
+                  />
                 </div>
               </div>
               <div className="space-y-4 text-center">
@@ -874,7 +1056,25 @@ const Inventory: React.FC<InventoryProps> = ({
               </div>
               <div>
                 <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Dimensions</label>
-                <input name="dimensions" defaultValue={editingArtwork?.dimensions} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm" placeholder="e.g. 24 x 36 in" />
+                <input 
+                  name="dimensions" 
+                  value={artworkDimensions}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setArtworkDimensions(val);
+                  }}
+                  onBlur={(e) => {
+                    const val = e.target.value;
+                    const targetArtists = ['Ramon Orlina', 'Marge Organo'];
+                    if (targetArtists.some(a => a.toLowerCase() === artworkArtist.trim().toLowerCase())) {
+                      if (val && !val.toLowerCase().includes('in')) {
+                        setArtworkDimensions(val.trim() + ' in');
+                      }
+                    }
+                  }}
+                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm" 
+                  placeholder="e.g. 24 x 36 in" 
+                />
               </div>
             </div>
 
@@ -1036,8 +1236,8 @@ const Inventory: React.FC<InventoryProps> = ({
                                   <input type="email" value={bulkClientEmail} onChange={e => setBulkClientEmail(e.target.value)} className="w-full h-11 px-4 bg-[#faf9f8] border border-[#edebe9] rounded-sm text-sm font-bold text-[#323130]" placeholder="email@address.com" />
                                 </div>
                                 <div className="space-y-1">
-                                  <label className="text-[10px] font-bold text-[#605e5c] uppercase ml-1">Mobile / Contact</label>
-                                  <input type="text" value={bulkClientContact} onChange={e => setBulkClientContact(e.target.value)} className="w-full h-11 px-4 bg-[#faf9f8] border border-[#edebe9] rounded-sm text-sm font-bold text-[#323130]" placeholder="+63 9..." />
+                                  <label className="text-[10px] font-bold text-[#605e5c] uppercase ml-1">Mobile / Contact <span className="text-[#a4262c]">*</span></label>
+                                  <PhoneInput value={bulkClientContact} onChange={setBulkClientContact} className="h-11" />
                                 </div>
                               </div>
                             </div>
@@ -1287,7 +1487,7 @@ const Inventory: React.FC<InventoryProps> = ({
                                     {isTimelessReservation || (reservationDays === 0 && reservationHours === 0 && reservationMinutes === 0) ? 'Timeless' : `${reservationDays}d ${reservationHours}h ${reservationMinutes}m`}
                                   </p>
                                 </div>
-                               <textarea value={reservationNotes} onChange={e => setReservationNotes(e.target.value)} className="w-full h-24 p-3 bg-white/60 border border-transparent rounded-sm text-sm mt-4 font-medium text-[#4a1e00] resize-none focus:bg-white transition-all" placeholder="Reservation justification..." />
+                               <OptimizedTextarea value={reservationNotes} onChange={(e: any) => setReservationNotes(e.target.value)} className="w-full h-24 p-3 bg-white/60 border border-transparent rounded-sm text-sm mt-4 font-medium text-[#4a1e00] resize-none focus:bg-white transition-all" placeholder="Reservation justification..." />
                             </div>
                          </div>
                       </div>
@@ -1372,7 +1572,7 @@ const Inventory: React.FC<InventoryProps> = ({
   
                            <div className="space-y-4">
                               <h4 className="text-[11px] font-black text-[#605e5c] uppercase tracking-widest border-b border-[#f3f2f1] pb-2">Operational Workflow</h4>
-                              <textarea value={bulkActionModal.type === 'framing' ? framerDamageDetails : returnReason} onChange={e => bulkActionModal.type === 'framing' ? setFramerDamageDetails(e.target.value) : setReturnReason(e.target.value)} className="w-full h-48 p-4 bg-[#faf9f8] border border-[#edebe9] rounded-sm text-sm font-bold text-[#323130] focus:bg-white transition-all resize-none" placeholder={bulkActionModal.type === 'framing' ? 'Detail frame requirements or damage assessment...' : 'Detail the professional rationale for protocol initiation...'} />
+                              <OptimizedTextarea value={bulkActionModal.type === 'framing' ? framerDamageDetails : returnReason} onChange={(e: any) => bulkActionModal.type === 'framing' ? setFramerDamageDetails(e.target.value) : setReturnReason(e.target.value)} className="w-full h-48 p-4 bg-[#faf9f8] border border-[#edebe9] rounded-sm text-sm font-bold text-[#323130] focus:bg-white transition-all resize-none" placeholder={bulkActionModal.type === 'framing' ? 'Detail frame requirements or damage assessment...' : 'Detail the professional rationale for protocol initiation...'} />
                            </div>
                          </div>
   
@@ -1480,7 +1680,7 @@ const Inventory: React.FC<InventoryProps> = ({
                    <button 
                      onClick={handleBulkActionSubmit}
                      disabled={
-                       bulkActionModal.type === 'sale' ? (!bulkActionValue || selectedIds.some(id => bulkSaleInstallmentsEnabled[id] && !bulkSaleDownpayments[id])) :
+                       bulkActionModal.type === 'sale' ? (!bulkActionValue || !bulkClientContact || bulkClientContact.replace(/\D/g, '').length < 7 || selectedIds.some(id => bulkSaleInstallmentsEnabled[id] && !bulkSaleDownpayments[id])) :
                        bulkActionModal.type === 'reserve' ? (reservationTab === 'person' ? !reservationClient : (reservationTab === 'event' || reservationTab === 'auction') ? !reservationEventId : false) :
                        bulkActionModal.type === 'transfer' ? !bulkActionValue :
                        bulkActionModal.type === 'framing' ? !framerDamageDetails :

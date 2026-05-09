@@ -7,6 +7,7 @@ import {
   InventoryAudit,
   ReturnRecord,
   TransferRecord,
+  TransferRequest,
   UserAccount
 } from '../../types';
 import { IS_DEMO_MODE } from '../../constants';
@@ -38,6 +39,7 @@ interface UseBranchAndOperationsSyncParams {
   setReturnRecords: Dispatch<SetStateAction<ReturnRecord[]>>;
   setFramerRecords: Dispatch<SetStateAction<FramerRecord[]>>;
   setTransfers: Dispatch<SetStateAction<TransferRecord[]>>;
+  setTransferRequests: Dispatch<SetStateAction<TransferRequest[]>>;
 }
 
 const normalizeActivityLog = (row: any): ActivityLog => {
@@ -56,7 +58,10 @@ const normalizeImportRecord = (row: any): ImportRecord => {
   return {
     ...mapped,
     timestamp: mapped.importedAt || mapped.timestamp || row.imported_at || row.timestamp,
-    recordCount: mapped.totalItems !== undefined ? mapped.totalItems : (mapped.recordCount !== undefined ? mapped.recordCount : row.total_items)
+    recordCount: mapped.totalItems !== undefined ? mapped.totalItems : (mapped.recordCount !== undefined ? mapped.recordCount : row.total_items),
+    importedIds: typeof mapped.importedIds === 'string' ? JSON.parse(mapped.importedIds) : (mapped.importedIds || []),
+    updatedIds: typeof mapped.updatedIds === 'string' ? JSON.parse(mapped.updatedIds) : (mapped.updatedIds || []),
+    failedItems: typeof mapped.failedItems === 'string' ? JSON.parse(mapped.failedItems) : (mapped.failedItems || [])
   };
 };
 
@@ -73,7 +78,8 @@ export const useBranchAndOperationsSync = ({
   setImportLogs,
   setReturnRecords,
   setFramerRecords,
-  setTransfers
+  setTransfers,
+  setTransferRequests
 }: UseBranchAndOperationsSyncParams) => {
   useEffect(() => {
     if (IS_DEMO_MODE || !currentUser?.id) return;
@@ -231,21 +237,49 @@ export const useBranchAndOperationsSync = ({
       return primary;
     };
 
+    const parseReturnRecord = (row: any): ReturnRecord => {
+      const mapped = mapFromSnakeCase(row) as ReturnRecord;
+      return {
+        ...mapped,
+        artworkSnapshot: typeof mapped.artworkSnapshot === 'string' ? JSON.parse(mapped.artworkSnapshot) : mapped.artworkSnapshot,
+        proofImage: typeof mapped.proofImage === 'string' && (mapped.proofImage.startsWith('[') || mapped.proofImage.startsWith('{')) ? JSON.parse(mapped.proofImage) : mapped.proofImage
+      };
+    };
+
+    const parseFramerRecord = (row: any): FramerRecord => {
+      const mapped = mapFromSnakeCase(row) as FramerRecord;
+      return {
+        ...mapped,
+        artworkSnapshot: typeof mapped.artworkSnapshot === 'string' ? JSON.parse(mapped.artworkSnapshot) : mapped.artworkSnapshot,
+        attachmentUrl: typeof mapped.attachmentUrl === 'string' && (mapped.attachmentUrl.startsWith('[') || mapped.attachmentUrl.startsWith('{')) ? JSON.parse(mapped.attachmentUrl) : mapped.attachmentUrl
+      };
+    };
+
+    const parseTransferRequest = (row: any): TransferRequest => {
+      const mapped = mapFromSnakeCase(row) as TransferRequest;
+      return {
+        ...mapped,
+        itdrUrl: typeof mapped.itdrUrl === 'string' && (mapped.itdrUrl.startsWith('[') || mapped.itdrUrl.startsWith('{')) ? JSON.parse(mapped.itdrUrl) : (mapped.itdrUrl || [])
+      };
+    };
+
     const syncOperations = async () => {
-      const [logsRes, auditsRes, importsRes, returnsRes, framersRes, transfersRes] = await Promise.all([
+      const [logsRes, auditsRes, importsRes, returnsRes, framersRes, transfersRes, requestsRes] = await Promise.all([
         safeSelectOrdered('activity_logs', 'timestamp', OPERATIONS_ROW_LIMITS.logs, 'created_at'),
         safeSelectOrdered('audits', 'confirmed_at', OPERATIONS_ROW_LIMITS.audits, 'created_at'),
         safeSelectOrdered('import_records', 'imported_at', OPERATIONS_ROW_LIMITS.imports, 'timestamp'),
         safeSelectOrdered('returns', 'created_at', OPERATIONS_ROW_LIMITS.returns),
         safeSelectOrdered('framer_records', 'created_at', OPERATIONS_ROW_LIMITS.framers),
-        safeSelectOrdered('transfers', 'created_at', OPERATIONS_ROW_LIMITS.transfers)
+        safeSelectOrdered('transfers', 'created_at', OPERATIONS_ROW_LIMITS.transfers),
+        supabase.from('transfer_requests').select('*').order('requested_at', { ascending: false }).limit(200)
       ]);
 
       if (logsRes.data) setLogs(logsRes.data.map(normalizeActivityLog));
       if (auditsRes.data) setAudits(mapFromSnakeCase(auditsRes.data) as InventoryAudit[]);
-      if (returnsRes.data) setReturnRecords(mapFromSnakeCase(returnsRes.data) as ReturnRecord[]);
-      if (framersRes.data) setFramerRecords(mapFromSnakeCase(framersRes.data) as FramerRecord[]);
+      if (returnsRes.data) setReturnRecords(returnsRes.data.map(parseReturnRecord));
+      if (framersRes.data) setFramerRecords(framersRes.data.map(parseFramerRecord));
       if (transfersRes.data) setTransfers(mapFromSnakeCase(transfersRes.data) as TransferRecord[]);
+      if (requestsRes.data) setTransferRequests(requestsRes.data.map(parseTransferRequest));
       if (importsRes.data) setImportLogs(importsRes.data.map(normalizeImportRecord));
     };
 
@@ -260,7 +294,10 @@ export const useBranchAndOperationsSync = ({
         return;
       }
 
-      const mapped = transform ? transform(payload.new) : (mapFromSnakeCase(payload.new) as T);
+      const rawItem = payload.new;
+      if (!rawItem) return;
+
+      const mapped = transform ? transform(rawItem) : (mapFromSnakeCase(rawItem) as T);
       if (payload.eventType === 'INSERT') {
         setter(prev => upsertRealtimeRecord(prev, mapped, limit));
         return;
@@ -281,13 +318,15 @@ export const useBranchAndOperationsSync = ({
       .on('postgres_changes', { event: '*', schema: 'public', table: 'import_records' }, payload =>
         handleListRealtime(payload, setImportLogs, OPERATIONS_ROW_LIMITS.imports, normalizeImportRecord))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'returns' }, payload =>
-        handleListRealtime(payload, setReturnRecords, OPERATIONS_ROW_LIMITS.returns))
+        handleListRealtime(payload, setReturnRecords, OPERATIONS_ROW_LIMITS.returns, parseReturnRecord))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'framer_records' }, payload =>
-        handleListRealtime(payload, setFramerRecords, OPERATIONS_ROW_LIMITS.framers))
+        handleListRealtime(payload, setFramerRecords, OPERATIONS_ROW_LIMITS.framers, parseFramerRecord))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'transfers' }, payload =>
-        handleListRealtime(payload, setTransfers, OPERATIONS_ROW_LIMITS.transfers));
+        handleListRealtime(payload, setTransfers, OPERATIONS_ROW_LIMITS.transfers))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'transfer_requests' }, payload =>
+        handleListRealtime(payload, setTransferRequests, 200, parseTransferRequest));
 
     subscribeGlobalSyncChannel();
     return () => { unsubscribeGlobalSyncChannel(); };
-  }, [currentUser?.id, shouldSyncOperationalData, setAudits, setFramerRecords, setImportLogs, setLogs, setReturnRecords, setTransfers]);
+  }, [currentUser?.id, shouldSyncOperationalData, setAudits, setFramerRecords, setImportLogs, setLogs, setReturnRecords, setTransfers, setTransferRequests]);
 };

@@ -57,9 +57,7 @@ export const useEventOperations = () => {
       setArtworks(updatedArtworks);
 
       if (!IS_DEMO_MODE) {
-        // Strip out 'artworkIds' as it is a frontend relational slice, not a DB column
-        const { artworkIds, ...eventDbPayload } = newEvent;
-        const { error: eventError } = await supabase.from('events').insert(mapToSnakeCase(eventDbPayload));
+        const { error: eventError } = await supabase.from('events').insert(mapToSnakeCase(newEvent));
         if (eventError) throw eventError;
 
         const artworkUpdates = updatedArtworks
@@ -129,8 +127,7 @@ export const useEventOperations = () => {
       setArtworks(updatedArtworks);
 
       if (!IS_DEMO_MODE) {
-        const { artworkIds, ...updateDbPayload } = updates;
-        const { error: eventError } = await supabase.from('events').update(mapToSnakeCase(updateDbPayload)).eq('id', id);
+        const { error: eventError } = await supabase.from('events').update(mapToSnakeCase(updates)).eq('id', id);
         if (eventError) throw eventError;
 
         const artworkUpdates = updatedArtworks

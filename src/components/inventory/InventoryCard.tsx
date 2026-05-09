@@ -3,6 +3,7 @@ import { Edit } from 'lucide-react';
 import { Artwork, ArtworkStatus, UserPermissions, SaleRecord } from '../../types';
 import { StatusBadge } from '../StatusBadge';
 import { OptimizedImage } from '../OptimizedImage';
+import { getArtworkClassification } from '../../services/inventoryService';
 
 interface InventoryCardProps {
   art: Artwork;
@@ -81,6 +82,11 @@ export const InventoryCard: React.FC<InventoryCardProps> = ({
             <span className="inline-flex items-center px-1.5 py-0.5 rounded-md bg-slate-50 border border-slate-200 text-[9px] font-bold uppercase tracking-widest text-slate-500">
               {art.year}
             </span>
+            {(art.type || getArtworkClassification(art.dimensions)) && (
+              <span className="inline-flex items-center px-1.5 py-0.5 rounded-md bg-blue-50 border border-blue-100 text-[9px] font-bold uppercase tracking-widest text-blue-600">
+                {art.type || getArtworkClassification(art.dimensions)}
+              </span>
+            )}
             {art.importPeriod && (
               <span className="inline-flex items-center px-1.5 py-0.5 rounded-md bg-indigo-50 border border-indigo-100 text-[9px] font-bold uppercase tracking-widest text-indigo-600">
                  {formatImportPeriod(art.importPeriod)}

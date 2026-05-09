@@ -3,5 +3,15 @@
   "scope": "codebase",
   "type": "frontend",
   "localEndpoint": "http://localhost:3000/",
-  "serverPort": 49397
+  "serverPort": 54647,
+  "executionArgs": {
+    "projectName": "artisflow",
+    "projectPath": "c:\\Users\\willb\\Documents\\artisflow",
+    "testIds": [],
+    "additionalInstruction": "Verify the Correction Mode in MasterView. \n1. Ensure the banner is visible when a sale is DECLINED.\n2. Ensure the \"Edit Artwork\" button is enabled for Sales Agents in this mode.\n3. Verify that resubmitting a sale works correctly.",
+    "serverMode": "development",
+    "envs": {
+      "API_KEY": "sk-user-bxDFOh4vWsckKRb_R1Bx8KzAm21B8mx1N1rJVY2jgJjw7_v29Q5Vj3wcd5r3GsdokaKdQXRhlu98RWWGK6YvFefr6wI4GxYfrKnC09A8IP7wrNXEEdFkzrZm3AfFla1aA-Y"
+    }
+  }
 }

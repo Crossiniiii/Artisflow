@@ -43,6 +43,8 @@ interface InventoryFiltersProps {
   setExhibitFilter: (val: string) => void;
   clientFilter: string;
   setClientFilter: (val: string) => void;
+  typeFilter: string;
+  setTypeFilter: (val: string) => void;
   events: ExhibitionEvent[];
 }
 
@@ -86,6 +88,8 @@ export const InventoryFilters: React.FC<InventoryFiltersProps> = ({
   setExhibitFilter,
   clientFilter,
   setClientFilter,
+  typeFilter,
+  setTypeFilter,
   events
 }) => {
   const controlClass = "h-9 bg-white border-0 px-3 text-[11px] font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 cursor-pointer uppercase tracking-[0.04em]";
@@ -252,6 +256,18 @@ export const InventoryFilters: React.FC<InventoryFiltersProps> = ({
               </select>
             </div>
           )}
+
+          <div className={groupClass}>
+            <select
+              value={typeFilter}
+              onChange={(e) => setTypeFilter(e.target.value)}
+              className={`${controlClass} min-w-[120px] text-indigo-700`}
+            >
+              <option value="All">All Types</option>
+              <option value="Painting">Painting</option>
+              <option value="Sculpture">Sculpture</option>
+            </select>
+          </div>
 
           <div className={groupClass}>
             <select

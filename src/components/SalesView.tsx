@@ -79,12 +79,13 @@ const SalesView: React.FC<SalesViewProps> = ({ sales, artworks, branches, onAddI
     const snapshot = sale.artworkSnapshot;
 
     if (!liveArtwork && !snapshot) return null;
-    if (!liveArtwork) return snapshot || null;
+    if (!liveArtwork) return snapshot ? { ...snapshot, id: sale.artworkId } as any : null;
     if (!snapshot) return liveArtwork;
 
     return {
       ...snapshot,
       ...liveArtwork,
+      id: sale.artworkId,
       imageUrl: imageOverrides[sale.artworkId] || liveArtwork.imageUrl || snapshot.imageUrl || '',
       currentBranch: liveArtwork.currentBranch || snapshot.currentBranch || 'Unknown'
     };

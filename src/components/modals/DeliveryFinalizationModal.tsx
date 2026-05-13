@@ -8,7 +8,7 @@ interface DeliveryFinalizationModalProps {
   sale: SaleRecord;
   artwork: { id: string; title: string; code: string; imageUrl?: string };
   onClose: () => void;
-  onConfirm: (itdr?: string, rsa?: string, orcr?: string, carrier?: string, referenceNumber?: string) => void;
+  onConfirm: (itdr?: string, rsa?: string, orcr?: string, carrier?: string, referenceNumber?: string, remarks?: string) => void;
 }
 
 const DeliveryFinalizationModal: React.FC<DeliveryFinalizationModalProps> = ({
@@ -19,6 +19,7 @@ const DeliveryFinalizationModal: React.FC<DeliveryFinalizationModalProps> = ({
 }) => {
   const [carrier, setCarrier] = useState('');
   const [referenceNumber, setReferenceNumber] = useState('');
+  const [remarks, setRemarks] = useState('');
 
   return (
     <div
@@ -43,7 +44,7 @@ const DeliveryFinalizationModal: React.FC<DeliveryFinalizationModalProps> = ({
         </div>
 
         {/* Body */}
-        <div className="p-8 space-y-6">
+        <div className="p-8 space-y-6 overflow-y-auto max-h-[70vh]">
           {/* Artwork preview */}
           <div className="flex gap-4 p-4 bg-[#faf9f8] rounded-sm border border-[#edebe9]">
             <div className="w-12 h-12 rounded-sm overflow-hidden bg-white border border-[#edebe9] shrink-0">
@@ -86,6 +87,18 @@ const DeliveryFinalizationModal: React.FC<DeliveryFinalizationModalProps> = ({
                 placeholder="Reference No."
               />
             </div>
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-black text-[#605e5c] uppercase tracking-widest ml-1 flex items-center justify-between">
+                <span>Administrative Remarks</span>
+                <span className="text-red-500 text-[8px] font-black">Required for Audit</span>
+              </label>
+              <textarea
+                value={remarks}
+                onChange={(e) => setRemarks(e.target.value)}
+                className="w-full px-4 py-3 bg-[#faf9f8] border border-[#edebe9] rounded-sm text-sm font-bold text-[#323130] focus:bg-white focus:ring-1 focus:ring-[#0078d4] focus:border-[#0078d4] outline-none transition-all min-h-[80px] resize-none"
+                placeholder="Required: Additional audit notes for this delivery..."
+              />
+            </div>
           </div>
         </div>
 
@@ -98,8 +111,13 @@ const DeliveryFinalizationModal: React.FC<DeliveryFinalizationModalProps> = ({
             Cancel
           </button>
           <button
-            onClick={() => onConfirm(undefined, undefined, undefined, carrier || undefined, referenceNumber || undefined)}
-            className="flex-1 px-4 py-3 bg-[#107c10] text-white rounded-sm text-[10px] font-black uppercase tracking-widest hover:bg-[#0b5a0b] transition-all shadow-lg shadow-[#107c10]/20"
+            onClick={() => onConfirm(undefined, undefined, undefined, carrier || undefined, referenceNumber || undefined, remarks)}
+            disabled={!remarks.trim()}
+            className={`flex-1 px-4 py-3 rounded-sm text-[10px] font-black uppercase tracking-widest transition-all shadow-lg ${
+              remarks.trim() 
+                ? 'bg-[#107c10] text-white hover:bg-[#0b5a0b] shadow-[#107c10]/20' 
+                : 'bg-[#edebe9] text-[#a19f9d] cursor-not-allowed shadow-none border border-[#edebe9]'
+            }`}
           >
             Confirm Delivery
           </button>

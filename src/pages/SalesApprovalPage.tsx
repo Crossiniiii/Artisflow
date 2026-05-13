@@ -11,7 +11,7 @@ import LoadingOverlay from '../components/LoadingOverlay';
 interface SalesApprovalPageProps {
   sales: SaleRecord[];
   artworks: Artwork[];
-  onApproveSale: (saleId: string) => void;
+  onApproveSale: (saleId: string, remarks?: string) => void;
   onDeclineSale: (saleId: string, reason?: string, requestedFiles?: string[]) => void;
   onBulkDeleteSales?: (ids: string[]) => void;
   userPermissions?: UserPermissions;
@@ -58,6 +58,7 @@ const SalesApprovalPage: React.FC<SalesApprovalPageProps> = ({
   const [declineReason, setDeclineReason] = useState('');
   const [declineMode, setDeclineMode] = useState<'remediation' | 'straight'>('remediation');
   const [isDeclineModalOpen, setIsDeclineModalOpen] = useState(false);
+  const [approvalRemarks, setApprovalRemarks] = useState('');
   const [activeAttachmentGroup, setActiveAttachmentGroup] = useState<{
     label: string;
     urls: string[];
@@ -77,8 +78,15 @@ const SalesApprovalPage: React.FC<SalesApprovalPageProps> = ({
 
     if (selectedSale && !pendingSales.some(sale => sale.id === selectedSale.id)) {
       setSelectedSale(null);
+      setApprovalRemarks('');
     }
   }, [pendingSales, selectedSale]);
+
+  useEffect(() => {
+    if (selectedSale) {
+      setApprovalRemarks('');
+    }
+  }, [selectedSale]);
 
   const handleToggleConfirm = (saleId: string) => {
     setContactConfirmed(prev => ({ ...prev, [saleId]: !prev[saleId] }));
@@ -306,7 +314,9 @@ const SalesApprovalPage: React.FC<SalesApprovalPageProps> = ({
               <p className={`text-[9px] font-bold mt-1 leading-tight uppercase tracking-tight ${isCorrupted ? 'text-red-600' : 'text-orange-600'}`}>
                 {isCorrupted 
                   ? 'Artwork ID is invalid or artwork has been deleted. Please delete this record.' 
-                  : 'No downpayments have been accepted yet'}
+                  : (sale.isDownpayment && sale.downpayment < (art?.price || 0)) 
+                    ? 'Initial downpayment awaiting verification'
+                    : 'Full payment awaiting verification'}
               </p>
             </div>
           </div>
@@ -373,8 +383,10 @@ const SalesApprovalPage: React.FC<SalesApprovalPageProps> = ({
               <button
                 onClick={(e) => {
                   e.stopPropagation();
+                  const remarks = prompt("Administrative Remarks (Optional):", "");
+                  if (remarks === null) return;
                   wrapAction(async () => {
-                    await Promise.resolve(onApproveSale(sale.id));
+                    await Promise.resolve(onApproveSale(sale.id, remarks));
                   }, 'Finalizing Sale Approval...', { silent: true });
                 }}
                 disabled={!contactConfirmed[sale.id] || isProcessing}
@@ -497,18 +509,14 @@ const SalesApprovalPage: React.FC<SalesApprovalPageProps> = ({
               <button
                 onClick={(e) => {
                   e.stopPropagation();
-                  wrapAction(async () => {
-                    await Promise.resolve(onApproveSale(sale.id));
-                  }, 'Approving Sale...', { silent: true });
+                  setSelectedSale(sale);
                 }}
-                disabled={!contactConfirmed[sale.id] || isProcessing}
-                className={`h-10 px-6 rounded-lg text-[11px] font-bold uppercase tracking-widest transition-all ${
-                  contactConfirmed[sale.id]
-                    ? 'bg-blue-600 text-white shadow-md hover:bg-blue-700 active:scale-95'
-                    : 'bg-slate-100 text-slate-400 cursor-not-allowed'
-                }`}
+                disabled={isProcessing}
+                className="h-10 px-6 bg-slate-100 text-slate-500 rounded-lg text-[11px] font-bold uppercase tracking-widest hover:bg-slate-200 transition-all shadow-sm flex items-center gap-2"
+                title="Open detail view to add remarks and approve"
               >
-                Approve
+                <span>Review & Approve</span>
+                <ChevronRight size={14} />
               </button>
             </div>
           </div>
@@ -591,7 +599,7 @@ const SalesApprovalPage: React.FC<SalesApprovalPageProps> = ({
   };
 
   return (
-    <div className={`max-w-[1600px] mx-auto w-full ${hideHeader ? '' : 'p-4 md:p-8 space-y-10'}`}>
+    <div className={`max-w-[1600px] w-full ${hideHeader ? '' : 'mx-auto p-4 md:p-8 space-y-10'}`}>
       <LoadingOverlay isVisible={isProcessing} title={processMessage} />
       {/* Header Section */}
       {!hideHeader && (
@@ -617,7 +625,7 @@ const SalesApprovalPage: React.FC<SalesApprovalPageProps> = ({
           <div className="flex gap-1 p-1 bg-neutral-100 rounded-sm w-fit border border-neutral-200">
             <button
               onClick={() => setActiveTab('approval')}
-              className={`px-8 py-2.5 text-[10px] font-black uppercase tracking-[0.2em] rounded-sm transition-all flex items-center gap-2 ${activeTab === 'approval' ? 'bg-white text-neutral-900 shadow-sm border border-neutral-200/50' : 'text-neutral-400 hover:text-neutral-600'}`}
+              className={`px-6 py-1.5 text-[10px] font-black uppercase tracking-[0.2em] rounded-sm transition-all flex items-center gap-2 ${activeTab === 'approval' ? 'bg-white text-neutral-900 shadow-sm border border-neutral-200/50' : 'text-neutral-400 hover:text-neutral-600'}`}
             >
               <ShieldCheck size={14} />
               Pending
@@ -629,7 +637,7 @@ const SalesApprovalPage: React.FC<SalesApprovalPageProps> = ({
             </button>
             <button
               onClick={() => setActiveTab('history')}
-              className={`px-8 py-2.5 text-[10px] font-black uppercase tracking-[0.2em] rounded-sm transition-all flex items-center gap-2 ${activeTab === 'history' ? 'bg-white text-neutral-900 shadow-sm border border-neutral-200/50' : 'text-neutral-400 hover:text-neutral-600'}`}
+              className={`px-6 py-1.5 text-[10px] font-black uppercase tracking-[0.2em] rounded-sm transition-all flex items-center gap-2 ${activeTab === 'history' ? 'bg-white text-neutral-900 shadow-sm border border-neutral-200/50' : 'text-neutral-400 hover:text-neutral-600'}`}
             >
               <Clock size={14} />
               History
@@ -639,10 +647,10 @@ const SalesApprovalPage: React.FC<SalesApprovalPageProps> = ({
       )}
 
       {hideHeader && (
-         <div className="flex gap-1 p-1 bg-neutral-100 rounded-sm w-fit border border-neutral-200 mb-8">
+          <div className="flex gap-1 p-1 bg-neutral-100 rounded-sm w-fit border border-neutral-200 mb-8">
             <button
               onClick={() => setActiveTab('approval')}
-              className={`px-8 py-2 text-[10px] font-black uppercase tracking-[0.2em] rounded-sm transition-all flex items-center gap-2 ${activeTab === 'approval' ? 'bg-white text-neutral-900 shadow-sm border border-neutral-200/50' : 'text-neutral-400 hover:text-neutral-600'}`}
+              className={`px-6 py-1.5 text-[10px] font-black uppercase tracking-[0.2em] rounded-sm transition-all flex items-center gap-2 ${activeTab === 'approval' ? 'bg-white text-neutral-900 shadow-sm border border-neutral-200/50' : 'text-neutral-400 hover:text-neutral-600'}`}
             >
               Pending Approval
               {pendingSales.length > 0 && (
@@ -653,7 +661,7 @@ const SalesApprovalPage: React.FC<SalesApprovalPageProps> = ({
             </button>
             <button
               onClick={() => setActiveTab('history')}
-              className={`px-8 py-2 text-[10px] font-black uppercase tracking-[0.2em] rounded-sm transition-all flex items-center gap-2 ${activeTab === 'history' ? 'bg-white text-neutral-900 shadow-sm border border-neutral-200/50' : 'text-neutral-400 hover:text-neutral-600'}`}
+              className={`px-6 py-1.5 text-[10px] font-black uppercase tracking-[0.2em] rounded-sm transition-all flex items-center gap-2 ${activeTab === 'history' ? 'bg-white text-neutral-900 shadow-sm border border-neutral-200/50' : 'text-neutral-400 hover:text-neutral-600'}`}
             >
               Approval History
             </button>
@@ -678,7 +686,7 @@ const SalesApprovalPage: React.FC<SalesApprovalPageProps> = ({
                 <div>
                   <h4 className="text-sm font-bold text-[#794500] uppercase tracking-tight">Status: Pending Administrative Approval</h4>
                   <p className="text-xs text-[#794500] mt-1 leading-relaxed max-w-2xl">
-                    This declaration is currently in the verification queue. No downpayments have been processed, and the sale will only be committed to the ledger once an administrator approves the transaction.
+                    This declaration is currently in the verification queue. The sale will only be committed to the ledger once an administrator approves the transaction and verifies the payment details.
                   </p>
                 </div>
               </div>
@@ -869,7 +877,7 @@ const SalesApprovalPage: React.FC<SalesApprovalPageProps> = ({
               initial={{ opacity: 0, scale: 0.98, y: 10 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.98, y: 10 }}
-              className="flex max-h-[85vh] w-full max-w-4xl flex-col overflow-hidden rounded-xl border border-slate-200 bg-slate-50 shadow-[0_32px_80px_rgba(0,0,0,0.35),0_4px_24px_rgba(0,0,0,0.1)]"
+              className="flex max-h-[80vh] w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-slate-200 bg-slate-50 shadow-[0_32px_80px_rgba(0,0,0,0.35),0_4px_24px_rgba(0,0,0,0.1)]"
             >
               {/* Modal Header */}
               <div className="flex items-center justify-between border-b border-slate-200 bg-white px-6 py-4">
@@ -1030,6 +1038,19 @@ const SalesApprovalPage: React.FC<SalesApprovalPageProps> = ({
                         ))}
                       </div>
                     </div>
+                    {/* Administrative Remarks */}
+                    <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                      <div className="flex items-center gap-2.5 mb-4 border-b border-slate-100 pb-3">
+                         <MessageSquare size={14} className="text-blue-600" />
+                         <h3 className="text-xs font-black text-slate-800 uppercase tracking-widest">Administrative Remarks</h3>
+                      </div>
+                      <OptimizedTextarea
+                        value={approvalRemarks}
+                        onChange={(e: any) => setApprovalRemarks(e.target.value)}
+                        placeholder="Add internal notes or audit remarks for this approval..."
+                        className="w-full h-24 px-4 py-3 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold text-slate-700 focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all resize-none placeholder:text-slate-300"
+                      />
+                    </div>
                   </div>
 
                   {/* Right Column */}
@@ -1144,20 +1165,21 @@ const SalesApprovalPage: React.FC<SalesApprovalPageProps> = ({
                   >
                     Decline
                   </button>
-                  <button
-                    onClick={() => wrapAction(async () => {
-                      await Promise.resolve(onApproveSale(selectedSale.id));
-                      setSelectedSale(null);
-                    }, 'Processing Sale Approval...', { silent: true })}
-                    disabled={!isSaleReadyForApproval(selectedSale) || isProcessing}
-                    className={`h-10 px-8 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 shadow-lg ${
-                      isSaleReadyForApproval(selectedSale) 
-                        ? 'bg-blue-600 text-white hover:bg-blue-700 shadow-blue-200' 
-                        : 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed shadow-none'
-                    }`}
-                  >
-                    Approve Declaration
-                  </button>
+                    <button
+                      onClick={() => wrapAction(async () => {
+                        await Promise.resolve(onApproveSale(selectedSale.id, approvalRemarks));
+                        setSelectedSale(null);
+                        setApprovalRemarks('');
+                      }, 'Processing Sale Approval...', { silent: true })}
+                      disabled={!isSaleReadyForApproval(selectedSale) || isProcessing || !approvalRemarks.trim()}
+                      className={`h-10 px-8 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 shadow-lg ${
+                        isSaleReadyForApproval(selectedSale) && approvalRemarks.trim()
+                          ? 'bg-blue-600 text-white hover:bg-blue-700 shadow-blue-200' 
+                          : 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed shadow-none'
+                      }`}
+                    >
+                      Approve Declaration
+                    </button>
                 </div>
               </div>
             </motion.div>

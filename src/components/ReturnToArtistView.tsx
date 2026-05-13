@@ -10,6 +10,7 @@ interface ReturnToArtistViewProps {
   onUpdateReturnRecord?: (id: string, updates: Partial<ReturnRecord>) => void;
   onReturnToGallery?: (id: string, branch: string) => Promise<boolean | void>;
   onBulkDeleteReturnRecords?: (ids: string[]) => void;
+  onViewArtwork?: (id: string) => void;
   permissions?: UserPermissions;
 }
 
@@ -72,7 +73,7 @@ const ConfirmationModal: React.FC<ConfirmModalProps> = ({ isOpen, title, message
   );
 };
 
-const ReturnToArtistView: React.FC<ReturnToArtistViewProps> = ({ returnRecords, artworks = [], branches: availableBranches, onUpdateReturnRecord, onReturnToGallery, onBulkDeleteReturnRecords, permissions }) => {
+const ReturnToArtistView: React.FC<ReturnToArtistViewProps> = ({ returnRecords = [], artworks = [], branches: availableBranches = [], onUpdateReturnRecord, onReturnToGallery, onBulkDeleteReturnRecords, permissions, onViewArtwork }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedBranch, setSelectedBranch] = useState<string>('All');
   const [returnTargetBranch, setReturnTargetBranch] = useState<string>(''); // New State for Return Action

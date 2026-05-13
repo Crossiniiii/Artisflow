@@ -358,7 +358,7 @@ const FinancePage: React.FC = () => {
             <div className="space-y-3">
               {metrics.revenueByBranch.map(([branch, revenue]) => (
                 <div key={branch} className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-neutral-600 truncate max-w-[120px]">{branch}</span>
+                  <span className="text-xs font-bold text-neutral-600">{branch}</span>
                   <span className="text-xs font-black text-neutral-900">₱{revenue.toLocaleString()}</span>
                 </div>
               ))}

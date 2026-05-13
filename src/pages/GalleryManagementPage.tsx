@@ -407,8 +407,8 @@ const GalleryManagementPage: React.FC<GalleryManagementPageProps> = (props) => {
         )}
         {activeTab === 'returned' && (
           <ReturnToArtistView
-            records={props.returnRecords || []}
-            artworks={props.allArtworksIncludingDeleted}
+            returnRecords={props.returnRecords || []}
+            artworks={props.allArtworksIncludingDeleted || []}
             onViewArtwork={props.onView}
             branches={props.branches}
             onUpdateReturnRecord={props.onUpdateReturnRecord}
@@ -420,7 +420,7 @@ const GalleryManagementPage: React.FC<GalleryManagementPageProps> = (props) => {
         {activeTab === 'framer' && (
           <FramerManagementView
             framerRecords={props.framerRecords || []}
-            artworks={props.allArtworksIncludingDeleted}
+            artworks={props.allArtworksIncludingDeleted || []}
             branches={props.branches}
             onReturnFromFramer={props.onReturnFromFramer}
             onTransfer={props.onBulkTransferRequest}
@@ -432,7 +432,7 @@ const GalleryManagementPage: React.FC<GalleryManagementPageProps> = (props) => {
         {activeTab === 'sales' && (
           <SalesView
             sales={props.sales || []}
-            artworks={props.allArtworksIncludingDeleted}
+            artworks={props.allArtworksIncludingDeleted || []}
             onViewArtwork={props.onView}
             branches={props.branches}
             permissions={props.userPermissions}

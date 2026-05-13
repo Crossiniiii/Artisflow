@@ -92,11 +92,12 @@ const Inventory: React.FC<InventoryProps> = ({
   const [sizeFilter, setSizeFilter] = useState<string>('');
   const [exhibitFilter, setExhibitFilter] = useState('All');
   const [clientFilter, setClientFilter] = useState('');
+  const [typeFilter, setTypeFilter] = useState<string>('All');
 
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingArtwork, setEditingArtwork] = useState<Artwork | null>(null);
   const [showImportModal, setShowImportModal] = useState(false);
-  const { isProcessing, processMessage, processProgress, wrapAction } = useActionProcessing({ itemTitle: 'Inventory', itemCode: 'INV' });
+  const { isProcessing, setIsProcessing, processMessage, setProcessMessage, processProgress, setProcessProgress, wrapAction } = useActionProcessing({ itemTitle: 'Inventory', itemCode: 'INV' });
   const [importPreview, setImportPreview] = useState<Partial<Artwork>[]>([]);
   const [importTargetBranch, setImportTargetBranch] = useState<string>('');
   const [importFilename, setImportFilename] = useState<string>('');
@@ -289,6 +290,7 @@ const Inventory: React.FC<InventoryProps> = ({
       const matchesArtist = artistFilter === 'All' || art.artist === artistFilter;
       const matchesMedium = mediumFilter === 'All' || art.medium === mediumFilter;
       const matchesSize = !sizeFilter || (art.dimensions && art.dimensions.toLowerCase().includes(sizeFilter.toLowerCase()));
+      const matchesType = typeFilter === 'All' || (art.type || getArtworkClassification(art.dimensions)) === typeFilter;
 
       let matchesDate = true;
       if (dateYearFilter !== 'All' || dateMonthFilter !== 'All') {
@@ -301,9 +303,9 @@ const Inventory: React.FC<InventoryProps> = ({
           matchesDate = effM === parseInt(dateMonthFilter, 10);
         }
       }
-      return matchesSearch && matchesBranch && matchesDate && matchesArtist && matchesMedium && matchesSize && matchesExhibit && matchesClient;
+      return matchesSearch && matchesBranch && matchesDate && matchesArtist && matchesMedium && matchesSize && matchesExhibit && matchesClient && matchesType;
     });
-  }, [artworks, searchTerm, branchFilter, dateMonthFilter, dateYearFilter, artistFilter, mediumFilter, sizeFilter, exhibitFilter, clientFilter]);
+  }, [artworks, searchTerm, branchFilter, dateMonthFilter, dateYearFilter, artistFilter, mediumFilter, sizeFilter, exhibitFilter, clientFilter, typeFilter]);
 
   const filteredArtworks = useMemo(() => {
     return baseFilteredArtworks.filter(art => {
@@ -393,6 +395,94 @@ const Inventory: React.FC<InventoryProps> = ({
     writeFile(workbook, `ArtisFlow_Inventory_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
 
+  const generateReportHTML = (items: Artwork[]) => {
+    const totalValue = items.reduce((sum, art) => sum + (art.price || 0), 0);
+    const dateStr = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+    const artistName = artistFilter !== 'All' ? artistFilter : 'Inventory Report';
+    
+    const cardsHTML = items.map(art => `
+      <div style="display: flex; flex-direction: column; width: 280px; break-inside: avoid; margin-bottom: 20px;">
+        <!-- Artwork Hero: Standardized Aspect Ratio for Uniformity -->
+        <div style="width: 280px; height: 320px; background: #f0f0f0; border: 1px solid #eeeeee; display: flex; align-items: center; justify-content: center; box-sizing: border-box; overflow: hidden; margin-bottom: 16px; border-radius: 2px;">
+          <img src="${art.imageUrl}" style="width: 100%; height: 100%; object-fit: cover;" crossorigin="anonymous" />
+        </div>
+
+        <!-- Content Architecture -->
+        <div style="display: flex; flex-direction: column; flex-grow: 1; font-family: sans-serif;">
+          <!-- Primary Identification -->
+          <div style="margin-bottom: 14px;">
+            <h3 style="font-size: 17px; font-weight: 900; margin: 0; line-height: 1.1; color: #000; letter-spacing: -0.01em;">${art.title || 'Untitled'}</h3>
+            <p style="font-size: 14px; font-weight: 500; color: #666; margin: 5px 0 0 0; font-style: italic;">${art.artist || 'Unknown Artist'}</p>
+          </div>
+          
+          <!-- Metadata Matrix -->
+          <div style="border-top: 2px solid #000; padding-top: 10px; margin-bottom: 18px;">
+            <div style="display: flex; flex-direction: column; gap: 6px;">
+              <div style="display: flex; justify-content: space-between; align-items: baseline; font-size: 10px; border-bottom: 1px solid #f5f5f5; padding-bottom: 4px;">
+                <span style="color: #999; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em;">Code</span>
+                <span style="font-weight: 700; color: #1a1a1a;">${art.code || 'N/A'}</span>
+              </div>
+              <div style="display: flex; justify-content: space-between; align-items: baseline; font-size: 10px; border-bottom: 1px solid #f5f5f5; padding-bottom: 4px;">
+                <span style="color: #999; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em;">Medium</span>
+                <span style="font-weight: 700; color: #1a1a1a;">${art.medium || 'N/A'}</span>
+              </div>
+              <div style="display: flex; justify-content: space-between; align-items: baseline; font-size: 10px; border-bottom: 1px solid #f5f5f5; padding-bottom: 4px;">
+                <span style="color: #999; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em;">Dimensions</span>
+                <span style="font-weight: 700; color: #1a1a1a;">${art.dimensions || art.size || 'N/A'}</span>
+              </div>
+              <div style="display: flex; justify-content: space-between; align-items: baseline; font-size: 10px; border-bottom: 1px solid #f5f5f5; padding-bottom: 4px;">
+                <span style="color: #999; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em;">Year</span>
+                <span style="font-weight: 700; color: #1a1a1a;">${art.year || 'N/A'}</span>
+              </div>
+              <div style="display: flex; justify-content: space-between; align-items: flex-start; font-size: 10px;">
+                <span style="color: #999; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; margin-right: 12px; flex-shrink: 0;">Location</span>
+                <span style="font-weight: 700; color: #1a1a1a; text-align: right; line-height: 1.25; word-break: break-word;">${art.currentBranch || art.branch || art.soldAtBranch || 'Main'}</span>
+              </div>
+            </div>
+          </div>
+
+          <div style="margin-top: auto; display: flex; justify-content: space-between; align-items: center; border-top: 1px solid #eee; padding-top: 12px;">
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <div style="width: 8px; height: 8px; border-radius: 50%; background: ${art.status === 'Sold' ? '#ff4d4f' : '#52c41a'};"></div>
+              <span style="font-size: 10px; font-weight: 900; text-transform: uppercase; color: #000; letter-spacing: 0.05em;">${art.status || 'Available'}</span>
+            </div>
+            <span style="font-size: 22px; font-weight: 900; color: #000; letter-spacing: -0.02em;">₱${(art.price || 0).toLocaleString()}</span>
+          </div>
+        </div>
+      </div>
+    `).join('');
+
+    return `
+      <div id="report-root" style="width: 1100px; padding: 80px 90px 120px 90px; background: white; font-family: sans-serif; color: #000; box-sizing: border-box; min-height: 1400px;">
+        <!-- Report Header: Gallery Identity -->
+        <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 24px;">
+          <div>
+            <h1 style="font-size: 64px; font-weight: 900; margin: 0; letter-spacing: -0.05em; line-height: 0.9;">${artistName}</h1>
+            <div style="display: flex; align-items: center; gap: 14px; color: #666; font-size: 16px; font-weight: 700; margin-top: 15px;">
+              <span>${dateStr}</span>
+              <span style="width: 4px; height: 4px; border-radius: 50%; background: #ccc;"></span>
+              <span>${items.length} Artworks</span>
+              <span style="width: 4px; height: 4px; border-radius: 50%; background: #ccc;"></span>
+              <span style="color: #000;">Valuation: ₱${totalValue.toLocaleString()}</span>
+            </div>
+          </div>
+          <div style="text-align: right;">
+            <div style="font-size: 32px; font-weight: 900; letter-spacing: -0.03em; color: #000; margin-bottom: 2px;">ArtisFlow</div>
+            <div style="font-size: 11px; font-weight: 800; color: #999; text-transform: uppercase; letter-spacing: 0.15em;">Gallery Registry System</div>
+          </div>
+        </div>
+
+        <!-- Global Separator -->
+        <div style="height: 10px; background: #000; margin-bottom: 60px;"></div>
+
+        <!-- Catalog Grid -->
+        <div style="display: grid; grid-template-columns: repeat(3, 280px); gap: 70px 40px; justify-content: center;">
+          ${cardsHTML}
+        </div>
+      </div>
+    `;
+  };
+
   const handleExportPDF = async () => {
     setIsProcessing(true);
     setProcessMessage('Preparing PDF document...');
@@ -409,31 +499,64 @@ const Inventory: React.FC<InventoryProps> = ({
       const html2canvas = (await import('html2canvas')).default;
       const { jsPDF } = await import('jspdf');
 
-      const canvas = await html2canvas(element, {
-        scale: 2,
+      // 1. Create a detached iframe for absolute isolation from app CSS
+      const iframe = document.createElement('iframe');
+      iframe.style.position = 'fixed';
+      iframe.style.top = '-10000px';
+      iframe.style.left = '-10000px';
+      iframe.style.width = '1250px'; // Expanded buffer for horizontal safety
+      iframe.style.border = 'none';
+      document.body.appendChild(iframe);
+      
+      const reportDoc = iframe.contentDocument!;
+      const artworksToUse = filteredArtworks.length > 0 ? filteredArtworks : artworks;
+      
+      reportDoc.open();
+      reportDoc.write(`
+        <!DOCTYPE html>
+        <html>
+          <body style="margin:0; padding:0; background: white; width: 1250px; overflow-x: hidden;">
+            ${generateReportHTML(artworksToUse)}
+          </body>
+        </html>
+      `);
+      reportDoc.close();
+
+      // 2. Wait for images and layout to stabilize
+      await new Promise(resolve => setTimeout(resolve, 2500));
+
+      // 3. Shrink-wrap the iframe height to the content
+      const reportRoot = reportDoc.getElementById('report-root');
+      if (reportRoot) {
+        iframe.style.height = `${reportRoot.offsetHeight}px`;
+      }
+
+      // 4. Render specifically the report-root element
+      const canvas = await html2canvas(reportRoot, {
         useCORS: true,
-        backgroundColor: '#f8fafc',
-        windowWidth: element.scrollWidth,
-        windowHeight: element.scrollHeight,
-        logging: false,
-        onclone: (clonedDoc) => {
-          const clonedElement = clonedDoc.getElementById('inventory-grid');
-          if (clonedElement) {
-            clonedElement.style.padding = '20px';
-          }
-        }
+        scale: 2,
+        backgroundColor: '#ffffff',
+        width: 1100, // Matches report-root width
+        logging: false
       });
+      
+      // 5. Cleanup
+      document.body.removeChild(iframe);
 
       setProcessProgress(70);
-      const imgData = canvas.toDataURL('image/jpeg', 0.95);
+      const imgData = canvas.toDataURL('image/jpeg', 0.98);
+      const pdfWidth = 612; // 8.5 inches in points (Long Bond Paper width)
+      const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+      
+      // Ensure we have a minimum height for 'Long' format (8.5x13 inches)
+      // 13 inches * 72 points/inch = 936 points
+      const finalPdfHeight = Math.max(936, pdfHeight);
+
       const pdf = new jsPDF({
         orientation: 'portrait',
         unit: 'pt',
-        format: 'a4'
+        format: [pdfWidth, finalPdfHeight]
       });
-
-      const pdfWidth = pdf.internal.pageSize.getWidth();
-      const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
 
       pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight);
       
@@ -442,7 +565,7 @@ const Inventory: React.FC<InventoryProps> = ({
       setProcessProgress(100);
     } catch (error) {
       console.error('Error exporting PDF:', error);
-      alert('Failed to generate PDF. Please try again.');
+      alert(`Failed to generate PDF: ${error instanceof Error ? error.message : 'Unknown error'}. Check console for details.`);
     } finally {
       setTimeout(() => {
         setIsProcessing(false);
@@ -464,14 +587,45 @@ const Inventory: React.FC<InventoryProps> = ({
       }
 
       const html2canvas = (await import('html2canvas')).default;
-      const canvas = await html2canvas(element, {
+      // 1. Create a detached iframe for absolute isolation
+      const iframe = document.createElement('iframe');
+      iframe.style.position = 'fixed';
+      iframe.style.top = '-10000px';
+      iframe.style.left = '-10000px';
+      iframe.style.width = '1100px';
+      iframe.style.border = 'none';
+      document.body.appendChild(iframe);
+      
+      const reportDoc = iframe.contentDocument!;
+      const artworksToUse = filteredArtworks.length > 0 ? filteredArtworks : artworks;
+      
+      reportDoc.open();
+      reportDoc.write(`
+        <!DOCTYPE html>
+        <html>
+          <body style="margin:0; padding:0; background: white; width: 1100px;">
+            ${generateReportHTML(artworksToUse)}
+          </body>
+        </html>
+      `);
+      reportDoc.close();
+
+      await new Promise(resolve => setTimeout(resolve, 2500));
+
+      const reportRoot = reportDoc.getElementById('report-root');
+      if (reportRoot) {
+        iframe.style.height = `${reportRoot.offsetHeight}px`;
+      }
+
+      const canvas = await html2canvas(reportRoot || reportDoc.body, {
         scale: 2,
         useCORS: true,
-        backgroundColor: '#f8fafc',
-        windowWidth: element.scrollWidth,
-        windowHeight: element.scrollHeight,
+        backgroundColor: '#ffffff',
+        width: 1120,
         logging: false
       });
+      
+      document.body.removeChild(iframe);
 
       setProcessProgress(80);
       const link = document.createElement('a');
@@ -481,7 +635,7 @@ const Inventory: React.FC<InventoryProps> = ({
       setProcessProgress(100);
     } catch (error) {
       console.error('Error exporting image:', error);
-      alert('Failed to capture image. Please try again.');
+      alert(`Failed to capture image: ${error instanceof Error ? error.message : 'Unknown error'}. Check console for details.`);
     } finally {
       setTimeout(() => {
         setIsProcessing(false);
@@ -878,8 +1032,9 @@ const Inventory: React.FC<InventoryProps> = ({
         setExhibitFilter={setExhibitFilter}
         clientFilter={clientFilter}
         setClientFilter={setClientFilter}
+        typeFilter={typeFilter}
+        setTypeFilter={setTypeFilter}
         events={events}
-
       />
 
       <InventoryStats inventoryInsights={inventoryInsights} />

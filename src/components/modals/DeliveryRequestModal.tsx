@@ -132,12 +132,12 @@ const DeliveryRequestModal: React.FC<DeliveryRequestModalProps> = ({
           <div className="space-y-6 pt-4">
             <div className="flex items-center gap-3">
               <div className="h-px bg-[#edebe9] flex-1" />
-              <label className="text-[10px] font-black text-[#a19f9d] uppercase tracking-[0.2em] px-2">Logistics Specifications</label>
+              <label className="text-[10px] font-black text-[#a19f9d] uppercase tracking-[0.2em] px-2">Tooling Specifications</label>
               <div className="h-px bg-[#edebe9] flex-1" />
             </div>
             <div className="space-y-2">
-              <label className="text-[10px] font-black text-[#605e5c] uppercase tracking-widest ml-1">Logistics Remarks</label>
-              <textarea value={remarks} onChange={(e) => setRemarks(e.target.value)} className="w-full px-4 py-3 bg-[#faf9f8] border border-[#edebe9] rounded-sm text-sm font-bold text-[#323130] focus:bg-white focus:ring-1 focus:ring-[#0078d4] focus:border-[#0078d4] outline-none transition-all min-h-[100px] resize-none" placeholder="Additional handling instructions, specific site requirements, or logistics notes..." />
+              <label className="text-[10px] font-black text-[#605e5c] uppercase tracking-widest ml-1">Remarks / Protocol Notes</label>
+              <textarea value={remarks} onChange={(e) => setRemarks(e.target.value)} className="w-full px-4 py-3 bg-[#faf9f8] border border-[#edebe9] rounded-sm text-sm font-bold text-[#323130] focus:bg-white focus:ring-1 focus:ring-[#0078d4] focus:border-[#0078d4] outline-none transition-all min-h-[100px] resize-none" placeholder="Administrative remarks or special handling instructions..." />
             </div>
           </div>
         </div>
@@ -161,7 +161,7 @@ const DeliveryRequestModal: React.FC<DeliveryRequestModalProps> = ({
             }
             className="px-12 py-4 bg-[#323130] text-white rounded-sm font-black uppercase tracking-[0.2em] text-[11px] hover:bg-black disabled:opacity-20 disabled:grayscale disabled:cursor-not-allowed transition-all shadow-xl shadow-black/10 flex items-center gap-3"
           >
-            <span>Authorize Dispatch</span>
+            <span>Request Delivery</span>
             <ChevronRight size={18} strokeWidth={3} />
           </button>
         </div>

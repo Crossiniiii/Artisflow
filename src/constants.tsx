@@ -42,12 +42,12 @@ export const APP_TABS = [
   { id: 'snapshots', label: 'Artwork Timeline' },
   { id: 'operations', label: 'Gallery Operations' },
   { id: 'sales-history', label: 'Sales History' },
-  { id: 'deliveries', label: 'Deliveries' },
+  { id: 'deliveries', label: 'Delivery Approval' },
   { id: 'artwork-transfer', label: 'Artwork T/R' },
   { id: 'audit-logs', label: 'System Audit Logs' },
   { id: 'accounts', label: 'User Accounts' },
-  { id: 'chat', label: 'Inbox' },
-  { id: 'approvals', label: 'Approvals' },
+  { id: 'chat', label: 'Inbox & Messaging' },
+  { id: 'approvals', label: 'Finance Approval' },
   { id: 'requests', label: 'My Requests' }
 ];
 
@@ -88,14 +88,17 @@ export const getDefaultPermissions = (role: UserRole): UserPermissions => {
         canViewExhibit: true,
         canViewForFraming: true,
         canViewBackToArtist: true,
+        canApproveFinance: true,
+        canApproveLogistics: true,
+        canAccessAuditLogs: true,
         accessibleTabs: getDefaultAccessibleTabs(UserRole.ADMIN),
       };
     case UserRole.INVENTORY_PERSONNEL:
       return {
         canAddArtwork: true,
         canEditArtwork: true,
-        canManageAccounts: true, // Opened up as per user request
-        canManageEvents: true, // Opened up as per user request
+        canManageAccounts: true,
+        canManageEvents: true,
         canAccessCertificate: false,
         canAttachITDR: true,
         canDeleteArtwork: true,
@@ -108,6 +111,9 @@ export const getDefaultPermissions = (role: UserRole): UserPermissions => {
         canViewExhibit: true,
         canViewForFraming: true,
         canViewBackToArtist: true,
+        canApproveFinance: false,
+        canApproveLogistics: true,
+        canAccessAuditLogs: false,
         accessibleTabs: getDefaultAccessibleTabs(UserRole.INVENTORY_PERSONNEL),
       };
     case UserRole.SALES_AGENT:
@@ -128,6 +134,9 @@ export const getDefaultPermissions = (role: UserRole): UserPermissions => {
         canViewExhibit: true,
         canViewForFraming: true,
         canViewBackToArtist: true,
+        canApproveFinance: false,
+        canApproveLogistics: false,
+        canAccessAuditLogs: false,
         accessibleTabs: getDefaultAccessibleTabs(UserRole.SALES_AGENT),
       };
     case UserRole.EXCLUSIVE:
@@ -148,6 +157,9 @@ export const getDefaultPermissions = (role: UserRole): UserPermissions => {
         canViewExhibit: false,
         canViewForFraming: false,
         canViewBackToArtist: false,
+        canApproveFinance: false,
+        canApproveLogistics: false,
+        canAccessAuditLogs: false,
         accessibleTabs: getDefaultAccessibleTabs(UserRole.EXCLUSIVE),
       };
     default:
@@ -168,6 +180,9 @@ export const getDefaultPermissions = (role: UserRole): UserPermissions => {
         canViewExhibit: false,
         canViewForFraming: false,
         canViewBackToArtist: false,
+        canApproveFinance: false,
+        canApproveLogistics: false,
+        canAccessAuditLogs: false,
         accessibleTabs: getDefaultAccessibleTabs(UserRole.SALES_AGENT),
       };
   }

@@ -11,9 +11,9 @@ interface ArtworkTransferProps {
   requests: TransferRequest[];
   artworks: Artwork[];
   currentUser: UserAccount;
-  onAccept: (request: TransferRequest) => void;
-  onDecline: (request: TransferRequest, reason?: string) => void;
-  onHold: (request: TransferRequest) => void;
+  onAccept: (request: TransferRequest, remarks?: string) => void;
+  onDecline: (request: TransferRequest, reason?: string, remarks?: string) => void;
+  onHold: (request: TransferRequest, remarks?: string) => void;
   onDelete?: (request: TransferRequest) => void;
   onBulkDelete?: (ids: string[]) => void;
   branches: Branch[];
@@ -49,6 +49,7 @@ const ArtworkTransfer: React.FC<ArtworkTransferProps> = ({
   const [confirmationModal, setConfirmationModal] = useState<{ request: TransferRequest; type: 'accept' | 'decline' | 'hold' | 'delete' } | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [declineResubmissionReasons, setDeclineResubmissionReasons] = useState<string[]>([]);
+  const [remarks, setRemarks] = useState('');
 
   const {
     isProcessing,
@@ -181,11 +182,9 @@ const ArtworkTransfer: React.FC<ArtworkTransferProps> = ({
         >
           <ArrowRightLeft size={16} />
           Incoming Requests
-          {activeTab !== 'incoming' && (
-            <span className="bg-neutral-100 text-neutral-500 text-[10px] px-1.5 py-0.5 rounded-full font-black">
-              {requests.filter(r => r.status === 'Pending' && (currentUser.role === UserRole.ADMIN || r.toBranch === currentUser.branch)).length}
-            </span>
-          )}
+          <span className="ml-2 bg-rose-600 text-white text-[10px] px-2 py-0.5 rounded-full font-black animate-pulse shadow-sm shadow-rose-200">
+            {requests.filter(r => r.status === 'Pending' && (currentUser.role === UserRole.ADMIN || r.toBranch === currentUser.branch)).length}
+          </span>
         </button>
         <button
           onClick={() => setActiveTab('outgoing')}
@@ -227,11 +226,9 @@ const ArtworkTransfer: React.FC<ArtworkTransferProps> = ({
           >
             <RotateCcw size={16} />
             Open Returns
-            {activeTab !== 'returns' && (
-              <span className="bg-rose-50 text-rose-600 text-[10px] px-1.5 py-0.5 rounded-full font-black animate-pulse">
-                {returnRecords.filter(r => r.status === 'Open').length}
-              </span>
-            )}
+            <span className="ml-2 bg-rose-600 text-white text-[10px] px-2 py-0.5 rounded-full font-black animate-pulse shadow-sm shadow-rose-200">
+              {returnRecords.filter(r => r.status === 'Open').length}
+            </span>
           </button>
         )}
         <button
@@ -253,7 +250,7 @@ const ArtworkTransfer: React.FC<ArtworkTransferProps> = ({
             <ReturnToArtistView
               returnRecords={returnRecords}
               artworks={artworks}
-              branches={branches.map(b => b.name)}
+              branches={branches}
               onUpdateReturnRecord={onUpdateReturnRecord}
               onReturnToGallery={onReturnToGallery}
               onBulkDeleteReturnRecords={onBulkDeleteReturnRecords}
@@ -641,18 +638,34 @@ const ArtworkTransfer: React.FC<ArtworkTransferProps> = ({
                 </div>
               </div>
             ) : (
-              <p className="text-neutral-600 mb-6">
+              <p className="text-neutral-600 mb-6 text-sm">
                 Are you sure you want to {confirmationModal.type === 'hold' ? 'put on hold' : confirmationModal.type} the transfer request for <span className="font-semibold">{confirmationModal.request.artworkTitle}</span>?
                 {confirmationModal.type === 'accept' && ' This will move the artwork to your branch inventory.'}
                 {confirmationModal.type === 'hold' && ' This will move the request to the On Hold tab for later review.'}
                 {confirmationModal.type === 'delete' && ' This will permanently remove this transfer record from the database.'}
               </p>
             )}
+
+            {confirmationModal.type !== 'delete' && (
+              <div className="mb-6 space-y-1.5">
+                <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest ml-1 flex items-center justify-between">
+                  <span>Administrative Remarks</span>
+                  <span className="text-red-500 text-[8px] font-black">Required for Audit</span>
+                </label>
+                <textarea
+                  value={remarks}
+                  onChange={(e) => setRemarks(e.target.value)}
+                  className="w-full px-4 py-3 bg-[#faf9f8] border border-[#edebe9] rounded-sm text-sm font-bold text-[#323130] focus:bg-white focus:ring-1 focus:ring-[#0078d4] focus:border-[#0078d4] outline-none transition-all min-h-[100px] resize-none"
+                  placeholder={`Required: Reason for ${confirmationModal.type === 'accept' ? 'authorizing' : confirmationModal.type === 'hold' ? 'holding' : 'declining'} this transfer...`}
+                />
+              </div>
+            )}
             <div className="flex justify-end gap-3">
               <button
                 onClick={() => {
                   setConfirmationModal(null);
                   setDeclineResubmissionReasons([]);
+                  setRemarks('');
                 }}
                 className="px-4 py-2 text-neutral-600 hover:bg-neutral-100 rounded-md transition-colors font-medium"
               >
@@ -665,11 +678,11 @@ const ArtworkTransfer: React.FC<ArtworkTransferProps> = ({
 
                   await wrapAction(async () => {
                     if (type === 'accept') {
-                      await Promise.resolve(onAccept(req));
+                      await Promise.resolve(onAccept(req, remarks));
                     } else if (type === 'decline') {
-                      await Promise.resolve(onDecline(req, declineResubmissionReasons.join(', ')));
+                      await Promise.resolve(onDecline(req, declineResubmissionReasons.join(', '), remarks));
                     } else if (type === 'hold') {
-                      await Promise.resolve(onHold(req));
+                      await Promise.resolve(onHold(req, remarks));
                     } else if (type === 'delete') {
                       await Promise.resolve(onDelete?.(req));
                     }
@@ -679,8 +692,9 @@ const ArtworkTransfer: React.FC<ArtworkTransferProps> = ({
 
                   setConfirmationModal(null);
                   setDeclineResubmissionReasons([]);
+                  setRemarks('');
                 }}
-                disabled={isProcessing || (confirmationModal.type === 'decline' && declineResubmissionReasons.length === 0)}
+                disabled={isProcessing || (confirmationModal.type === 'decline' && (declineResubmissionReasons.length === 0 || !remarks.trim())) || (confirmationModal.type !== 'delete' && !remarks.trim())}
                 className={`px-4 py-2 rounded-md transition-colors font-medium shadow-sm ${confirmationModal.type === 'accept'
                   ? 'bg-neutral-900 text-white hover:bg-black'
                   : confirmationModal.type === 'hold'

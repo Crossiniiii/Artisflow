@@ -51,6 +51,7 @@ export const InventoryCard: React.FC<InventoryCardProps> = ({
         <OptimizedImage
           src={art.imageUrl}
           alt={art.title}
+          crossOrigin="anonymous"
           className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110 cursor-zoom-in"
           onClick={(e) => { e.stopPropagation(); onPreview(art.imageUrl); }}
         />

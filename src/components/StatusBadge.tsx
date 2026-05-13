@@ -59,6 +59,13 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({ status, sale, artworkP
                     Review Pending
                 </div>
             );
+        } else if (dStatus === 'Dispatched') {
+            logBadge = (
+                <div className="flex items-center gap-1.5 px-2 py-0.5 bg-[#eff6fc] text-[#0078d4] border border-[#0078d4]/20 rounded-sm text-[8px] font-black uppercase tracking-widest shadow-sm">
+                    <div className="w-1.5 h-1.5 rounded-full bg-[#0078d4] animate-pulse" />
+                    On the way
+                </div>
+            );
         } else if (dStatus === 'Declined') {
             logBadge = (
                 <div className="flex items-center gap-1.5 px-2 py-0.5 bg-[#fde7e9] text-[#a4262c] border border-[#a4262c]/20 rounded-sm text-[8px] font-black uppercase tracking-widest shadow-sm">

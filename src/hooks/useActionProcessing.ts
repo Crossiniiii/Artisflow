@@ -124,8 +124,11 @@ export const useActionProcessing = ({ itemTitle, itemCode }: UseActionProcessing
 
   return {
     isProcessing,
+    setIsProcessing,
     processMessage,
+    setProcessMessage,
     processProgress,
+    setProcessProgress,
     confirmModal,
     setConfirmModal,
     actionResultModal,

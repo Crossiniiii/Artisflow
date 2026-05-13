@@ -9,28 +9,35 @@ import { motion, AnimatePresence } from 'framer-motion';
 interface DeliveryRequestsPageProps {
   sales: SaleRecord[];
   artworks: Artwork[];
+  onApproveRequest?: (saleId: string, remarks: string) => void;
+  onDeclineRequest?: (saleId: string, reason: string) => void;
   onUpdateSale?: (saleId: string, updates: Partial<SaleRecord>) => Promise<boolean>;
   currentUser?: any;
   userPermissions?: any;
+  hideHeader?: boolean;
 }
 
 const DeliveryRequestsPage: React.FC<DeliveryRequestsPageProps> = ({ 
   sales, 
   artworks, 
+  onApproveRequest,
+  onDeclineRequest,
   onUpdateSale,
   currentUser,
-  userPermissions
+  userPermissions,
+  hideHeader
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedSale, setSelectedSale] = useState<SaleRecord | null>(null);
   const [declineModal, setDeclineModal] = useState<{sale: SaleRecord, reason: string} | null>(null);
+  const [approvalRemarks, setApprovalRemarks] = useState('');
 
   const pendingRequests = useMemo(() => {
     return sales.filter(sale => {
       const hasPendingRequest = sale.deliveryRequest?.status === DeliveryRequestStatus.PENDING;
       if (!hasPendingRequest) return false;
 
-      const artwork = artworks.find(a => a.id === sale.artworkId) || sale.artworkSnapshot;
+      const artwork = artworks.find(a => a.id === sale.artworkId) || ({ ...sale.artworkSnapshot, id: sale.artworkId, status: 'Sold', createdAt: sale.saleDate } as any);
       if (!artwork) return false;
 
       const matchesSearch = 
@@ -44,40 +51,51 @@ const DeliveryRequestsPage: React.FC<DeliveryRequestsPageProps> = ({
   }, [sales, artworks, searchQuery]);
 
   const handleApprove = (sale: SaleRecord) => {
-    if (!sale.deliveryRequest || !onUpdateSale) return;
-
-    const updatedRequest: DeliveryRequest = {
-      ...sale.deliveryRequest,
-      status: DeliveryRequestStatus.APPROVED,
-      approvedAt: new Date().toISOString(),
-      approvedBy: currentUser?.name || 'Admin'
-    };
-
-    onUpdateSale(sale.id, {
-      deliveryRequest: updatedRequest
-    });
+    if (!onApproveRequest) return;
+    onApproveRequest(sale.id, approvalRemarks);
+    setApprovalRemarks('');
     setSelectedSale(null);
   };
 
   const handleDecline = () => {
-    if (!declineModal || !onUpdateSale) return;
-
-    const updatedRequest: DeliveryRequest = {
-      ...declineModal.sale.deliveryRequest!,
-      status: DeliveryRequestStatus.DECLINED,
-      declineReason: declineModal.reason
-    };
-
-    onUpdateSale(declineModal.sale.id, {
-      deliveryRequest: updatedRequest
-    });
+    if (!declineModal || !onDeclineRequest) return;
+    onDeclineRequest(declineModal.sale.id, declineModal.reason);
     setDeclineModal(null);
     setSelectedSale(null);
   };
 
   return (
-    <div className="max-w-[1600px] mx-auto py-8 px-8 pb-24 bg-white min-h-screen text-[#323130] font-sans">
-      {/* Microsoft Inspired Decline Modal */}
+    <div className={`max-w-[1600px] mx-auto ${hideHeader ? '' : 'py-8 px-8'} pb-24 bg-white min-h-screen text-[#323130] font-sans`}>
+      {!hideHeader && (
+        <div className="flex flex-col md:flex-row md:items-end justify-between gap-8 mb-12">
+          <div className="space-y-2">
+            <div className="flex items-center gap-2 text-[#0078d4] font-semibold text-sm mb-2">
+              <Truck size={18} />
+              <span>Logistics Hub</span>
+            </div>
+            <h1 className="text-4xl font-light text-[#323130] tracking-tight">
+              Delivery Approval
+            </h1>
+            <p className="text-[#605e5c] font-medium text-sm max-w-2xl">
+              Review and manage artwork dispatch authorizations and site logistics requests.
+            </p>
+          </div>
+
+          <div className="bg-white p-6 border border-[#edebe9] rounded-[4px] shadow-sm flex items-center gap-8 shrink-0">
+            <div className="space-y-1">
+              <p className="text-[10px] font-semibold text-[#605e5c] uppercase tracking-wider">Active Backlog</p>
+              <div className="flex items-baseline gap-2">
+                <span className="text-3xl font-light text-[#323130] leading-none">{pendingRequests.length}</span>
+                <span className="text-xs font-semibold text-[#605e5c]">items</span>
+              </div>
+            </div>
+            <div className="h-10 w-[1px] bg-[#edebe9]" />
+            <div className="w-10 h-10 bg-[#0078d4] rounded-full flex items-center justify-center text-white">
+              <AlertCircle size={20} />
+            </div>
+          </div>
+        </div>
+      )}
       <AnimatePresence>
         {declineModal && (
           <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/20 backdrop-blur-[2px]">
@@ -143,7 +161,10 @@ const DeliveryRequestsPage: React.FC<DeliveryRequestsPageProps> = ({
                     </div>
                   </div>
                   <button 
-                    onClick={() => setSelectedSale(null)}
+                    onClick={() => {
+                      setSelectedSale(null);
+                      setApprovalRemarks('');
+                    }}
                     className="p-2 text-[#605e5c] hover:bg-[#f3f2f1] rounded-[2px] transition-colors"
                   >
                     <X size={24} />
@@ -193,7 +214,7 @@ const DeliveryRequestsPage: React.FC<DeliveryRequestsPageProps> = ({
                            
                            {selectedSale.deliveryRequest?.remarks && (
                              <div className="mt-8">
-                               <label className="text-[11px] font-semibold text-[#605e5c] uppercase tracking-wider block mb-2">Logistics Remarks</label>
+                               <label className="text-[11px] font-semibold text-[#605e5c] uppercase tracking-wider block mb-2">Tools Needed</label>
                                <div className="bg-[#fff8f0] p-4 border border-[#fed9cc] rounded-[2px] text-sm font-medium leading-relaxed text-[#323130] italic shadow-sm">
                                   "{selectedSale.deliveryRequest.remarks}"
                                </div>
@@ -218,11 +239,25 @@ const DeliveryRequestsPage: React.FC<DeliveryRequestsPageProps> = ({
                              Confirm that all logistics requirements are met before proceeding with dispatch authorization.
                            </p>
                         </div>
-                        
-                        <div className="space-y-2 pt-4 border-t border-[#f3f2f1]">
+
+                        <div className="space-y-4 pt-4 border-t border-[#f3f2f1]">
+                           <div className="space-y-2">
+                             <label className="text-[10px] font-black text-[#605e5c] uppercase tracking-widest">Administrative Remarks</label>
+                             <textarea 
+                               value={approvalRemarks}
+                               onChange={(e) => setApprovalRemarks(e.target.value)}
+                               placeholder="Add audit notes..."
+                               className="w-full h-24 p-3 bg-[#faf9f8] border border-[#edebe9] rounded-sm text-sm font-medium outline-none focus:border-[#0078d4] transition-all resize-none"
+                             />
+                           </div>
                            <button 
                              onClick={() => handleApprove(selectedSale)}
-                             className="w-full py-2.5 bg-[#0078d4] text-white rounded-[2px] font-semibold text-sm hover:bg-[#106ebe] transition-all shadow-sm flex items-center justify-center gap-2"
+                             disabled={!approvalRemarks.trim()}
+                             className={`w-full py-2.5 rounded-[2px] font-semibold text-sm transition-all shadow-sm flex items-center justify-center gap-2 ${
+                                approvalRemarks.trim() 
+                                  ? 'bg-[#0078d4] text-white hover:bg-[#106ebe]' 
+                                  : 'bg-[#f3f2f1] text-[#a19f9d] cursor-not-allowed border border-[#edebe9] shadow-none'
+                              }`}
                            >
                              <CheckCircle2 size={16} />
                              Approve
@@ -243,35 +278,7 @@ const DeliveryRequestsPage: React.FC<DeliveryRequestsPageProps> = ({
         )}
       </AnimatePresence>
 
-      {/* Main Page: Clean White Fluent UI */}
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-8 mb-12">
-        <div className="space-y-2">
-          <div className="flex items-center gap-2 text-[#0078d4] font-semibold text-sm mb-2">
-             <Truck size={18} />
-             <span>Logistics Hub</span>
-          </div>
-          <h1 className="text-4xl font-light text-[#323130] tracking-tight">
-            Delivery Requests
-          </h1>
-          <p className="text-[#605e5c] font-medium text-sm max-w-2xl">
-            Review and manage artwork dispatch authorizations and site logistics requests.
-          </p>
-        </div>
 
-        <div className="bg-white p-6 border border-[#edebe9] rounded-[4px] shadow-sm flex items-center gap-8 shrink-0">
-           <div className="space-y-1">
-             <p className="text-[10px] font-semibold text-[#605e5c] uppercase tracking-wider">Active Backlog</p>
-             <div className="flex items-baseline gap-2">
-               <span className="text-3xl font-light text-[#323130] leading-none">{pendingRequests.length}</span>
-               <span className="text-xs font-semibold text-[#605e5c]">items</span>
-             </div>
-           </div>
-           <div className="h-10 w-[1px] bg-[#edebe9]" />
-           <div className="w-10 h-10 bg-[#0078d4] rounded-full flex items-center justify-center text-white">
-             <AlertCircle size={20} />
-           </div>
-        </div>
-      </div>
 
       {/* Fluent Command Bar / Search */}
       <div className="bg-white border border-[#edebe9] p-2 rounded-[2px] shadow-sm mb-8 flex items-center gap-4">
@@ -314,7 +321,11 @@ const DeliveryRequestsPage: React.FC<DeliveryRequestsPageProps> = ({
                        <h4 className="text-sm font-semibold text-[#323130] truncate">{artwork.title}</h4>
                        <span className="text-[10px] font-semibold text-[#0078d4] uppercase">{request.id}</span>
                      </div>
-                     <p className="text-xs font-medium text-[#605e5c] mt-0.5">{sale.clientName} | {artwork.code}</p>
+                     <p className="text-xs font-medium text-[#605e5c] mt-0.5">
+                       {sale.clientName} | {artwork.code}
+                       <span className="ml-2 text-[#a19f9d]">•</span>
+                       <span className="ml-2">Requested by: <span className="font-semibold text-[#323130]">{request.requestedBy}</span></span>
+                     </p>
                   </div>
 
                   <div className="hidden lg:flex items-center gap-12 shrink-0 pr-12">

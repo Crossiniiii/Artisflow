@@ -2,13 +2,14 @@
 import React, { useState, useMemo } from 'react';
 import { SaleRecord, Artwork, ArtworkStatus, SaleStatus, UserPermissions, DeliveryRequest, DeliveryRequestStatus, ActivityLog, Branch, ReturnType, FramerRecord, ReturnRecord, TransferRequest, ExhibitionEvent, UserRole } from '../types';
 import { ICONS } from '../constants';
-import { Truck, Package, Clock, Search, ChevronRight, CheckCircle2, AlertCircle, Calendar, LayoutGrid, List as ListIcon, MapPin, Users as UsersIcon, Wrench, X, User, Filter, Info, ArrowLeft } from 'lucide-react';
+import { Truck, Package, Clock, Search, ChevronRight, CheckCircle2, AlertCircle, Calendar, LayoutGrid, List as ListIcon, MapPin, Users, Wrench, X, User, Filter, Info, ArrowLeft, Inbox } from 'lucide-react';
 import { OptimizedImage } from '../components/OptimizedImage';
 import { StatusBadge } from '../components/StatusBadge';
 import { motion, AnimatePresence } from 'framer-motion';
 import MasterView from './MasterView';
 import DeliveryFinalizationModal from '../components/modals/DeliveryFinalizationModal';
 import DeliveryRequestModal from '../components/modals/DeliveryRequestModal';
+import DeliveryRequestsPage from './DeliveryRequestsPage';
 
 interface DeliveriesPageProps {
   sales: SaleRecord[];
@@ -22,29 +23,29 @@ interface DeliveriesPageProps {
   userPermissions?: UserPermissions;
   onUpdateSale?: (saleId: string, updates: Partial<SaleRecord>) => Promise<boolean>;
   onDispatch?: (artworkId: string) => Promise<boolean>;
-  onDeliver?: (artworkId: string, itdr?: string, rsa?: string, orcr?: string, carrier?: string, referenceNumber?: string) => Promise<boolean>;
+  onDeliver?: (artworkId: string, itdr?: string, rsa?: string, orcr?: string, carrier?: string, referenceNumber?: string, remarks?: string) => Promise<boolean>;
   onReturn?: (id: string, reason: string, refNumber?: string, proofImage?: string | string[], remarks?: string, type?: ReturnType) => Promise<boolean | void> | boolean | void;
-  onReturnToGallery?: (recordId: string, branch: string, resolvedAt?: string) => Promise<boolean | void> | boolean | void;
+  onReturnToGallery?: (recordId: string, branch: string, resolvedAt?: string, remarks?: string) => Promise<boolean | void> | boolean | void;
   onSendToFramer?: (id: string, damageDetails: string, attachmentUrl?: string | string[]) => Promise<boolean | void> | boolean | void;
-  onReturnFromFramer?: (recordId: string, branch: string, resolvedAt?: string) => Promise<boolean | void> | boolean | void;
-  onTransfer: (id: string, destination: Branch, attachments?: { itdrUrl?: string | string[] }) => void;
+  onReturnFromFramer?: (recordId: string, branch: string, resolvedAt?: string, remarks?: string) => Promise<boolean | void> | boolean | void;
+  onTransfer?: (id: string, destination: Branch, attachments?: { itdrUrl?: string | string[] }, remarks?: string) => void;
   onReserve?: (id: string, details: string, expiryDate?: string, eventId?: string, eventName?: string) => Promise<boolean | void> | boolean | void;
   onCancelReservation?: (id: string) => Promise<boolean | void> | boolean | void;
-  onSale: (id: string, clientName: string, clientEmail: string, clientContact: string, delivered: boolean, eventInfo?: { id: string, name: string }, attachment?: string, itdr?: string[], rsa?: string[], orcr?: string[], downpayment?: number, isDownpayment?: boolean) => void;
+  onSale: (id: string, clientName: string, clientEmail: string, clientContact: string, delivered: boolean, eventInfo?: { id: string, name: string }, attachment?: string, itdr?: string[], rsa?: string[], orcr?: string[], downpayment?: number, isDownpayment?: boolean, remarks?: string) => void;
   onCancelSale: (id: string) => void;
   currentUser?: any;
 }
 
 
 const DeliveriesPage: React.FC<DeliveriesPageProps> = ({ 
-  sales, 
-  artworks, 
-  logs,
-  branches,
-  events,
-  framerRecords,
-  returnRecords,
-  transferRequests,
+  sales = [], 
+  artworks = [], 
+  logs = [],
+  branches = [],
+  events = [],
+  framerRecords = [],
+  returnRecords = [],
+  transferRequests = [],
   userPermissions,
   onUpdateSale,
   onDispatch,
@@ -68,10 +69,10 @@ const DeliveriesPage: React.FC<DeliveriesPageProps> = ({
   const [finalizeModalSale, setFinalizeModalSale] = useState<{sale: SaleRecord, artwork: any} | null>(null);
   const [detailsSale, setDetailsSale] = useState<{sale: SaleRecord, artwork: Artwork} | null>(null);
   const [selectedClientId, setSelectedClientId] = useState<string | 'All'>('All');
-  const [activeTab, setActiveTab] = useState<'active' | 'pending' | 'delivered' | 'failed'>('pending');
+  const [activeTab, setActiveTab] = useState<'requests' | 'active' | 'pending' | 'delivered' | 'failed'>('requests');
 
   const tabCounts = useMemo(() => {
-    const counts = { active: 0, pending: 0, delivered: 0, failed: 0 };
+    const counts = { requests: 0, active: 0, pending: 0, delivered: 0, failed: 0 };
     sales.forEach(sale => {
       if (sale.status !== SaleStatus.APPROVED || sale.isCancelled) return;
       
@@ -79,8 +80,9 @@ const DeliveriesPage: React.FC<DeliveriesPageProps> = ({
         counts.delivered++;
       } else {
         const status = sale.deliveryRequest?.status;
-        if (status === DeliveryRequestStatus.APPROVED || status === DeliveryRequestStatus.DISPATCHED) counts.active++;
-        else if (!status || status === DeliveryRequestStatus.PENDING) counts.pending++;
+        if (status === DeliveryRequestStatus.PENDING) counts.requests++;
+        else if (status === DeliveryRequestStatus.APPROVED || status === DeliveryRequestStatus.DISPATCHED) counts.active++;
+        else if (!status) counts.pending++;
         else if (status === DeliveryRequestStatus.DECLINED) counts.failed++;
       }
     });
@@ -98,17 +100,19 @@ const DeliveriesPage: React.FC<DeliveriesPageProps> = ({
       const hasRequest = !!sale.deliveryRequest;
       const requestStatus = sale.deliveryRequest?.status;
 
-      if (activeTab === 'active') {
+      if (activeTab === 'requests') {
+        if (sale.isDelivered || requestStatus !== DeliveryRequestStatus.PENDING) return false;
+      } else if (activeTab === 'active') {
         if (sale.isDelivered || (requestStatus !== DeliveryRequestStatus.APPROVED && requestStatus !== DeliveryRequestStatus.DISPATCHED)) return false;
       } else if (activeTab === 'pending') {
-        if (sale.isDelivered || (hasRequest && requestStatus !== DeliveryRequestStatus.PENDING)) return false;
+        if (sale.isDelivered || hasRequest) return false; // Show only those without requests
       } else if (activeTab === 'delivered') {
         if (!sale.isDelivered) return false;
       } else if (activeTab === 'failed') {
         if (sale.isDelivered || requestStatus !== DeliveryRequestStatus.DECLINED) return false;
       }
       
-      const artwork = artworks.find(a => a.id === sale.artworkId) || sale.artworkSnapshot;
+      const artwork = artworks.find(a => a.id === sale.artworkId) || ({ ...sale.artworkSnapshot, id: sale.artworkId, status: 'Sold', createdAt: sale.saleDate } as any);
       if (!artwork) return false;
 
       const matchesSearch = 
@@ -120,9 +124,10 @@ const DeliveriesPage: React.FC<DeliveriesPageProps> = ({
         (artwork as Artwork).currentBranch === selectedBranch || 
         (sale.artworkSnapshot?.currentBranch === selectedBranch);
 
-      const matchesClient = selectedClientId === 'All' || sale.clientName === selectedClientId;
+      const registryKey = activeTab === 'requests' ? (sale.agentName || 'Unknown Agent') : sale.clientName;
+      const matchesRegistrySelection = selectedClientId === 'All' || registryKey === selectedClientId;
 
-      return matchesSearch && matchesBranch && matchesClient;
+      return matchesSearch && matchesBranch && matchesRegistrySelection;
     }).sort((a, b) => {
       const dateA = a.deliveryDate || a.saleDate;
       const dateB = b.deliveryDate || b.saleDate;
@@ -141,10 +146,12 @@ const DeliveriesPage: React.FC<DeliveriesPageProps> = ({
       const requestStatus = sale.deliveryRequest?.status;
 
       let matchesTab = false;
-      if (activeTab === 'active') {
+      if (activeTab === 'requests') {
+        matchesTab = !sale.isDelivered && requestStatus === DeliveryRequestStatus.PENDING;
+      } else if (activeTab === 'active') {
         matchesTab = !sale.isDelivered && (requestStatus === DeliveryRequestStatus.APPROVED || requestStatus === DeliveryRequestStatus.DISPATCHED);
       } else if (activeTab === 'pending') {
-        matchesTab = !sale.isDelivered && (!hasRequest || requestStatus === DeliveryRequestStatus.PENDING);
+        matchesTab = !sale.isDelivered && !hasRequest;
       } else if (activeTab === 'delivered') {
         matchesTab = sale.isDelivered === true;
       } else if (activeTab === 'failed') {
@@ -152,7 +159,8 @@ const DeliveriesPage: React.FC<DeliveriesPageProps> = ({
       }
 
       if (matchesTab) {
-        stats[sale.clientName] = (stats[sale.clientName] || 0) + 1;
+        const key = activeTab === 'requests' ? (sale.agentName || 'Unknown Agent') : sale.clientName;
+        stats[key] = (stats[key] || 0) + 1;
       }
     });
     return Object.entries(stats).sort(([a], [b]) => a.localeCompare(b));
@@ -201,13 +209,19 @@ const DeliveriesPage: React.FC<DeliveriesPageProps> = ({
       <div className="w-80 bg-[#f3f2f1] border-r border-[#edebe9] flex flex-col shrink-0">
         <div className="p-6 border-b border-[#edebe9] bg-white">
            <div className="flex items-center justify-between mb-4">
-             <div>
-               <h2 className="text-[16px] font-black text-[#323130] flex items-center gap-3 uppercase tracking-tight">
-                 <User className="text-[#605e5c]" size={18} strokeWidth={2.5} />
-                 Client Registry
-               </h2>
-               <p className="text-[10px] font-black text-[#a19f9d] uppercase tracking-[0.2em] mt-1">Pending fulfillment</p>
-             </div>
+              <div>
+                <h2 className="text-[16px] font-black text-[#323130] flex items-center gap-3 uppercase tracking-tight">
+                  {activeTab === 'requests' ? (
+                    <Users className="text-[#605e5c]" size={18} strokeWidth={2.5} />
+                  ) : (
+                    <User className="text-[#605e5c]" size={18} strokeWidth={2.5} />
+                  )}
+                  {activeTab === 'requests' ? 'Agent Registry' : 'Client Registry'}
+                </h2>
+                <p className="text-[10px] font-black text-[#a19f9d] uppercase tracking-[0.2em] mt-1">
+                  {activeTab === 'requests' ? 'Pending Logistics' : 'Pending fulfillment'}
+                </p>
+              </div>
            </div>
 
            {/* New Client Search Input */}
@@ -215,7 +229,7 @@ const DeliveriesPage: React.FC<DeliveriesPageProps> = ({
              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[#605e5c]" size={14} />
              <input
                type="text"
-               placeholder="Search clients..."
+               placeholder={activeTab === 'requests' ? "Search agents..." : "Search clients..."}
                value={clientSearchQuery}
                onChange={(e) => setClientSearchQuery(e.target.value)}
                className="w-full pl-9 pr-8 py-2 bg-[#faf9f8] border border-[#edebe9] rounded-sm text-xs font-medium focus:bg-white focus:ring-1 focus:ring-[#0078d4] focus:border-[#0078d4] outline-none transition-all"
@@ -244,7 +258,7 @@ const DeliveriesPage: React.FC<DeliveriesPageProps> = ({
               >
                 <div className="flex items-center gap-3">
                    <Filter size={16} className={selectedClientId === 'All' ? 'text-white' : 'text-[#605e5c] group-hover:text-[#323130]'} />
-                  <span className="text-sm font-bold">All Clients</span>
+                   <span className="text-sm font-bold">{activeTab === 'requests' ? 'All Agents' : 'All Clients'}</span>
                 </div>
                 <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
                   selectedClientId === 'All' ? 'bg-white/20' : 'bg-[#edebe9] group-hover:bg-[#e1dfdd]'
@@ -283,7 +297,9 @@ const DeliveriesPage: React.FC<DeliveriesPageProps> = ({
 
           {filteredClientStats.length === 0 && (
             <div className="py-10 text-center">
-              <p className="text-xs text-[#605e5c] font-medium italic">No clients found.</p>
+              <p className="text-xs text-[#605e5c] font-medium italic">
+                {activeTab === 'requests' ? 'No agents found.' : 'No clients found.'}
+              </p>
             </div>
           )}
         </div>
@@ -318,6 +334,7 @@ const DeliveriesPage: React.FC<DeliveriesPageProps> = ({
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-1 bg-[#f3f2f1] p-1 rounded-sm border border-[#edebe9]">
               {[
+                { id: 'requests', label: 'Requests', icon: Inbox, count: tabCounts.requests, color: '#0078d4' },
                 { id: 'active', label: 'Active', icon: Truck, count: tabCounts.active, color: '#107c10' },
                 { id: 'pending', label: 'Pending', icon: Clock, count: tabCounts.pending, color: '#ffb900' },
                 { id: 'delivered', label: 'Delivered', icon: CheckCircle2, count: tabCounts.delivered, color: '#0078d4' },
@@ -328,15 +345,19 @@ const DeliveriesPage: React.FC<DeliveriesPageProps> = ({
                   onClick={() => setActiveTab(tab.id as any)}
                   className={`px-4 py-1.5 rounded-sm text-[10px] font-black uppercase tracking-widest flex items-center gap-2 transition-all ${
                     activeTab === tab.id 
-                      ? 'bg-white text-[#323130] shadow-sm ring-1 ring-[#edebe9]' 
+                      ? tab.id === 'requests'
+                        ? 'bg-[#0078d4] text-white shadow-lg shadow-blue-200 ring-1 ring-[#005a9e]'
+                        : 'bg-white text-[#323130] shadow-sm ring-1 ring-[#edebe9]' 
                       : 'text-[#605e5c] hover:bg-white/50'
                   }`}
                 >
-                  <tab.icon size={14} style={{ color: activeTab === tab.id ? tab.color : undefined }} />
+                  <tab.icon size={14} style={{ color: activeTab === tab.id ? (tab.id === 'requests' ? '#ffffff' : tab.color) : (tab.id === 'requests' && tab.count > 0 ? '#e11d48' : undefined) }} />
                   {tab.label}
                   {tab.count > 0 && (
-                    <span className={`px-1.5 py-0.5 rounded-sm text-[8px] ${
-                      activeTab === tab.id ? 'bg-[#323130] text-white' : 'bg-[#edebe9] text-[#605e5c]'
+                    <span className={`px-1.5 py-0.5 rounded-sm text-[8px] animate-pulse ${
+                      activeTab === tab.id 
+                        ? tab.id === 'requests' ? 'bg-white text-[#0078d4]' : 'bg-[#323130] text-white'
+                        : tab.id === 'requests' ? 'bg-rose-600 text-white shadow-sm shadow-rose-200' : 'bg-[#edebe9] text-[#605e5c]'
                     }`}>
                       {tab.count}
                     </span>
@@ -366,7 +387,19 @@ const DeliveriesPage: React.FC<DeliveriesPageProps> = ({
 
         {/* Scrollable Area */}
         <div className="flex-1 overflow-y-auto p-8">
-           <div className="max-w-[1600px] mx-auto space-y-10">
+           {activeTab === 'requests' ? (
+             <div className="-mt-8 -mx-8 bg-white min-h-full">
+               <DeliveryRequestsPage
+                 sales={deliveryItems}
+                 artworks={artworks}
+                 onUpdateSale={onUpdateSale}
+                 currentUser={currentUser}
+                 hideHeader={true}
+                 userPermissions={userPermissions}
+               />
+             </div>
+           ) : (
+             <div className="max-w-[1600px] mx-auto space-y-10">
               <div className="flex items-end justify-between border-b border-[#edebe9] pb-4">
                 <div>
                   <p className="text-[10px] font-bold text-[#605e5c] uppercase tracking-widest mb-1">Logistics / Pipeline</p>
@@ -387,7 +420,7 @@ const DeliveriesPage: React.FC<DeliveriesPageProps> = ({
                   viewMode === 'grid' ? (
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-8">
                       {deliveryItems.map((sale) => {
-                        const artwork = artworks.find(a => a.id === sale.artworkId) || (sale.artworkSnapshot as any);
+                        const artwork = artworks.find(a => a.id === sale.artworkId) || ({ ...sale.artworkSnapshot, id: sale.artworkId, status: 'Sold', createdAt: sale.saleDate } as any);
 
                         return (
                           <motion.div
@@ -423,30 +456,26 @@ const DeliveriesPage: React.FC<DeliveriesPageProps> = ({
                                 </div>
 
                                 <div className="mt-auto pt-5 border-t border-[#f3f2f1] grid grid-cols-2 gap-3">
-                                    {sale.deliveryRequest?.status === DeliveryRequestStatus.DISPATCHED ? (
-                                      <button 
-                                        disabled={sale.isDelivered}
-                                        onClick={(e) => { e.stopPropagation(); if (!sale.isDelivered) setFinalizeModalSale({ sale, artwork }); }}
-                                        className={`py-2.5 rounded-sm text-[9px] font-black uppercase tracking-widest transition-all ${
-                                          sale.isDelivered
-                                            ? 'bg-[#f3f2f1] text-[#c8c6c4] cursor-not-allowed'
-                                            : 'bg-[#0078d4] text-white shadow-lg shadow-[#0078d4]/20 hover:bg-[#106ebe]'
-                                        }`}
-                                      >
-                                        {sale.isDelivered ? 'Delivered' : 'Mark as Delivered'}
-                                      </button>
-                                    ) : (
-                                      <button 
-                                        disabled={sale.isDelivered || sale.deliveryRequest?.status !== DeliveryRequestStatus.APPROVED}
-                                        onClick={(e) => { e.stopPropagation(); onDispatch && onDispatch(artwork.id); }}
-                                        className={`py-2.5 rounded-sm text-[9px] font-black uppercase tracking-widest transition-all ${
-                                          sale.isDelivered ? 'bg-[#f3f2f1] text-[#c8c6c4] cursor-not-allowed' :
-                                          sale.deliveryRequest?.status === DeliveryRequestStatus.APPROVED ? 'bg-[#107c10] text-white shadow-lg shadow-[#107c10]/20 hover:bg-[#0b5a0b]' : 'bg-[#f3f2f1] text-[#a19f9d] cursor-not-allowed'
-                                        }`}
-                                      >
-                                        {sale.isDelivered ? 'Archived' : 'Confirm Dispatch'}
-                                      </button>
-                                    )}
+                                     { (sale.deliveryRequest?.status === DeliveryRequestStatus.DISPATCHED || sale.deliveryRequest?.status === DeliveryRequestStatus.APPROVED) ? (
+                                       <button 
+                                         disabled={sale.isDelivered}
+                                         onClick={(e) => { e.stopPropagation(); if (!sale.isDelivered) setFinalizeModalSale({ sale, artwork }); }}
+                                         className={`py-2.5 rounded-sm text-[9px] font-black uppercase tracking-widest transition-all ${
+                                           sale.isDelivered
+                                             ? 'bg-[#f3f2f1] text-[#c8c6c4] cursor-not-allowed'
+                                             : 'bg-[#0078d4] text-white shadow-lg shadow-[#0078d4]/20 hover:bg-[#106ebe]'
+                                         }`}
+                                       >
+                                         {sale.isDelivered ? 'Delivered' : 'Mark as Delivered'}
+                                       </button>
+                                     ) : (
+                                       <button 
+                                         disabled={true}
+                                         className="py-2.5 rounded-sm text-[9px] font-black uppercase tracking-widest transition-all bg-[#f3f2f1] text-[#a19f9d] cursor-not-allowed"
+                                       >
+                                         {sale.isDelivered ? 'Archived' : 'Approve Delivery'}
+                                       </button>
+                                     )}
                                    <button 
                                      disabled={sale.isDelivered || sale.deliveryRequest?.status === DeliveryRequestStatus.PENDING}
                                      onClick={(e) => { e.stopPropagation(); setRequestModalSale({ sale, artwork }); }}
@@ -476,7 +505,7 @@ const DeliveriesPage: React.FC<DeliveriesPageProps> = ({
                         </thead>
                         <tbody className="divide-y divide-[#edebe9]">
                            {deliveryItems.map((sale) => {
-                             const artwork = artworks.find(a => a.id === sale.artworkId) || sale.artworkSnapshot!;
+                             const artwork = artworks.find(a => a.id === sale.artworkId) || ({ ...sale.artworkSnapshot, id: sale.artworkId, status: 'Sold', createdAt: sale.saleDate } as any);
 
                              return (
                                <tr 
@@ -512,23 +541,19 @@ const DeliveriesPage: React.FC<DeliveriesPageProps> = ({
                                       >
                                         {sale.deliveryRequest?.status === DeliveryRequestStatus.DECLINED ? 'Retry' : (sale.deliveryRequest ? 'Edit' : 'Schedule')}
                                       </button>
-                                      {sale.deliveryRequest?.status === DeliveryRequestStatus.DISPATCHED ? (
+                                      { (sale.deliveryRequest?.status === DeliveryRequestStatus.DISPATCHED || sale.deliveryRequest?.status === DeliveryRequestStatus.APPROVED) ? (
                                         <button 
                                           onClick={(e) => { e.stopPropagation(); setFinalizeModalSale({ sale, artwork }); }}
                                           className="px-5 py-2 rounded-sm text-[9px] font-black uppercase tracking-widest transition-all bg-[#0078d4] text-white shadow-md shadow-[#0078d4]/20 hover:bg-[#106ebe]"
                                         >
-                                          Deliver
+                                          Mark as Delivered
                                         </button>
                                       ) : (
                                         <button 
-                                          disabled={sale.isDelivered || sale.deliveryRequest?.status !== DeliveryRequestStatus.APPROVED}
-                                          onClick={(e) => { e.stopPropagation(); onDispatch && onDispatch(artwork.id); }}
-                                          className={`px-5 py-2 rounded-sm text-[9px] font-black uppercase tracking-widest transition-all ${
-                                            sale.isDelivered ? 'bg-[#f3f2f1] text-[#c8c6c4] cursor-not-allowed' :
-                                            sale.deliveryRequest?.status === DeliveryRequestStatus.APPROVED ? 'bg-[#107c10] text-white shadow-md shadow-[#107c10]/20 hover:bg-[#0b5a0b]' : 'bg-[#323130] text-white hover:bg-black'
-                                          }`}
+                                          disabled={true}
+                                          className="px-5 py-2 rounded-sm text-[9px] font-black uppercase tracking-widest transition-all bg-[#f3f2f1] text-[#a19f9d] cursor-not-allowed"
                                         >
-                                          {sale.isDelivered ? 'Done' : 'Fulfill'}
+                                          {sale.isDelivered ? 'Done' : 'Approve Delivery'}
                                         </button>
                                       )}
                                     </div>
@@ -550,7 +575,8 @@ const DeliveriesPage: React.FC<DeliveriesPageProps> = ({
                   </div>
                 )}
               </AnimatePresence>
-           </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -569,8 +595,8 @@ const DeliveriesPage: React.FC<DeliveriesPageProps> = ({
             sale={finalizeModalSale.sale}
             artwork={finalizeModalSale.artwork}
             onClose={() => setFinalizeModalSale(null)}
-            onConfirm={(itdr, rsa, orcr, carrier, referenceNumber) => {
-              onDeliver && onDeliver(finalizeModalSale.artwork.id, itdr, rsa, orcr, carrier, referenceNumber);
+            onConfirm={(itdr, rsa, orcr, carrier, referenceNumber, remarks) => {
+              onDeliver && onDeliver(finalizeModalSale.artwork.id, itdr, rsa, orcr, carrier, referenceNumber, remarks);
               setFinalizeModalSale(null);
             }}
           />
@@ -598,7 +624,9 @@ const DeliveriesPage: React.FC<DeliveriesPageProps> = ({
                    onCancelReservation={onCancelReservation}
                    onSale={onSale}
                    onCancelSale={onCancelSale}
-                   onDeliver={onDeliver}
+                                       onDeliver={(id, itdr, rsa, orcr, carrier, ref, remarks) => {
+                      if (onDeliver) onDeliver(id, Array.isArray(itdr) ? itdr[0] : itdr, Array.isArray(rsa) ? rsa[0] : rsa, Array.isArray(orcr) ? orcr[0] : orcr, carrier, ref, remarks);
+                    }}
                    framerRecords={framerRecords}
                    returnRecords={returnRecords}
                    transferRequests={transferRequests}

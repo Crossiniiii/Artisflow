@@ -218,7 +218,7 @@ export const BulkActionModal: React.FC<BulkActionModalProps> = ({
                     {bulkActionModal.type === 'sale' ? 'Confirm Sale' :
                         bulkActionModal.type === 'delete' ? 'Authorize Deletion' :
                             bulkActionModal.type === 'reserve' ? (reservationTab === 'auction' ? 'Sync to Auction' : 'Authorize Reservation') :
-                                bulkActionModal.type === 'framer' ? 'Authorize Dispatch' :
+                                bulkActionModal.type === 'framer' ? 'Request Delivery' :
                                     bulkActionModal.type === 'return' ? (returnType === 'Artist Reclaim' ? 'Authorize Void' : 'Authorize Retouch') :
                                         'Complete Action'}
                 </button>

@@ -25,7 +25,7 @@ export const useTransferOperations = () => {
   const { logActivity } = useActivityLogs();
 
   // 1. handleCreateTransferRequest
-  const handleCreateTransferRequest = async (artworkIds: string[], toBranch: string, attachments?: { itdrUrl?: string | string[] }) => {
+  const handleCreateTransferRequest = async (artworkIds: string[], toBranch: string, attachments?: { itdrUrl?: string | string[] }, remarks?: string) => {
     if (!currentUser) return;
 
     const itdrUrl = attachments?.itdrUrl;
@@ -60,7 +60,8 @@ export const useTransferOperations = () => {
         status: 'Pending',
         requestedBy: currentUser.name,
         requestedAt: new Date().toISOString(),
-        itdrUrl: itdrUrl
+        itdrUrl: itdrUrl,
+        notes: remarks || ''
       };
     }).filter(Boolean) as TransferRequest[];
 
@@ -89,7 +90,7 @@ export const useTransferOperations = () => {
       setTransferRequests(prev => [...prev, ...newRequests]);
       newRequests.forEach(req => {
         const artwork = artworks.find(a => String(a.id) === String(req.artworkId));
-        logActivity(req.artworkId, 'Transfer Requested', `To ${toBranch}`, artwork);
+        logActivity(req.artworkId, 'Transfer Requested', `To ${toBranch}.${remarks ? ` Remarks: ${remarks}` : ''}`, artwork);
       });
 
       pushNotification('Transfer Requested', `${newRequests.length} items requested for transfer.`, 'inventory');
@@ -102,7 +103,7 @@ export const useTransferOperations = () => {
   };
 
   // 2. handleAcceptTransfer
-  const handleAcceptTransfer = async (request: TransferRequest) => {
+  const handleAcceptTransfer = async (request: TransferRequest, remarks?: string) => {
     if (!currentUser) return;
 
     if (currentUser.role !== UserRole.ADMIN && currentUser.branch !== request.toBranch) {
@@ -187,7 +188,7 @@ export const useTransferOperations = () => {
           timestamp: timestamp,
           performedBy: request.requestedBy,
           approvedBy: currentUser.name || currentUser.email,
-          notes: 'Accepted'
+          notes: remarks || 'Accepted'
         }));
         
         if (transError) {
@@ -199,7 +200,7 @@ export const useTransferOperations = () => {
       setTransferRequests(prev => prev.map(r => String(r.id) === String(request.id) ? { ...r, status: 'Accepted' as TransferStatus } : r));
       if (updatedArtwork) setArtworks(prev => prev.map(a => String(a.id) === String(artwork!.id) ? updatedArtwork : a));
       
-      logActivity(request.artworkId, 'Transfer Accepted', `To ${request.toBranch}`, updatedArtwork || undefined);
+      logActivity(request.artworkId, 'Transfer Accepted', `To ${request.toBranch}.${remarks ? ` Remarks: ${remarks}` : ''}`, updatedArtwork || undefined);
       pushNotification('Transfer Accepted', request.artworkTitle, 'inventory');
     } catch (error: any) {
       console.error('Accept Transfer Error:', error);
@@ -211,10 +212,10 @@ export const useTransferOperations = () => {
   };
 
   // 3. handleDeclineTransfer
-  const handleDeclineTransfer = async (request: TransferRequest, reason?: string) => {
+  const handleDeclineTransfer = async (request: TransferRequest, reason?: string, remarks?: string) => {
     if (!currentUser) return;
     const timestamp = new Date().toISOString();
-    const declineNote = reason ? `Resubmission requested: ${reason}` : request.notes;
+    const declineNote = remarks || (reason ? `Resubmission requested: ${reason}` : request.notes);
     
     setImportStatus({
       isVisible: true,
@@ -251,7 +252,7 @@ export const useTransferOperations = () => {
   };
 
   // 4. handleHoldTransfer
-  const handleHoldTransfer = async (request: TransferRequest) => {
+  const handleHoldTransfer = async (request: TransferRequest, remarks?: string) => {
     if (!currentUser) return;
 
     setImportStatus({
@@ -261,16 +262,19 @@ export const useTransferOperations = () => {
     });
 
     try {
+      const holdNote = remarks || 'On Hold';
       if (!IS_DEMO_MODE) {
         const { error } = await supabase.from('transfer_requests').update(mapToSnakeCase({
             status: 'On Hold',
             respondedBy: currentUser.name,
-            respondedAt: new Date().toISOString()
+            respondedAt: new Date().toISOString(),
+            notes: holdNote
         })).eq('id', request.id);
         if (error) throw error;
       }
 
-      setTransferRequests(prev => prev.map(r => String(r.id) === String(request.id) ? { ...r, status: 'On Hold' as TransferStatus } : r));
+      setTransferRequests(prev => prev.map(r => String(r.id) === String(request.id) ? { ...r, status: 'On Hold' as TransferStatus, notes: holdNote } : r));
+      logActivity(request.artworkId, 'Transfer Hold', holdNote, artworks.find(a => String(a.id) === String(request.artworkId)));
       pushNotification('Transfer On Hold', request.artworkTitle, 'inventory');
     } catch (error) {
       console.error('Hold Transfer Error:', error);

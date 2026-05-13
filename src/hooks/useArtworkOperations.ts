@@ -3,7 +3,7 @@ import { mapToSnakeCase, mapFromSnakeCase } from '../utils/supabaseUtils';
 import {
   Artwork, ArtworkStatus, Branch, SaleRecord,
   ImportRecord, ImportFailedItem, UserRole,
-  FramerRecord, ReturnRecord, SaleStatus, DeliveryRequestStatus
+  FramerRecord, ReturnRecord, SaleStatus, DeliveryRequestStatus, DeliveryRequest
 } from '../types';
 import { IS_DEMO_MODE } from '../constants';
 import { buildNewArtwork, getArtworkClassification } from '../services/inventoryService';
@@ -27,7 +27,8 @@ export const useArtworkOperations = () => {
     framerRecords, setFramerRecords,
     returnRecords, setReturnRecords,
     setAudits,
-    setImportLogs
+    setImportLogs,
+    accounts
   } = useData();
 
   // Helper to find artwork across BOTH active and deleted lists
@@ -39,24 +40,43 @@ export const useArtworkOperations = () => {
 
   const { currentUser } = useAuth();
   const userRole = currentUser?.role ?? UserRole.ADMIN;
-  const { setImportStatus, setGatePassSaleId } = useUI();
+  const { setImportStatus } = useUI();
   const { pushNotification } = useNotifications();
   const { logActivity } = useActivityLogs();
   const currentUserName = currentUser?.name || currentUser?.fullName || 'Admin';
 
-  const sendDeclineFeedbackToAgent = async (sale: SaleRecord, reason?: string) => {
-    if (IS_DEMO_MODE || !currentUser || !sale.agentId || sale.agentId === currentUser.id) return;
+  const sendDeclineFeedbackToAgent = async (sale: SaleRecord, reason?: string, requestedFiles?: string[]) => {
+    if (IS_DEMO_MODE || !currentUser) return;
+
+    // Find the agent to message
+    const agent = accounts.find(a => a.id === sale.agentId) || 
+                  accounts.find(a => a.name === sale.agentName && a.role !== UserRole.ADMIN);
+    
+    if (!agent || agent.id === currentUser.id) return;
 
     try {
-      const artworkTitle = sale.artworkSnapshot?.title || artworks.find(a => a.id === sale.artworkId)?.title || 'the artwork';
+      const artworkTitle = sale.artworkSnapshot?.title || findArtwork(sale.artworkId)?.title || 'the artwork';
       const feedback = reason?.trim() || 'The sale declaration needs revision before it can be approved.';
-      const messageText = `Sale declaration for "${artworkTitle}" was declined.\n\nAdmin comment: ${feedback}`;
+      
+      let messageText = `🚫 SALE DECLINED\nArtwork: ${artworkTitle}\nClient: ${sale.clientName}\nReason: ${feedback}`;
+      
+      if (requestedFiles && requestedFiles.length > 0) {
+        const fileLabels = requestedFiles.map(f => {
+          if (f === 'itdr') return 'IT/DR';
+          if (f === 'rsa') return 'RSA/AR';
+          if (f === 'orcr') return 'OR/CR';
+          return f.toUpperCase();
+        }).join(', ');
+        messageText += `\n\n♻️ RE-UPLOAD REQUESTED: ${fileLabels}`;
+      }
+
       const now = new Date().toISOString();
 
+      // Find existing 1-on-1 conversation or start new one
       const { data: existingConversation } = await supabase
         .from('conversations')
         .select('*')
-        .contains('participant_ids', [currentUser.id, sale.agentId])
+        .contains('participant_ids', [currentUser.id, agent.id])
         .limit(1)
         .maybeSingle();
 
@@ -64,15 +84,20 @@ export const useArtworkOperations = () => {
 
       if (!conversationId) {
         const newConversation = {
-          participantIds: [currentUser.id, sale.agentId],
+          participantIds: [currentUser.id, agent.id],
           participantNames: {
             [currentUser.id]: currentUserName,
-            [sale.agentId]: sale.agentName || 'Agent'
+            [agent.id]: agent.name || 'Agent'
           },
           updatedAt: now,
           unreadCount: {
             [currentUser.id]: 0,
-            [sale.agentId]: 0
+            [agent.id]: 1
+          },
+          lastMessage: {
+            text: messageText,
+            senderName: currentUserName,
+            timestamp: now
           }
         };
 
@@ -84,6 +109,25 @@ export const useArtworkOperations = () => {
 
         if (createConversationError) throw createConversationError;
         conversationId = createdConversation.id;
+      } else {
+        // Update existing conversation with last message and increment unread count for agent
+        const unreadCount = { ...(existingConversation.unread_count || {}) };
+        unreadCount[agent.id] = (unreadCount[agent.id] || 0) + 1;
+
+        const { error: convUpdateError } = await supabase
+          .from('conversations')
+          .update(mapToSnakeCase({
+            lastMessage: {
+              text: messageText,
+              senderName: currentUserName,
+              timestamp: now
+            },
+            updatedAt: now,
+            unreadCount: unreadCount
+          }))
+          .eq('id', conversationId);
+        
+        if (convUpdateError) throw convUpdateError;
       }
 
       const newMessage = {
@@ -101,26 +145,16 @@ export const useArtworkOperations = () => {
 
       if (messageError) throw messageError;
 
-      const unreadCount = { ...(existingConversation?.unread_count || {}) };
-      unreadCount[currentUser.id] = 0;
-      unreadCount[sale.agentId] = (unreadCount[sale.agentId] || 0) + 1;
+      // Also trigger a system notification for the agent
+      pushNotification(
+        'Sale Declaration Declined',
+        `Admin declined sale for "${artworkTitle}". Reason: ${feedback.slice(0, 50)}${feedback.length > 50 ? '...' : ''}`,
+        'sales',
+        sale.artworkId
+      );
 
-      const { error: updateConversationError } = await supabase
-        .from('conversations')
-        .update(mapToSnakeCase({
-          lastMessage: {
-            text: messageText,
-            senderName: currentUserName,
-            timestamp: now
-          },
-          updatedAt: now,
-          unreadCount
-        }))
-        .eq('id', conversationId);
-
-      if (updateConversationError) throw updateConversationError;
     } catch (error) {
-      console.error('Failed to send sale decline feedback to agent inbox:', error);
+      console.error('[sendDeclineFeedbackToAgent] Error:', error);
     }
   };
 
@@ -327,10 +361,10 @@ export const useArtworkOperations = () => {
     }
   };
 
-  const handleReserveArtwork = async (id: string, details: string, expiryDate?: string, reservedForEventId?: string, reservedForEventName?: string) => {
+  const handleReserveArtwork = async (id: string, details: string, expiryDate?: string, reservedForEventId?: string, reservedForEventName?: string, remarks?: string) => {
     const art = artworks.find(a => a.id === id);
     if (!art) return;
-    const updates = { status: ArtworkStatus.RESERVED, remarks: details, reservationExpiry: expiryDate, reservedForEventId, reservedForEventName };
+    const updates = { status: ArtworkStatus.RESERVED, remarks: remarks ? `${details} | Notes: ${remarks}` : details, reservationExpiry: expiryDate, reservedForEventId, reservedForEventName };
     const updated = { ...art, ...updates };
     setArtworks(prev => prev.map(a => String(a.id) === String(id) ? updated : a));
     setAllArtworksIncludingDeleted(prev => prev.map(a => String(a.id) === String(id) ? updated : a));
@@ -392,7 +426,7 @@ export const useArtworkOperations = () => {
     return true;
   };
 
-  const handleSale = async (id: string, clientName: string, clientEmail: string, clientContact: string, delivered: boolean, eventInfo?: any, attachment?: string, itdr?: string[], rsa?: string[], orcr?: string[], downpayment?: number, isDownpayment?: boolean) => {
+  const handleSale = async (id: string, clientName: string, clientEmail: string, clientContact: string, delivered: boolean, eventInfo?: any, attachment?: string, itdr?: string[], rsa?: string[], orcr?: string[], downpayment?: number, isDownpayment?: boolean, remarks?: string) => {
     const existingPendingSales = getPendingSalesForArtwork(id);
     if (existingPendingSales.length > 0) {
       pushNotification('Sale Already Pending', 'This artwork already has a sale waiting for approval.', 'system');
@@ -405,10 +439,11 @@ export const useArtworkOperations = () => {
     const agentId = currentUser?.id;
     const { updatedArtworks, newSale } = applySingleSale(artworks, id, clientName, clientEmail, clientContact, agentName, delivered, eventInfo, attachment, itdr, rsa, orcr, downpayment, agentId, isDownpayment);
     if (!newSale) return;
+    const updatedArt = updatedArtworks.find(a => String(a.id) === String(id)) || previousArtwork;
     setSales(prev => [...prev, newSale]);
     setArtworks(updatedArtworks);
     setAllArtworksIncludingDeleted(prev => prev.map(a => String(a.id) === String(id) ? (updatedArtworks.find(ua => String(ua.id) === String(id)) || a) : a));
-    logActivity(id, 'Sale Submitted', `For ${clientName}`, updatedArtworks.find(a => String(a.id) === String(id)));
+    logActivity(id, 'Sale Declared', `Client: ${clientName}. Remarks: ${remarks}`, updatedArt);
     if (IS_DEMO_MODE) return true;
 
     // Upload Attachments to Storage
@@ -590,12 +625,13 @@ export const useArtworkOperations = () => {
     return true;
   };
 
-  const handleApproveSale = async (saleId: string) => {
+  const handleApproveSale = async (saleId: string, remarks?: string) => {
     const sale = sales.find(s => s.id === saleId);
     if (!sale) return;
 
     const previousSales = sales;
     const previousArtworks = artworks;
+    const art = artworks.find(a => String(a.id) === String(sale.artworkId));
 
     setImportStatus({
       isVisible: true,
@@ -665,9 +701,9 @@ export const useArtworkOperations = () => {
         if (!success) throw new Error('Artwork status sync failed. It may have been updated by another process.');
       }
 
-      logActivity(sale.artworkId, 'Sale Approved', `Approved sale to ${sale.clientName}`, artworks.find(a => String(a.id) === String(sale.artworkId)));
+      logActivity(sale.artworkId, 'Sale Approved', `Invoice finalized.${remarks ? ` Remarks: ${remarks}` : ''}`, art);
       setImportStatus(prev => ({ ...prev, message: 'Sale approved successfully!', progress: { current: 100, total: 100 } }));
-      setGatePassSaleId(saleId);
+
       return true;
     } catch (error: any) {
       console.error('Approve Sale Error:', error);
@@ -681,7 +717,7 @@ export const useArtworkOperations = () => {
     }
   };
 
-  const handleAddInstallment = async (saleId: string, amount: number, date: string, reference?: string, attachments?: string[]) => {
+  const handleAddInstallment = async (saleId: string, amount: number, date: string, reference?: string, attachments?: string[], remarks?: string) => {
     const sale = sales.find(s => s.id === saleId);
     if (!sale) return;
 
@@ -695,7 +731,7 @@ export const useArtworkOperations = () => {
     try {
       const art = findArtwork(sale.artworkId);
       const totalPaid = (sale.downpayment || 0) + (sale.installments || []).reduce((sum, inst) => sum + inst.amount, 0);
-      const isOverpayment = (totalPaid + amount) > (art?.price || 0) + 0.01;
+      const newAmount = totalPaid + amount;
 
       const installment = {
         id: generateId(),
@@ -727,7 +763,7 @@ export const useArtworkOperations = () => {
       setImportStatus(prev => ({ ...prev, progress: { current: 100, total: 100 }, message: 'Payment recorded successfully!' }));
 
       // Audit Logging
-      logActivity(sale.artworkId, 'Payment Submitted', `₱${amount.toLocaleString()} payment submitted for approval (Ref: ${reference || 'N/A'})`, findArtwork(sale.artworkId));
+      logActivity(sale.artworkId, 'Payment Verified', `Amount: ${newAmount.toLocaleString('en-PH', { style: 'currency', currency: 'PHP' })}. Remarks: ${remarks}`, findArtwork(sale.artworkId));
 
       setTimeout(() => setImportStatus({ isVisible: false }), 800);
       pushNotification('Payment Recorded', `₱${amount.toLocaleString()} has been added to the payment history for ${sale.clientName}.`, 'system');
@@ -835,7 +871,7 @@ export const useArtworkOperations = () => {
     }
   };
 
-  const handleApprovePaymentEdit = async (saleId: string, paymentId: string) => {
+  const handleApprovePaymentEdit = async (saleId: string, paymentId: string, remarks?: string) => {
     if (userRole !== UserRole.ADMIN) return;
     const sale = sales.find(s => s.id === saleId);
     if (!sale) return;
@@ -875,7 +911,7 @@ export const useArtworkOperations = () => {
       ? `Approved ₱${installment.amount.toLocaleString()} payment`
       : `Approved edit for ${isDownpayment ? 'downpayment' : 'installment'}`;
 
-    logActivity(sale.artworkId, logType, logMsg, findArtwork(sale.artworkId));
+    logActivity(sale.artworkId, logType, `${logMsg}.${remarks ? ` Remarks: ${remarks}` : ''}`, findArtwork(sale.artworkId));
 
     try {
       if (!IS_DEMO_MODE) {
@@ -894,7 +930,7 @@ export const useArtworkOperations = () => {
     }
   };
 
-  const handleDeclinePaymentEdit = async (saleId: string, paymentId: string) => {
+  const handleDeclinePaymentEdit = async (saleId: string, paymentId: string, remarks?: string) => {
     if (userRole !== UserRole.ADMIN) return;
     const sale = sales.find(s => s.id === saleId);
     if (!sale) return;
@@ -925,7 +961,7 @@ export const useArtworkOperations = () => {
     const amount = isDownpayment ? (sale.pendingDownpaymentEdit?.amount || 0) : (installment?.pendingEdit?.amount || installment?.amount || 0);
     const logMsg = `${isNewPaymentDecline ? 'Declined' : 'Declined edit for'} ₱${amount.toLocaleString()} ${isDownpayment ? 'downpayment' : 'installment'}`;
 
-    logActivity(sale.artworkId, logType, logMsg, findArtwork(sale.artworkId));
+    logActivity(sale.artworkId, logType, `${logMsg}.${remarks ? ` Remarks: ${remarks}` : ''}`, findArtwork(sale.artworkId));
     setSales(prev => prev.map(s => s.id === saleId ? updatedSale : s));
     pushNotification('Edit Declined', 'Payment edit request has been declined.', 'system');
 
@@ -945,7 +981,7 @@ export const useArtworkOperations = () => {
     }
   };
 
-  const handleDeclineSale = async (saleId: string, reason?: string, requestedFiles?: string[]) => {
+  const handleDeclineSale = async (saleId: string, reason?: string, requestedFiles?: string[], remarks?: string) => {
     const sale = sales.find(s => s.id === saleId);
     if (!sale) return;
 
@@ -980,7 +1016,6 @@ export const useArtworkOperations = () => {
 
       if (!IS_DEMO_MODE) {
         // 2. Database Updates
-        console.log('[handleDeclineSale] Updating specific sale to DECLINED:', saleId);
         const { error: saleError } = await supabase
           .from('sales')
           .update(mapToSnakeCase({
@@ -990,13 +1025,9 @@ export const useArtworkOperations = () => {
           }))
           .eq('id', saleId);
 
-        if (saleError) {
-          console.error('[handleDeclineSale] Supabase Sale Update Error:', saleError);
-          throw saleError;
-        }
+        if (saleError) throw saleError;
 
         if (artworkShouldBeAvailable) {
-          console.log('[handleDeclineSale] No other pending sales. Updating artwork to AVAILABLE:', sale.artworkId);
           // Sync Artwork Status (Concurrency Guard)
           const success = await syncArtwork(sale.artworkId, {
             status: ArtworkStatus.AVAILABLE
@@ -1005,15 +1036,13 @@ export const useArtworkOperations = () => {
           if (!success) {
             console.warn('[handleDeclineSale] Artwork status sync skipped or failed (possibly already updated).');
           }
-        } else {
-          console.log(`[handleDeclineSale] ${otherPendingSales.length} other pending sales remain. Artwork stays in FOR_SALE_APPROVAL.`);
         }
 
         // 3. Feedback to agent
-        await sendDeclineFeedbackToAgent(sale, reason);
+        await sendDeclineFeedbackToAgent(sale, reason, requestedFiles);
       }
 
-      logActivity(sale.artworkId, 'Sale Declined', `Reason: ${reason || 'No reason provided'}`, findArtwork(sale.artworkId));
+      logActivity(sale.artworkId, 'Sale Declined', `Reason: ${reason || 'No reason provided'}.${remarks ? ` Remarks: ${remarks}` : ''}`, findArtwork(sale.artworkId));
       setImportStatus(prev => ({ ...prev, message: 'Sale declined successfully.', progress: { current: 100, total: 100 } }));
       return true;
     } catch (error: any) {
@@ -1051,7 +1080,7 @@ export const useArtworkOperations = () => {
     }
   };
 
-  const handleDispatch = async (artworkId: string) => {
+  const handleDispatch = async (artworkId: string, remarks?: string) => {
     const sale = sales.find(s => String(s.artworkId) === String(artworkId) && !s.isCancelled);
     if (!sale) return false;
 
@@ -1059,7 +1088,7 @@ export const useArtworkOperations = () => {
     setSales(updatedSales);
     
     const art = artworks.find(a => String(a.id) === String(artworkId));
-    logActivity(artworkId, 'Dispatched', `Item is out for delivery to ${sale.clientName}`, art);
+    logActivity(artworkId, 'Dispatched', `Item is out for delivery to ${sale.clientName}.${remarks ? ` Remarks: ${remarks}` : ''}`, art);
 
     if (IS_DEMO_MODE) return true;
 
@@ -1080,7 +1109,50 @@ export const useArtworkOperations = () => {
     }
   };
 
-  const handleDeliver = async (id: string, itdr: string | string[] = '', rsa: string | string[] = '', orcr: string | string[] = '', carrier?: string, referenceNumber?: string) => {
+  const handleApproveDeliveryRequest = async (saleId: string, remarks?: string) => {
+    const sale = sales.find(s => s.id === saleId);
+    if (!sale || !sale.deliveryRequest) return false;
+
+    const updatedRequest: DeliveryRequest = {
+      ...sale.deliveryRequest,
+      status: DeliveryRequestStatus.DISPATCHED,
+      approvedAt: new Date().toISOString(),
+      approvedBy: currentUser?.name || 'Admin',
+      dispatchedAt: new Date().toISOString(),
+      dispatchedBy: currentUser?.name || 'Admin'
+    };
+
+    // 1. Update Sale Record
+    const success = await handleUpdateSale(saleId, { deliveryRequest: updatedRequest });
+    if (!success) return false;
+
+    // 2. Update Artwork Status to DISPATCHED
+    return await handleDispatch(sale.artworkId, remarks);
+  };
+
+  const handleDeclineDeliveryRequest = async (saleId: string, reason: string) => {
+    const sale = sales.find(s => s.id === saleId);
+    if (!sale || !sale.deliveryRequest) return false;
+
+    const updatedRequest: DeliveryRequest = {
+      ...sale.deliveryRequest,
+      status: DeliveryRequestStatus.DECLINED,
+      declineReason: reason
+    };
+
+    const success = await handleUpdateSale(saleId, { deliveryRequest: updatedRequest });
+    if (!success) return false;
+
+    logActivity(
+      sale.artworkId, 
+      'Delivery Request Declined', 
+      `The delivery request was declined. Reason: ${reason}`,
+      findArtwork(sale.artworkId)
+    );
+    return true;
+  };
+
+  const handleDeliver = async (id: string, itdr: string | string[] = '', rsa: string | string[] = '', orcr: string | string[] = '', carrier?: string, referenceNumber?: string, remarks?: string) => {
     // Helper to serialize attachments
     const serializeAttachmentLocal = (val: string | string[] | undefined | null): string => {
       if (!val) return '';
@@ -1106,7 +1178,7 @@ export const useArtworkOperations = () => {
     
     // Add audit log
     if (art) {
-      logActivity(id, 'Delivered', `Artwork delivered to ${sale?.clientName || 'Client'}. ${carrier ? `Carrier: ${carrier}. ` : ''}${referenceNumber ? `Ref: ${referenceNumber}.` : ''}`, art);
+      logActivity(id, 'Delivered', `Artwork delivered to ${sale?.clientName || 'Client'}. ${carrier ? `Carrier: ${carrier}. ` : ''}${referenceNumber ? `Ref: ${referenceNumber}.` : ''}${remarks ? ` Remarks: ${remarks}` : ''}`, art);
     }
     if (IS_DEMO_MODE) return true;
     if (!art || !sale) return false;
@@ -1128,10 +1200,10 @@ export const useArtworkOperations = () => {
     await supabase.from('audits').insert(mapToSnakeCase(newAudit));
   };
 
-  const handleAddToAuction = async (ids: string[], auctionId: string, auctionName: string) => {
+  const handleAddToAuction = async (ids: string[], auctionId: string, auctionName: string, remarks?: string) => {
     const updates = {
       status: ArtworkStatus.RESERVED,
-      remarks: `[Reserved For Auction: ${auctionName}]`,
+      remarks: remarks ? `[Auction: ${auctionName}] ${remarks}` : `[Reserved For Auction: ${auctionName}]`,
       reservedForEventId: auctionId,
       reservedForEventName: auctionName,
       currentBranch: 'Auction' as Branch,
@@ -1156,6 +1228,11 @@ export const useArtworkOperations = () => {
 
       if (artError) throw artError;
 
+      // 3. Log Activity
+      ids.forEach(id => {
+        logActivity(id, 'Auction Registered', `Assigned to ${auctionName}. Remarks: ${remarks}`, findArtwork(id));
+      });
+
       return true;
     } catch (error) {
       console.error('Auction Registration Error:', error);
@@ -1178,7 +1255,7 @@ export const useArtworkOperations = () => {
     const record: ReturnRecord = {
       id: generateId(), artworkId: id, reason, returnedBy: currentUser?.name || 'Unknown',
       returnDate: new Date().toISOString(), artworkSnapshot: art, returnType: type, status: 'Open',
-      referenceNumber, proofImage, remarks
+      referenceNumber, proofImage, remarks: remarks || art.remarks
     };
     setReturnRecords(prev => [...prev, record]);
     const updatedArt = {
@@ -1192,7 +1269,7 @@ export const useArtworkOperations = () => {
     };
     setArtworks(prev => prev.map(a => String(a.id) === String(id) ? updatedArt : a));
     setAllArtworksIncludingDeleted(prev => prev.map(a => String(a.id) === String(id) ? updatedArt : a));
-    logActivity(id, type === 'Artist Reclaim' ? 'Artist Reclaim' : 'Sent for Retouch', reason, updatedArt);
+    logActivity(id, type === 'Artist Reclaim' ? 'Artist Reclaim' : 'Sent for Retouch', `Reason: ${reason}.${remarks ? ` Remarks: ${remarks}` : ''}`, updatedArt);
     try {
       if (IS_DEMO_MODE) return true;
       const artworkUpdates: any = { status };
@@ -1284,7 +1361,7 @@ export const useArtworkOperations = () => {
       // Handled by the bulk update above for allArtworksIncludingDeleted
     }
 
-    validArtworks.forEach(art => logActivity(art.id, type === 'Artist Reclaim' ? 'Artist Reclaim' : 'Sent for Retouch', reason, updatedArtworks.find(ua => ua.id === art.id)!));
+    validArtworks.forEach(art => logActivity(art.id, type === 'Artist Reclaim' ? 'Artist Reclaim' : 'Sent for Retouch', `Reason: ${reason}.${remarks ? ` Remarks: ${remarks}` : ''}`, updatedArtworks.find(ua => ua.id === art.id)!));
 
     if (IS_DEMO_MODE) return true;
 
@@ -1325,17 +1402,17 @@ export const useArtworkOperations = () => {
     }
   };
 
-  const handleSendToFramer = async (id: string, details: string, attachmentUrl?: string | string[]) => {
+  const handleSendToFramer = async (id: string, details: string, attachmentUrl?: string | string[], remarks?: string) => {
     const art = artworks.find(a => a.id === id);
     if (!art) return;
     const record: FramerRecord = {
       id: generateId(), artworkId: id, damageDetails: details, sentDate: new Date().toISOString(),
-      artworkSnapshot: art, status: 'Open', attachmentUrl
+      artworkSnapshot: art, status: 'Open', attachmentUrl, remarks
     };
     setFramerRecords(prev => [...prev, record]);
     const updatedArt = { ...art, status: ArtworkStatus.FOR_FRAMING };
     setArtworks(prev => prev.map(a => a.id === id ? updatedArt : a));
-    logActivity(id, 'Sent to Framer', details, updatedArt);
+    logActivity(id, 'Sent to Framer', `${details}.${remarks ? ` Remarks: ${remarks}` : ''}`, updatedArt);
     if (IS_DEMO_MODE) return true;
 
     const updatedArtworkOk = await syncArtwork(id, { status: ArtworkStatus.FOR_FRAMING }, [
@@ -1363,7 +1440,7 @@ export const useArtworkOperations = () => {
     return true;
   };
 
-  const handleBulkSendToFramer = async (ids: string[], details: string, attachmentUrl?: string | string[]) => {
+  const handleBulkSendToFramer = async (ids: string[], details: string, attachmentUrl?: string | string[], remarks?: string) => {
     const validArtworks = artworks.filter(a => ids.includes(a.id));
     if (validArtworks.length === 0) return false;
 
@@ -1375,7 +1452,8 @@ export const useArtworkOperations = () => {
       sentDate: timestamp,
       artworkSnapshot: art,
       status: 'Open',
-      attachmentUrl
+      attachmentUrl,
+      remarks
     }));
 
     // Optimistic Update
@@ -1385,7 +1463,7 @@ export const useArtworkOperations = () => {
     setAllArtworksIncludingDeleted(prev => prev.map(a => targetIds.includes(String(a.id)) ? { ...a, status: ArtworkStatus.FOR_FRAMING } : a));
 
     // Log Activity for each
-    validArtworks.forEach(art => logActivity(art.id, 'Sent to Framer', details, { ...art, status: ArtworkStatus.FOR_FRAMING }));
+    validArtworks.forEach(art => logActivity(art.id, 'Sent to Framer', `${details}.${remarks ? ` Remarks: ${remarks}` : ''}`, { ...art, status: ArtworkStatus.FOR_FRAMING }));
 
     if (IS_DEMO_MODE) return true;
 
@@ -1426,7 +1504,7 @@ export const useArtworkOperations = () => {
     }
   };
 
-  const handleReturnFromFramer = async (recordId: string, branch: Branch, resolvedAt?: string) => {
+  const handleReturnFromFramer = async (recordId: string, branch: Branch, resolvedAt?: string, remarks?: string) => {
     let artworkId: string;
     let rec: FramerRecord | undefined;
     const isVirtual = recordId.startsWith('virtual-');
@@ -1471,7 +1549,7 @@ export const useArtworkOperations = () => {
         reservationExpiry: undefined
       } : a)
     );
-    logActivity(artworkId, 'Returned from Framer', `Returned to ${branch}`, {
+    logActivity(artworkId, 'Returned from Framer', `Returned to ${branch}.${remarks ? ` Remarks: ${remarks}` : ''}`, {
       status: ArtworkStatus.AVAILABLE,
       currentBranch: branch,
       remarks: '',
@@ -1512,7 +1590,7 @@ export const useArtworkOperations = () => {
     return true;
   };
 
-  const handleReturnToGallery = async (recordId: string, branch: Branch, resolvedAt?: string) => {
+  const handleReturnToGallery = async (recordId: string, branch: Branch, resolvedAt?: string, remarks?: string) => {
     let artworkId: string;
     let isVirtual = recordId.startsWith('virtual-');
     let rec: ReturnRecord | undefined;
@@ -1567,7 +1645,7 @@ export const useArtworkOperations = () => {
     });
     setAllArtworksIncludingDeleted(prev => prev.map(a => String(a.id) === String(artworkId) ? updatedArt : a));
 
-    logActivity(artworkId, 'Returned to Gallery', `Returned to ${branch}`, { status: ArtworkStatus.AVAILABLE, currentBranch: branch }, finalDate);
+    logActivity(artworkId, 'Returned to Gallery', `Returned to ${branch}.${remarks ? ` Remarks: ${remarks}` : ''}`, { status: ArtworkStatus.AVAILABLE, currentBranch: branch }, finalDate);
 
     if (IS_DEMO_MODE) return true;
 
@@ -1803,12 +1881,15 @@ export const useArtworkOperations = () => {
     handleDeleteSaleRecord,
     handleApproveSale,
     handleDeclineSale,
+    handleDeclineSaleWithMessaging: handleDeclineSale,
     handleEditPayment,
     handleApprovePaymentEdit,
     handleDeclinePaymentEdit,
     handleAddInstallment,
     handleUpdateSale,
     handleDispatch,
+    handleApproveDeliveryRequest,
+    handleDeclineDeliveryRequest,
     handleDeliver,
     handleConfirmAudit,
     handleReturnArtwork, handleBulkReturnArtwork, handleReturnToGallery,

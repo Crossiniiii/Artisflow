@@ -70,6 +70,9 @@ export interface UserPermissions {
   canViewExhibit: boolean;
   canViewForFraming: boolean;
   canViewBackToArtist: boolean;
+  canApproveFinance: boolean;
+  canApproveLogistics: boolean;
+  canAccessAuditLogs: boolean;
   accessibleTabs?: string[];
 }
 
@@ -393,6 +396,7 @@ export interface FramerRecord {
   status: 'Open' | 'Resolved' | 'Closed';
   resolvedAt?: string;
   resolvedToBranch?: string;
+  remarks?: string;
 }
 
 export type TransferStatus = 'Pending' | 'Accepted' | 'Declined' | 'Cancelled' | 'On Hold';

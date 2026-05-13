@@ -46,6 +46,9 @@ const PermissionsSelector: React.FC<PermissionsSelectorProps> = ({
               { key: 'canReserveArtwork', label: 'Reserve Artwork' },
               { key: 'canTransferArtwork', label: 'Transfer Artwork' },
               { key: 'canViewSalesHistory', label: 'View Sales History' },
+              { key: 'canApproveFinance', label: 'Approve Finance' },
+              { key: 'canApproveLogistics', label: 'Approve Logistics' },
+              { key: 'canAccessAuditLogs', label: 'Access Audit Logs' },
             ].map(({ key, label }) => (
               <label key={key} className="flex items-center space-x-3 cursor-pointer group">
                 <div className={`w-5 h-5 rounded border flex items-center justify-center transition-all duration-200 ${formData.permissions[key as keyof UserPermissions]

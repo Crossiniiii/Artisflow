@@ -28,8 +28,7 @@ interface UIContextType {
   setInventoryInitialStatus: React.Dispatch<React.SetStateAction<string | undefined>>;
   isMobileMenuOpen: boolean;
   setIsMobileMenuOpen: React.Dispatch<React.SetStateAction<boolean>>;
-  gatePassSaleId: string | null;
-  setGatePassSaleId: React.Dispatch<React.SetStateAction<string | null>>;
+
   historyStack: HistoryState[];
   setHistoryStack: React.Dispatch<React.SetStateAction<HistoryState[]>>;
   selectedArtworkId: string | null;
@@ -51,7 +50,7 @@ export const UIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [showProfile, setShowProfile] = useState(false);
   const [inventoryInitialStatus, setInventoryInitialStatus] = useState<string | undefined>(undefined);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [gatePassSaleId, setGatePassSaleId] = useState<string | null>(null);
+
   const [historyStack, setHistoryStack] = useState<HistoryState[]>([]);
   const [selectedArtworkId, setSelectedArtworkId] = useState<string | null>(null);
   const [operationsView, setOperationsView] = useState<'inventory' | 'events' | 'branches' | 'returned' | 'framer' | 'auctions' | 'reservations' | 'monitoring' | 'sales'>('branches');
@@ -66,7 +65,7 @@ export const UIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
         showProfile, setShowProfile,
         inventoryInitialStatus, setInventoryInitialStatus,
         isMobileMenuOpen, setIsMobileMenuOpen,
-        gatePassSaleId, setGatePassSaleId,
+
         historyStack, setHistoryStack,
         selectedArtworkId, setSelectedArtworkId,
         operationsView, setOperationsView,

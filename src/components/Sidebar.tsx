@@ -56,11 +56,10 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, userRole, us
     { id: 'analytics', label: 'Inventory Insights', icon: <BarChart3 />, groupId: 'inventory' },
     { id: 'artwork-transfer', label: 'Artwork T/R', icon: <ArrowRightLeft />, groupId: 'inventory' },
     { id: 'snapshots', label: 'Artwork Timeline', icon: <History />, groupId: 'inventory' },
-    { id: 'approvals', label: 'Approvals', icon: <ShieldCheck />, groupId: 'sales' },
-    { id: 'delivery-requests', label: 'Delivery Requests', icon: ICONS.Truck, groupId: 'sales' },
+    { id: 'approvals', label: 'Finance Approval', icon: <ShieldCheck />, groupId: 'sales' },
     { id: 'requests', label: 'My Requests', icon: <MessageSquare />, groupId: 'sales' },
     { id: 'sales-history', label: 'Sales History', icon: ICONS.Sales, groupId: 'sales' },
-    { id: 'deliveries', label: 'Deliveries', icon: ICONS.Truck, groupId: 'sales' },
+    { id: 'deliveries', label: 'Delivery Approval', icon: ICONS.Truck, groupId: 'sales' },
     { id: 'operations', label: 'Gallery Operations', icon: <Settings2 />, groupId: 'management' },
     { id: 'accounts', label: 'User Accounts', icon: ICONS.Users, groupId: 'management' },
     { id: 'chat', label: 'Inbox & Messaging', icon: ICONS.Chat, groupId: 'management' },
@@ -242,10 +241,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, userRole, us
                             s.status === 'Declined'
                           ).length;
                           return count > 0 ? (
-                            <span className={`
-                              ml-2 px-1.5 py-0.5 rounded-md text-[9px] font-black uppercase tracking-widest animate-pulse
-                              ${isActive ? 'bg-white text-neutral-900' : 'bg-rose-600 text-white shadow-sm shadow-rose-200'}
-                            `}>
+                            <span className="ml-2 px-1.5 py-0.5 rounded-md text-[9px] font-black uppercase tracking-widest animate-pulse bg-rose-600 text-white shadow-sm shadow-rose-200">
                               {count}
                             </span>
                           ) : null;
@@ -266,10 +262,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, userRole, us
                           ).length;
                           const count = pendingTransfers + openReturns;
                           return count > 0 ? (
-                            <span className={`
-                              ml-2 px-1.5 py-0.5 rounded-md text-[9px] font-black uppercase tracking-widest animate-pulse
-                              ${isActive ? 'bg-white text-neutral-900' : 'bg-rose-600 text-white shadow-sm shadow-rose-200'}
-                            `}>
+                            <span className="ml-2 px-1.5 py-0.5 rounded-md text-[9px] font-black uppercase tracking-widest animate-pulse bg-rose-600 text-white shadow-sm shadow-rose-200">
                               {count}
                             </span>
                           ) : null;
@@ -285,10 +278,18 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, userRole, us
                             (s.installments || []).some((i: any) => i.isPending || i.pendingEdit)
                           ).length;
                           return count > 0 ? (
-                            <span className={`
-                              ml-2 px-1.5 py-0.5 rounded-md text-[9px] font-black uppercase tracking-widest animate-pulse
-                              ${isActive ? 'bg-white text-neutral-900' : 'bg-rose-600 text-white shadow-sm shadow-rose-200'}
-                            `}>
+                            <span className="ml-2 px-1.5 py-0.5 rounded-md text-[9px] font-black uppercase tracking-widest animate-pulse bg-rose-600 text-white shadow-sm shadow-rose-200">
+                              {count}
+                            </span>
+                          ) : null;
+                        })()
+                      )}
+
+                      {item.id === 'deliveries' && (
+                        (() => {
+                          const count = sales.filter(s => s.deliveryRequest?.status === 'Pending').length;
+                          return count > 0 ? (
+                            <span className="ml-2 px-1.5 py-0.5 rounded-md text-[9px] font-black uppercase tracking-widest animate-pulse bg-rose-600 text-white shadow-sm shadow-rose-200">
                               {count}
                             </span>
                           ) : null;

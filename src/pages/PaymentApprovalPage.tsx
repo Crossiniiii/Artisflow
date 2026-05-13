@@ -8,7 +8,7 @@ import LoadingOverlay from '../components/LoadingOverlay';
 interface PaymentApprovalPageProps {
   sales: SaleRecord[];
   artworks: Artwork[];
-  onApprovePaymentEdit: (saleId: string, paymentId: string) => void;
+  onApprovePaymentEdit: (saleId: string, paymentId: string, remarks?: string) => void;
   onDeclinePaymentEdit: (saleId: string, paymentId: string, reason?: string, requestedFiles?: string[]) => void;
   onBulkDeletePayments?: (items: { saleId: string, paymentId: string }[]) => void;
   userPermissions?: UserPermissions;
@@ -33,6 +33,7 @@ const PaymentApprovalPage: React.FC<PaymentApprovalPageProps> = ({
   const [declineReason, setDeclineReason] = useState<string>('');
   const [declineMode, setDeclineMode] = useState<'remediation' | 'straight'>('remediation');
   const [requestedFiles, setRequestedFiles] = useState<string[]>([]);
+  const [approvalRemarks, setApprovalRemarks] = useState('');
   const { isProcessing, processMessage, wrapAction } = useActionProcessing({
     itemTitle: 'Payment Approval',
     itemCode: 'PAY'
@@ -228,7 +229,7 @@ const PaymentApprovalPage: React.FC<PaymentApprovalPageProps> = ({
   };
 
   return (
-    <div className={`max-w-[1600px] mx-auto w-full ${hideHeader ? '' : 'p-4 md:p-8 space-y-10'}`}>
+    <div className={`max-w-[1600px] w-full ${hideHeader ? '' : 'mx-auto p-4 md:p-8 space-y-10'}`}>
       <LoadingOverlay isVisible={isProcessing} title={processMessage} />
       
       {!hideHeader && (
@@ -707,7 +708,10 @@ const PaymentApprovalPage: React.FC<PaymentApprovalPageProps> = ({
                   >
                     <Trash2 size={18} />
                   </button>
-                  <button onClick={() => setSelectedItem(null)} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-all">
+                  <button onClick={() => {
+                    setSelectedItem(null);
+                    setApprovalRemarks('');
+                  }} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-all">
                     <XCircle size={20} />
                   </button>
                 </div>
@@ -907,24 +911,46 @@ const PaymentApprovalPage: React.FC<PaymentApprovalPageProps> = ({
                 </div>
               </div>
 
-              {/* Modal Actions */}
-              <div className="p-6 bg-white border-t border-slate-200 flex gap-3">
-                <button 
-                  onClick={() => {
-                    wrapAction(() => onApprovePaymentEdit(selectedItem.saleId, selectedItem.paymentId), 'Approving Payment...');
-                    setSelectedItem(null);
-                  }}
-                  className="flex-1 h-11 bg-blue-600 text-white rounded-lg text-[10px] font-black uppercase tracking-widest shadow-lg shadow-blue-200 hover:bg-blue-700 transition-all flex items-center justify-center gap-2 active:scale-95"
-                >
-                  <CheckCircle size={16} />
-                  Approve Entry
-                </button>
-                <button 
+              {/* Administrative Remarks */}
+              <div className="p-6 bg-white border-t border-slate-200">
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2.5 px-1">
+                    <Clock size={14} className="text-slate-900" />
+                    <h3 className="text-[10px] font-black text-slate-900 uppercase tracking-widest">Administrative Remarks</h3>
+                  </div>
+                  <textarea
+                    value={approvalRemarks}
+                    onChange={(e) => setApprovalRemarks(e.target.value)}
+                    placeholder="Add internal notes or audit remarks for this payment approval..."
+                    className="w-full h-24 px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-700 focus:border-slate-900 outline-none transition-all resize-none placeholder:text-slate-300 shadow-sm"
+                  />
+                </div>
+              </div>
+
+              {/* Modal Footer */}
+              <div className="px-6 py-4 bg-white border-t border-slate-200 flex items-center justify-between gap-4">
+                <button
                   onClick={() => openDeclineModal(selectedItem)}
                   className="h-11 px-8 bg-white border border-slate-200 text-slate-500 hover:text-rose-600 hover:border-rose-200 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2 active:scale-95"
                 >
                   <XCircle size={16} />
                   Decline
+                </button>
+                <button
+                  onClick={() => wrapAction(async () => {
+                    await Promise.resolve(onApprovePaymentEdit(selectedItem.saleId, selectedItem.paymentId, approvalRemarks));
+                    setSelectedItem(null);
+                    setApprovalRemarks('');
+                  }, 'Finalizing Payment Approval...', { silent: true })}
+                  disabled={!approvalRemarks.trim()}
+                  className={`flex-1 h-11 rounded-lg text-[10px] font-black uppercase tracking-widest shadow-lg transition-all flex items-center justify-center gap-2 active:scale-95 ${
+                    approvalRemarks.trim()
+                      ? 'bg-slate-900 text-white shadow-slate-200 hover:bg-black'
+                      : 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed shadow-none'
+                  }`}
+                >
+                  <CheckCircle size={16} />
+                  Approve Entry
                 </button>
               </div>
             </motion.div>

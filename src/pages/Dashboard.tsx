@@ -1103,7 +1103,7 @@ const Dashboard: React.FC<DashboardProps> = ({ artworks, sales, events, isLoadin
                       </div>
                       <div className="bg-white p-5 rounded-xl border border-neutral-200 shadow-sm flex flex-col justify-between">
                         <p className="text-[10px] font-black uppercase tracking-[0.2em] text-neutral-400 mb-1">Top Branch</p>
-                        <p className="text-lg font-black text-neutral-900 truncate uppercase">{soldMetrics.branchData[0]?.name || 'N/A'}</p>
+                        <p className="text-lg font-black text-neutral-900 uppercase">{soldMetrics.branchData[0]?.name || 'N/A'}</p>
                       </div>
                     </div>
                   </div>

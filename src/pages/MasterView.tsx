@@ -19,10 +19,10 @@ import {
 } from '../types';
 import { ICONS } from '../constants';
 import CertificateModal from '../components/CertificateModal';
-import GatePassModal from '../components/GatePassModal';
+
 import { PhoneInput } from '../components/PhoneInput';
 import { ActionResultModal } from '../components/modals/ActionResultModal';
-import { XCircle, CheckCircle, Bookmark, Edit, Paperclip, ChevronDown, Trash2, RotateCcw, AlertTriangle, AlertCircle, Upload, Tag, Archive, Wrench, Gavel, FileSpreadsheet, Download, FileText, Package, Image as ImageIcon, Clock, Calendar, Home, ArrowRight, Plus, Shield, ShoppingCart } from 'lucide-react';
+import { XCircle, CheckCircle, Bookmark, Edit, Paperclip, ChevronDown, Trash2, RotateCcw, AlertTriangle, AlertCircle, Upload, Tag, Archive, Wrench, Gavel, FileSpreadsheet, Download, FileText, Package, Image as ImageIcon, Clock, Calendar, Home, ArrowRight, ArrowLeft, Plus, Shield, ShoppingCart, User } from 'lucide-react';
 import LoadingOverlay from '../components/LoadingOverlay';
 import { OptimizedImage } from '../components/OptimizedImage';
 import { compressImage } from '../utils/imageUtils';
@@ -42,7 +42,7 @@ interface MasterViewProps {
   userRole: UserRole;
   userBranch?: string;
   userPermissions?: UserPermissions;
-  onTransfer: (id: string, destination: Branch, attachments?: { itdrUrl?: string | string[] }) => void;
+  onTransfer?: (id: string, destination: Branch, attachments?: { itdrUrl?: string | string[] }, remarks?: string) => void;
   onSale: (
     id: string,
     clientName: string,
@@ -55,35 +55,39 @@ interface MasterViewProps {
     rsa?: string[],
     orcr?: string[],
     downpayment?: number,
-    isDownpayment?: boolean
+    isDownpayment?: boolean,
+    remarks?: string
   ) => void;
   onCancelSale: (id: string) => void;
-  onDeliver: (id: string, itdr?: string | string[], rsa?: string | string[], orcr?: string | string[], carrier?: string, referenceNumber?: string) => void;
+  onDeliver: (id: string, itdr?: string | string[], rsa?: string | string[], orcr?: string | string[], carrier?: string, referenceNumber?: string, remarks?: string) => void;
   onEdit: (updates: Partial<Artwork>) => void;
   onBack: () => void;
   // Note: We'd ideally pass events here for the dropdown, assuming it's managed in App state
   events?: ExhibitionEvent[];
-  onReserve?: (id: string, details: string, expiryDate?: string, eventId?: string, eventName?: string) => Promise<boolean | void> | boolean | void;
+  onReserve?: (id: string, details: string, expiryDate?: string, eventId?: string, eventName?: string, remarks?: string) => Promise<boolean | void> | boolean | void;
   onReservationComplete?: () => void;
   onCancelReservation?: (id: string) => Promise<boolean | void> | boolean | void;
   onDelete?: (id: string) => void;
   onReturn?: (id: string, reason: string, refNumber?: string, proofImage?: string | string[], remarks?: string, type?: ReturnType) => Promise<boolean | void> | boolean | void;
-  onReturnToGallery?: (recordId: string, branch: string, resolvedAt?: string) => Promise<boolean | void> | boolean | void;
+  onReturnToGallery?: (recordId: string, branch: string, resolvedAt?: string, remarks?: string) => Promise<boolean | void> | boolean | void;
   onSendToFramer?: (id: string, damageDetails: string, attachmentUrl?: string | string[]) => Promise<boolean | void> | boolean | void;
-  onReturnFromFramer?: (recordId: string, branch: string, resolvedAt?: string) => Promise<boolean | void> | boolean | void;
-  onAddToAuction?: (artworkIds: string[], auctionId: string, name: string) => Promise<boolean | void> | boolean | void;
+  onReturnFromFramer?: (recordId: string, branch: string, resolvedAt?: string, remarks?: string) => Promise<boolean | void> | boolean | void;
+  onAddToAuction?: (artworkIds: string[], auctionId: string, name: string, remarks?: string) => Promise<boolean | void> | boolean | void;
   onNavigateTo?: (tab: string, view?: string) => void;
   framerRecords?: FramerRecord[];
   returnRecords?: ReturnRecord[];
-  onAddInstallment?: (saleId: string, amount: number, date: string, reference?: string, attachments?: string[]) => void;
+  onAddInstallment?: (saleId: string, amount: number, date: string, reference?: string, attachments?: string[], remarks?: string) => void;
   onEditPayment?: (saleId: string, paymentId: string, updates: { amount: number; date?: string; reference?: string; attachmentUrls?: string[] }) => void;
-  onApprovePaymentEdit?: (saleId: string, paymentId: string) => void;
-  onDeclinePaymentEdit?: (saleId: string, paymentId: string) => void;
+  onApprovePaymentEdit?: (saleId: string, paymentId: string, remarks?: string) => void;
+  onDeclinePaymentEdit?: (saleId: string, paymentId: string, remarks?: string) => void;
+  onApproveRequest?: (saleId: string, remarks: string) => void;
+  onDeclineRequest?: (saleId: string, reason: string) => void;
   transferRequests?: TransferRequest[];
-  onDeclineTransfer?: (request: TransferRequest) => void;
-  onHoldTransfer?: (request: TransferRequest) => void;
+  onAcceptTransfer?: (request: TransferRequest, remarks?: string) => void;
+  onDeclineTransfer?: (request: TransferRequest, remarks?: string) => void;
+  onHoldTransfer?: (request: TransferRequest, remarks?: string) => void;
   onUpdateSale?: (id: string, updates: Partial<SaleRecord>) => void;
-  initialModalMode?: 'transfer' | 'sale' | 'reserve' | 'certificate' | 'gatepass' | 'edit' | 'attach-unified' | 'return' | 'framer' | 'framer-return' | 'retouch-return' | 'auction' | 'delivery-attach' | 'none' | 'installment' | 'edit-payment';
+  initialModalMode?: 'transfer' | 'sale' | 'reserve' | 'certificate' | 'edit' | 'attach-unified' | 'return' | 'framer' | 'framer-return' | 'retouch-return' | 'auction' | 'delivery-attach' | 'none' | 'installment' | 'edit-payment';
 }
 
 const MasterView: React.FC<MasterViewProps> = ({
@@ -100,7 +104,7 @@ const MasterView: React.FC<MasterViewProps> = ({
     if (userRole === UserRole.ADMIN) return true;
     return userBranch === pendingTransferRequest.toBranch;
   }, [pendingTransferRequest, userRole, userBranch]);
-  const [modalMode, setModalMode] = useState<'transfer' | 'sale' | 'reserve' | 'certificate' | 'gatepass' | 'edit' | 'attach-unified' | 'return' | 'framer' | 'framer-return' | 'retouch-return' | 'auction' | 'delivery-attach' | 'none' | 'installment' | 'edit-payment'>(initialModalMode);
+  const [modalMode, setModalMode] = useState<'transfer' | 'sale' | 'reserve' | 'certificate' | 'edit' | 'attach-unified' | 'return' | 'framer' | 'framer-return' | 'retouch-return' | 'auction' | 'delivery-attach' | 'none' | 'installment' | 'edit-payment'>(initialModalMode);
   const [editingPayment, setEditingPayment] = useState<{ id: string; amount: string; date: string; reference: string; type: 'downpayment' | 'installment' } | null>(null);
   const [optimisticArtwork, setOptimisticArtwork] = useState<Artwork | null>(null);
   const [pendingViewState, setPendingViewState] = useState<{ status?: ArtworkStatus; currentBranch?: string } | null>(null);
@@ -181,6 +185,9 @@ const MasterView: React.FC<MasterViewProps> = ({
   const [returnStrategy, setReturnStrategy] = useState<'original' | 'manual'>('original');
   const [isTransferringFromReturn, setIsTransferringFromReturn] = useState(false);
   const [returnItdrUrl, setReturnItdrUrl] = useState<string[]>([]);
+  const [transferApprovalModal, setTransferApprovalModal] = useState<{ mode: 'accept' | 'decline' | 'hold', request: TransferRequest } | null>(null);
+  const [transferApprovalRemarks, setTransferApprovalRemarks] = useState('');
+  const [returnRemarks, setReturnRemarks] = useState('');
 
   // Installment States
   const [installmentAmount, setInstallmentAmount] = useState('');
@@ -199,6 +206,10 @@ const MasterView: React.FC<MasterViewProps> = ({
   // Auction Selection State
   const [selectedAuctionId, setSelectedAuctionId] = useState('');
   const [selectedAuctionName, setSelectedAuctionName] = useState('');
+  const [saleRemarks, setSaleRemarks] = useState('');
+  const [installmentRemarks, setInstallmentRemarks] = useState('');
+  const [auctionRemarks, setAuctionRemarks] = useState('');
+  const [transferRemarks, setTransferRemarks] = useState('');
 
   // Edit Form State
   const [editForm, setEditForm] = useState<Partial<Artwork>>(artwork);
@@ -399,6 +410,54 @@ const MasterView: React.FC<MasterViewProps> = ({
     }
   }, [artwork]);
 
+  // Parse reservation info for organized display
+  const reservationInfo = useMemo(() => {
+    if (displayStatus !== ArtworkStatus.RESERVED) return null;
+
+    const remarks = artwork.remarks || '';
+    let type = 'Standard';
+    let target = 'Unknown';
+    let notes = '';
+
+    // Check for new structured format: Type: ... | Target: ... | Notes: ...
+    if (remarks.includes('Type:')) {
+      const typeMatch = remarks.match(/Type:\s*([^|]+)/);
+      const targetMatch = remarks.match(/Target:\s*([^|]+)/) || remarks.match(/Event:\s*([^|]+)/) || remarks.match(/Client:\s*([^|]+)/);
+      const notesMatch = remarks.match(/Notes:\s*(.*)$/);
+
+      type = typeMatch ? typeMatch[1].trim() : 'Standard';
+      target = targetMatch ? targetMatch[1].trim() : 'Unknown';
+      notes = notesMatch ? notesMatch[1].trim() : '';
+    }
+    // Check for bracketed auction format: [Reserved For Auction: Leon Gallery]
+    else if (remarks.startsWith('[Reserved For Auction:')) {
+      type = 'Auction';
+      const targetMatch = remarks.match(/Auction:\s*([^\]]+)/);
+      target = targetMatch ? targetMatch[1].trim() : (artwork.reservedForEventName || 'Leon Gallery');
+      notes = '';
+    }
+    else if (remarks.startsWith('[Auction:')) {
+      type = 'Auction';
+      const targetMatch = remarks.match(/Auction:\s*([^\]]+)/);
+      target = targetMatch ? targetMatch[1].trim() : (artwork.reservedForEventName || 'Leon Gallery');
+      const notesAfter = remarks.split(']')[1];
+      notes = notesAfter ? notesAfter.trim() : '';
+    } else {
+      // Fallback for unstructured remarks that might still represent a reservation
+      target = artwork.reservedForEventName || 'Unknown';
+      notes = remarks;
+    }
+
+    return { type, target, expiry: artwork.reservationExpiry, notes };
+  }, [displayStatus, artwork.remarks, artwork.reservationExpiry, artwork.reservedForEventName]);
+
+  const staffRemarks = useMemo(() => {
+    const raw = artwork.remarks || '';
+    if (!raw) return '';
+    if (reservationInfo) return reservationInfo.notes;
+    return raw;
+  }, [artwork.remarks, reservationInfo]);
+
   const handlePrintItdr = () => {
     if (!artwork.itdrImageUrl) return;
     const w = window.open('', '_blank');
@@ -453,7 +512,7 @@ const MasterView: React.FC<MasterViewProps> = ({
       const success = await wrapAction(async () => {
         if (onAddToAuction) {
           const auction = events?.find(e => e.id === reserveTarget);
-          const result = await onAddToAuction([artwork.id], reserveTarget, auction?.title || 'Auction');
+          const result = await onAddToAuction([artwork.id], reserveTarget, auction?.title || 'Auction', reserveNotes);
           if (result === false) return false;
           if (onNavigateTo) {
             onNavigateTo('operations', 'auctions');
@@ -477,23 +536,21 @@ const MasterView: React.FC<MasterViewProps> = ({
 
     setOptimisticArtworkState({ status: ArtworkStatus.RESERVED });
     const success = await wrapAction(async () => {
-      let targetName = 'N/A';
-      let eventIdForUpdate = undefined;
+      let detailString = `Type: ${reserveType} | Target: ${reserveTarget}`;
+      let targetName: string | undefined = undefined;
+      let eventIdForUpdate: string | undefined = undefined;
 
       if (reserveType === 'Event') {
-        const evt = events?.find(e => e.id === reserveTarget);
+        const evt = events.find(e => e.id === reserveTarget);
         if (evt) {
           targetName = evt.title;
           eventIdForUpdate = evt.id;
-        } else {
-          targetName = reserveTarget;
+          detailString = `Type: ${reserveType} | Event: ${evt.title}`;
         }
       } else {
         targetName = reserveTarget;
+        detailString = `Type: ${reserveType} | Client: ${reserveTarget}`;
       }
-
-      const target = targetName && targetName.trim().length > 0 ? targetName.trim() : 'N/A';
-      const detailString = `Type: ${reserveType} | Target: ${target} | Notes: ${reserveNotes}`;
 
       let expiryDateStr: string | undefined = undefined;
 
@@ -505,7 +562,7 @@ const MasterView: React.FC<MasterViewProps> = ({
         expiryDateStr = new Date(now.getTime() + totalMs).toISOString();
       }
 
-      const result = await onReserve(artwork.id, detailString, expiryDateStr, eventIdForUpdate, eventIdForUpdate ? targetName : undefined);
+      const result = await onReserve(artwork.id, detailString, expiryDateStr, eventIdForUpdate, eventIdForUpdate ? targetName : undefined, reserveNotes);
       if (result === false) return false;
       setModalMode('none');
       resetReserveForm();
@@ -536,10 +593,15 @@ const MasterView: React.FC<MasterViewProps> = ({
   return (
     <div className="max-w-7xl mx-auto space-y-8 animate-in slide-in-from-bottom-4 duration-300">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <button onClick={onBack} className="flex items-center space-x-2 text-neutral-500 hover:text-neutral-900 font-bold px-4 py-2 rounded-sm hover:bg-neutral-100 transition-all transform hover:-translate-y-0.5 w-full sm:w-auto justify-center sm:justify-start">
-          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
-          <span>Back to Previous Tab</span>
-        </button>
+        <div className="flex items-center gap-4">
+          <button 
+            onClick={onBack} 
+            className="group flex items-center justify-center w-10 h-10 rounded-full bg-white border border-neutral-200 text-neutral-500 hover:text-neutral-900 hover:border-neutral-900 transition-all shadow-sm active:scale-95 shrink-0"
+            title="Go Back"
+          >
+            <ArrowLeft size={20} className="group-hover:-translate-x-0.5 transition-transform" strokeWidth={2.5} />
+          </button>
+        </div>
         <div className="flex items-center space-x-3 w-full sm:w-auto justify-center sm:justify-end">
           <span className="text-xs font-bold text-neutral-400 uppercase tracking-widest">Master File ID: {artwork.id}</span>
         </div>
@@ -568,14 +630,22 @@ const MasterView: React.FC<MasterViewProps> = ({
             </div>
             <div className="p-3 sm:p-5 md:p-8 flex-1 space-y-4 md:space-y-6">
               <div>
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs font-black text-neutral-900 bg-neutral-100 px-2 py-1 rounded uppercase tracking-tighter">{artwork.code}</span>
-                  <StatusBadge status={displayStatus} />
-                  {(displayStatus === ArtworkStatus.RESERVED && artwork.reservedForEventName) && (
-                    <span className="ml-2 px-2.5 py-1 rounded-sm bg-neutral-50 border border-neutral-200 text-[10px] font-black uppercase tracking-widest text-neutral-700 hidden sm:inline-block">
-                      Reserved for: {artwork.reservedForEventName}
-                    </span>
-                  )}
+                <div className="flex flex-wrap items-center gap-2.5 mb-4">
+                  <div className="flex items-center bg-white px-3 py-1.5 rounded-sm border border-neutral-200 shadow-sm">
+                    <span className="text-[9px] font-black text-neutral-400 mr-2 uppercase tracking-widest">Code</span>
+                    <span className="text-[11px] font-black text-neutral-900 uppercase tracking-tight">{artwork.code}</span>
+                  </div>
+                  
+                  <div className="flex items-center gap-2">
+                    <StatusBadge status={displayStatus} />
+                    
+                    {displayStatus === ArtworkStatus.RESERVED && artwork.reservedForEventName && (
+                      <div className="flex items-center px-3 py-1 rounded-sm bg-neutral-50 border border-neutral-200 text-[10px] font-black uppercase tracking-widest text-neutral-700 shadow-sm animate-in fade-in slide-in-from-left-2 duration-500">
+                        <span className="text-neutral-400 mr-2 font-black">For:</span>
+                        <span className="truncate max-w-[200px]">{artwork.reservedForEventName}</span>
+                      </div>
+                    )}
+                  </div>
                 </div>
                 <h1 className="text-2xl sm:text-3xl font-bold text-neutral-900 leading-tight">{artwork.title}</h1>
                 <p className="text-base sm:text-lg text-neutral-500 font-medium">
@@ -597,10 +667,8 @@ const MasterView: React.FC<MasterViewProps> = ({
 
               <div className="grid grid-cols-2 gap-y-3 gap-x-4 sm:gap-x-8 text-sm pt-4 border-t border-neutral-100">
                 <div><p className="text-xs font-bold text-neutral-400 uppercase tracking-wider mb-1">Medium</p><p className="text-neutral-700 font-medium break-words">{artwork.medium}</p></div>
-                <div><p className="text-xs font-bold text-neutral-400 uppercase tracking-wider mb-1">Size</p><p className="text-neutral-700 font-medium break-words">{artwork.dimensions}</p></div>
-                {artwork.sizeFrame && (
-                  <div><p className="text-xs font-bold text-neutral-400 uppercase tracking-wider mb-1">Size with Frame</p><p className="text-neutral-700 font-medium break-words">{artwork.sizeFrame}</p></div>
-                )}
+                <div><p className="text-xs font-bold text-neutral-400 uppercase tracking-wider mb-1">Size</p><p className="text-neutral-700 font-medium break-words">{artwork.dimensions || 'N/A'}</p></div>
+                <div><p className="text-xs font-bold text-neutral-400 uppercase tracking-wider mb-1">Size with Frame</p><p className="text-neutral-700 font-medium break-words">{artwork.sizeFrame || 'N/A'}</p></div>
                 <div><p className="text-xs font-bold text-neutral-400 uppercase tracking-wider mb-1">Location</p><p className="text-neutral-700 font-medium">{displayBranch}</p></div>
 
                 {/* Financial Section */}
@@ -822,13 +890,73 @@ const MasterView: React.FC<MasterViewProps> = ({
                 </div>
               </div>
 
+              {/* Organized Reservation Info */}
+              {reservationInfo && (
+                <div className="pt-6 border-t border-neutral-100 mt-4 animate-in fade-in slide-in-from-top-2 duration-500">
+                  <div className="flex items-center justify-between mb-4">
+                    <p className="text-[10px] font-black text-indigo-500 uppercase tracking-[0.2em]">Reservation Payload</p>
+                    {reservationInfo.expiry && (
+                      <span className="px-2 py-0.5 rounded-full bg-red-50 text-red-600 text-[9px] font-black uppercase tracking-widest border border-red-100">
+                        Expires: {new Date(reservationInfo.expiry).toLocaleDateString()}
+                      </span>
+                    )}
+                  </div>
+                  
+                  <div className="bg-indigo-50/30 rounded-xl border border-indigo-100/50 p-5 space-y-4">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <p className="text-[9px] font-black text-indigo-400 uppercase tracking-widest mb-1">Reservation Type</p>
+                        <div className="flex items-center gap-1.5">
+                          {reservationInfo.type === 'Auction' ? <Gavel size={14} className="text-indigo-600" /> : <User size={14} className="text-indigo-600" />}
+                          <p className="text-sm font-black text-neutral-900">{reservationInfo.type}</p>
+                        </div>
+                      </div>
+                      <div>
+                        <p className="text-[9px] font-black text-indigo-400 uppercase tracking-widest mb-1">Target Identity</p>
+                        <p className="text-sm font-black text-neutral-900 truncate">{reservationInfo.target}</p>
+                      </div>
+                    </div>
+
+                    {reservationInfo.notes && (
+                      <div className="pt-3 border-t border-indigo-100/50">
+                        <p className="text-[9px] font-black text-indigo-400 uppercase tracking-widest mb-1">Administrative Notes</p>
+                        <p className="text-xs font-bold text-neutral-600 leading-relaxed italic">
+                          "{reservationInfo.notes}"
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Dedicated Remarks Section (Shown only if NOT reserved, as reserved notes appear in the payload block) */}
+              {staffRemarks && !reservationInfo && (
+                <div className="pt-6 border-t border-neutral-100 mt-4 animate-in fade-in slide-in-from-top-2 duration-500">
+                  <p className="text-[10px] font-black text-neutral-400 uppercase tracking-[0.2em] mb-3">Administrative Remarks</p>
+                  <div className="bg-neutral-50/80 rounded-xl border border-neutral-100 p-4 relative overflow-hidden group">
+                    <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:opacity-20 transition-opacity">
+                      <FileText size={48} />
+                    </div>
+                    <p className="text-sm text-neutral-600 font-bold leading-relaxed relative z-10 whitespace-pre-wrap italic">
+                      "{staffRemarks}"
+                    </p>
+                  </div>
+                </div>
+              )}
+
               {/* Extra Details from Import */}
-              {Object.keys(artwork).filter(key => !['id', 'code', 'title', 'artist', 'medium', 'dimensions', 'sizeFrame', 'year', 'price', 'status', 'currentBranch', 'imageUrl', 'createdAt', 'updatedAt', 'deletedAt', 'importPeriod', 'reservedForEventId', 'reservedForEventName', 'reservationExpiry', 'soldAtBranch', 'sheetName', 'itemCount', 'itdrImageUrl', 'rsaImageUrl', 'orCrImageUrl', 'ROWINDEX', 'rowindex', 'rowIndex'].includes(key)).length > 0 && (
+              {Object.keys(artwork).filter(key => {
+                const excludedKeys = ['id', 'code', 'title', 'artist', 'medium', 'dimensions', 'sizeFrame', 'year', 'price', 'status', 'currentBranch', 'imageUrl', 'createdAt', 'updatedAt', 'deletedAt', 'importPeriod', 'reservedForEventId', 'reservedForEventName', 'reservationExpiry', 'soldAtBranch', 'sheetName', 'itemCount', 'itdrImageUrl', 'rsaImageUrl', 'orCrImageUrl', 'ROWINDEX', 'rowindex', 'rowIndex', 'remarks'];
+                return !excludedKeys.includes(key);
+              }).length > 0 && (
                 <div className="pt-4 border-t border-neutral-100 mt-4">
                   <p className="text-xs font-bold text-neutral-400 uppercase tracking-wider mb-3">Additional Details</p>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-4 gap-x-8 text-sm">
                     {Object.keys(artwork)
-                      .filter(key => !['id', 'code', 'title', 'artist', 'medium', 'dimensions', 'sizeFrame', 'year', 'price', 'status', 'currentBranch', 'imageUrl', 'createdAt', 'updatedAt', 'deletedAt', 'importPeriod', 'reservedForEventId', 'reservedForEventName', 'reservationExpiry', 'soldAtBranch', 'sheetName', 'itemCount', 'itdrImageUrl', 'rsaImageUrl', 'orCrImageUrl', 'ROWINDEX', 'rowindex', 'rowIndex'].includes(key))
+                      .filter(key => {
+                        const excludedKeys = ['id', 'code', 'title', 'artist', 'medium', 'dimensions', 'sizeFrame', 'year', 'price', 'status', 'currentBranch', 'imageUrl', 'createdAt', 'updatedAt', 'deletedAt', 'importPeriod', 'reservedForEventId', 'reservedForEventName', 'reservationExpiry', 'soldAtBranch', 'sheetName', 'itemCount', 'itdrImageUrl', 'rsaImageUrl', 'orCrImageUrl', 'ROWINDEX', 'rowindex', 'rowIndex', 'remarks'];
+                        return !excludedKeys.includes(key);
+                      })
                       .map(key => (
                         <div key={key}>
                           <p className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest mb-1">{key}</p>
@@ -1132,21 +1260,21 @@ const MasterView: React.FC<MasterViewProps> = ({
                 </div>
                 <div className="flex gap-2">
                   <button
-                    onClick={() => wrapAction(() => onAcceptTransfer?.(pendingTransferRequest), 'Accepting Transfer...')}
+                    onClick={() => setTransferApprovalModal({ mode: 'accept', request: pendingTransferRequest })}
                     className="flex-1 py-2 bg-[#0f172a] text-white text-[10px] font-black uppercase tracking-widest rounded-sm transition-all shadow-[0_4px_12px_rgba(15,23,42,0.15)] active:scale-95 flex items-center justify-center gap-2"
                   >
                     <CheckCircle size={12} />
                     Accept
                   </button>
                   <button
-                    onClick={() => wrapAction(() => onHoldTransfer?.(pendingTransferRequest), 'Holding Transfer...')}
+                    onClick={() => setTransferApprovalModal({ mode: 'hold', request: pendingTransferRequest })}
                     className="flex-1 py-2 bg-neutral-100 text-neutral-600 border border-neutral-200 text-[10px] font-black uppercase tracking-widest rounded-sm transition-all active:scale-95 flex items-center justify-center gap-2"
                   >
                     <Clock size={12} />
                     Hold
                   </button>
                   <button
-                    onClick={() => wrapAction(() => onDeclineTransfer?.(pendingTransferRequest), 'Declining Transfer...')}
+                    onClick={() => setTransferApprovalModal({ mode: 'decline', request: pendingTransferRequest })}
                     className="flex-1 py-2 bg-white text-red-600 border border-red-100 text-[10px] font-black uppercase tracking-widest rounded-sm transition-all hover:bg-red-50 active:scale-95 flex items-center justify-center gap-2"
                   >
                     <XCircle size={12} />
@@ -1457,9 +1585,22 @@ const MasterView: React.FC<MasterViewProps> = ({
               >
                 Cancel
               </button>
+              <div className="bg-neutral-50 p-5 rounded-2xl border border-neutral-100">
+                <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest ml-1 flex items-center justify-between mb-2">
+                  <span>Administrative Remarks</span>
+                  <span className="text-red-500 text-[8px] font-black">Required for Audit</span>
+                </label>
+                <textarea
+                  value={returnRemarks}
+                  onChange={(e) => setReturnRemarks(e.target.value)}
+                  className="w-full px-4 py-3 bg-white border border-neutral-200 rounded-xl text-sm font-bold text-[#323130] focus:ring-1 focus:ring-neutral-900 focus:border-neutral-900 outline-none transition-all min-h-[80px] resize-none shadow-inner"
+                  placeholder="Required: Additional audit notes for this return..."
+                />
+              </div>
+
               <button
                 onClick={async () => {
-                  if (activeFramerRecord && onReturnFromFramer && onTransfer) {
+                  if (activeFramerRecord && onReturnFromFramer && onTransfer && returnRemarks.trim()) {
                     setOptimisticArtworkState({ status: ArtworkStatus.AVAILABLE, currentBranch: returnBranch });
                     const success = await wrapAction(async () => {
                       const now = new Date().toISOString();
@@ -1471,14 +1612,15 @@ const MasterView: React.FC<MasterViewProps> = ({
                           setOptimisticArtwork(null);
                           return;
                         }
-                        const returnResult = await onReturnFromFramer(activeFramerRecord.id, originalBranch || returnBranch, now);
+                        const returnResult = await onReturnFromFramer(activeFramerRecord.id, originalBranch || returnBranch, now, returnRemarks);
                         if (returnResult === false) return false;
-                        await onTransfer(activeFramerRecord.artworkId, returnBranch, { itdrUrl: returnItdrUrl });
+                        await onTransfer(activeFramerRecord.artworkId, returnBranch, { itdrUrl: returnItdrUrl }, returnRemarks);
                       } else {
-                        const returnResult = await onReturnFromFramer(activeFramerRecord.id, returnBranch, now);
+                        const returnResult = await onReturnFromFramer(activeFramerRecord.id, returnBranch, now, returnRemarks);
                         if (returnResult === false) return false;
                       }
                       setModalMode('none');
+                      setReturnRemarks('');
                     }, returnStrategy === 'manual' ? 'Requesting Transfer...' : 'Returning from Framer...', ArtworkStatus.AVAILABLE);
                     if (!success) {
                       setOptimisticArtwork(null);
@@ -1490,8 +1632,12 @@ const MasterView: React.FC<MasterViewProps> = ({
                     }
                   }
                 }}
-                className={`px-8 py-2.5 text-white rounded-xl font-bold text-sm transition-all shadow-lg active:scale-95 flex items-center gap-2 ${returnStrategy === 'manual' ? 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-200' : 'bg-neutral-900 hover:bg-black shadow-neutral-200'
-                  }`}
+                disabled={isProcessing || !returnRemarks.trim()}
+                className={`px-8 py-2.5 text-white rounded-xl font-bold text-sm transition-all shadow-lg active:scale-95 flex items-center gap-2 ${
+                  returnRemarks.trim()
+                    ? (returnStrategy === 'manual' ? 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-200' : 'bg-neutral-900 hover:bg-black shadow-neutral-200')
+                    : 'bg-neutral-100 text-neutral-400 border border-neutral-200 cursor-not-allowed shadow-none'
+                }`}
               >
                 {returnStrategy === 'manual' ? 'Request Transfer' : 'Confirm Return'}
               </button>
@@ -1671,9 +1817,22 @@ const MasterView: React.FC<MasterViewProps> = ({
               >
                 Cancel
               </button>
+              <div className="bg-neutral-50 p-5 rounded-2xl border border-neutral-100">
+                <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest ml-1 flex items-center justify-between mb-2">
+                  <span>Administrative Remarks</span>
+                  <span className="text-red-500 text-[8px] font-black">Required for Audit</span>
+                </label>
+                <textarea
+                  value={returnRemarks}
+                  onChange={(e) => setReturnRemarks(e.target.value)}
+                  className="w-full px-4 py-3 bg-white border border-neutral-200 rounded-xl text-sm font-bold text-[#323130] focus:ring-1 focus:ring-neutral-900 focus:border-neutral-900 outline-none transition-all min-h-[80px] resize-none shadow-inner"
+                  placeholder="Required: Additional audit notes for this return..."
+                />
+              </div>
+
               <button
                 onClick={async () => {
-                  if (activeRetouchRecord && onReturnToGallery && onTransfer) {
+                  if (activeRetouchRecord && onReturnToGallery && onTransfer && returnRemarks.trim()) {
                     setOptimisticArtworkState({ status: ArtworkStatus.AVAILABLE, currentBranch: returnBranch });
                     const success = await wrapAction(async () => {
                       const now = new Date().toISOString();
@@ -1685,14 +1844,15 @@ const MasterView: React.FC<MasterViewProps> = ({
                           setOptimisticArtwork(null);
                           return;
                         }
-                        const returnResult = await onReturnToGallery(activeRetouchRecord.id, originalBranch || returnBranch, now);
+                        const returnResult = await onReturnToGallery(activeRetouchRecord.id, originalBranch || returnBranch, now, returnRemarks);
                         if (returnResult === false) return false;
-                        await onTransfer(activeRetouchRecord.artworkId, returnBranch, { itdrUrl: returnItdrUrl });
+                        await onTransfer(activeRetouchRecord.artworkId, returnBranch, { itdrUrl: returnItdrUrl }, returnRemarks);
                       } else {
-                        const returnResult = await onReturnToGallery(activeRetouchRecord.id, returnBranch, now);
+                        const returnResult = await onReturnToGallery(activeRetouchRecord.id, returnBranch, now, returnRemarks);
                         if (returnResult === false) return false;
                       }
                       setModalMode('none');
+                      setReturnRemarks('');
                     }, returnStrategy === 'manual' ? 'Requesting Transfer...' : 'Returning to Gallery...', ArtworkStatus.AVAILABLE);
                     if (!success) {
                       setOptimisticArtwork(null);
@@ -1704,8 +1864,12 @@ const MasterView: React.FC<MasterViewProps> = ({
                     }
                   }
                 }}
-                className={`px-8 py-2.5 text-white rounded-xl font-bold text-sm transition-all shadow-lg active:scale-95 flex items-center gap-2 ${returnStrategy === 'manual' ? 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-200' : 'bg-neutral-900 hover:bg-black shadow-neutral-200'
-                  }`}
+                disabled={isProcessing || !returnRemarks.trim()}
+                className={`px-8 py-2.5 text-white rounded-xl font-bold text-sm transition-all shadow-lg active:scale-95 flex items-center gap-2 ${
+                  returnRemarks.trim()
+                    ? (returnStrategy === 'manual' ? 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-200' : 'bg-neutral-900 hover:bg-black shadow-neutral-200')
+                    : 'bg-neutral-100 text-neutral-400 border border-neutral-200 cursor-not-allowed shadow-none'
+                }`}
               >
                 {returnStrategy === 'manual' ? 'Request Transfer' : 'Confirm Return'}
               </button>
@@ -2452,7 +2616,7 @@ const MasterView: React.FC<MasterViewProps> = ({
                           if (result === false) return false;
                           setModalMode('none');
                           resetFramerState();
-                        }, 'Scheduling Framer Dispatch...', ArtworkStatus.FOR_FRAMING);
+                        }, 'Requesting Delivery...', ArtworkStatus.FOR_FRAMING);
                         if (!success) {
                           setOptimisticArtwork(null);
                           setPendingViewState(null);
@@ -2464,7 +2628,7 @@ const MasterView: React.FC<MasterViewProps> = ({
                     disabled={isProcessing || !damageDetails.trim()}
                     className="w-full py-2.5 bg-amber-600 hover:bg-amber-700 disabled:bg-neutral-100 disabled:text-neutral-400 disabled:border-neutral-200 border border-transparent text-white text-sm font-semibold rounded-sm transition-all shadow-sm flex items-center justify-center gap-2"
                   >
-                    AUTHORIZE DISPATCH
+                    REQUEST DELIVERY
                   </button>
                   <button
                     onClick={() => {
@@ -2707,16 +2871,34 @@ const MasterView: React.FC<MasterViewProps> = ({
               </div>
             </div>
 
+            <div className="space-y-1.5 pt-2">
+              <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest ml-1 flex items-center justify-between">
+                <span>Administrative Remarks</span>
+                <span className="text-red-500 text-[8px] font-black">Required for Audit</span>
+              </label>
+                      <textarea
+                value={transferRemarks}
+                onChange={(e) => setTransferRemarks(e.target.value)}
+                className="w-full px-4 py-3 bg-[#faf9f8] border border-[#edebe9] rounded-sm text-sm font-bold text-[#323130] focus:bg-white focus:ring-1 focus:ring-[#0078d4] focus:border-[#0078d4] outline-none transition-all min-h-[80px] resize-none"
+                placeholder="Required: Additional audit notes for this transfer..."
+              />
+            </div>
+
             <div className="flex justify-end space-x-3 pt-4 border-t border-neutral-100">
               <button onClick={() => setModalMode('none')} className="px-6 py-2.5 rounded-md text-neutral-600 font-bold hover:bg-neutral-100 transition-all transform hover:-translate-y-0.5">Cancel</button>
               <button
                 onClick={() => wrapAction(async () => {
-                  await onTransfer(artwork.id, transferBranch, { itdrUrl: transferItdr });
+                  await onTransfer?.(artwork.id, transferBranch, { itdrUrl: transferItdr }, transferRemarks);
                   setModalMode('none');
                   setTransferItdr([]);
+                  setTransferRemarks('');
                 }, 'Transferring Artwork...')}
-                disabled={transferItdr.length === 0}
-                className="px-8 py-2.5 bg-neutral-900 text-white rounded-md font-bold hover:bg-black shadow-lg shadow-neutral-200 hover:shadow-neutral-300 transform hover:-translate-y-0.5 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={transferItdr.length === 0 || !transferRemarks.trim()}
+                className={`px-8 py-2.5 rounded-md font-bold transition-all transform hover:-translate-y-0.5 shadow-lg ${
+                  transferItdr.length > 0 && transferRemarks.trim()
+                    ? 'bg-neutral-900 text-white hover:bg-black shadow-neutral-200 hover:shadow-neutral-300'
+                    : 'bg-neutral-100 text-neutral-400 border border-neutral-200 cursor-not-allowed shadow-none'
+                }`}
               >
                 Authorize Transfer
               </button>
@@ -2859,26 +3041,98 @@ const MasterView: React.FC<MasterViewProps> = ({
                   </div>
                 </div>
               )}
-
-              <div className="space-y-1">
-                <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">Purpose & Details</label>
-                <textarea
-                  placeholder="Additional notes for reservation..."
-                  rows={3}
-                  className="w-full px-4 py-3 bg-neutral-50 border border-neutral-200 rounded-sm text-sm resize-none"
-                  value={reserveNotes}
-                  onChange={(e) => setReserveNotes(e.target.value)}
-                />
-              </div>
             </div>
 
-            <div className="flex justify-end space-x-3">
-              <button onClick={() => setModalMode('none')} className="px-6 py-2.5 rounded-sm text-neutral-600 font-medium">Cancel</button>
+            <div className="space-y-1.5 pt-2">
+              <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest ml-1 flex items-center justify-between">
+                <span>Administrative Remarks</span>
+                <span className="text-red-500 text-[8px] font-black">Required for Audit</span>
+              </label>
+              <textarea
+                value={reserveNotes}
+                onChange={(e) => setReserveNotes(e.target.value)}
+                className="w-full px-4 py-3 bg-[#faf9f8] border border-[#edebe9] rounded-sm text-sm font-bold text-[#323130] focus:bg-white focus:ring-1 focus:ring-[#0078d4] focus:border-[#0078d4] outline-none transition-all min-h-[80px] resize-none"
+                placeholder="Required: Additional audit notes for this reservation..."
+              />
+            </div>
+
+            <div className="flex justify-end space-x-3 pt-4 border-t border-neutral-100">
+              <button onClick={() => setModalMode('none')} className="px-6 py-2.5 rounded-sm text-neutral-600 font-medium hover:bg-neutral-100 transition-colors">Cancel</button>
               <button
                 onClick={handleReserve}
-                className="px-8 py-2.5 bg-neutral-900 text-white rounded-sm font-bold shadow-lg shadow-neutral-200 disabled:opacity-50"
+                disabled={!reserveTarget || isProcessing || !reserveNotes.trim()}
+                className={`px-8 py-2.5 rounded-sm font-bold transition-all transform hover:-translate-y-0.5 shadow-lg ${
+                  reserveTarget && reserveNotes.trim()
+                    ? 'bg-neutral-900 text-white hover:bg-black shadow-neutral-200 hover:shadow-neutral-300'
+                    : 'bg-neutral-100 text-neutral-400 border border-neutral-200 cursor-not-allowed shadow-none'
+                }`}
               >
                 Confirm Reservation
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {transferApprovalModal && (
+        <Modal
+          title={`${transferApprovalModal.mode === 'accept' ? 'Authorize' : transferApprovalModal.mode === 'hold' ? 'Hold' : 'Decline'} Transfer Request`}
+          onClose={() => setTransferApprovalModal(null)}
+          maxWidth="max-w-md"
+        >
+          <div className="space-y-6">
+            <div className="bg-neutral-50 p-4 rounded-xl border border-neutral-100">
+              <p className="text-[10px] font-black text-neutral-400 uppercase tracking-widest mb-1">Request Summary</p>
+              <p className="text-sm font-bold text-neutral-900 leading-tight">
+                Transfer to {transferApprovalModal.request.toBranch} requested by {transferApprovalModal.request.requestedBy}
+              </p>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest ml-1 flex items-center justify-between">
+                <span>Administrative Remarks</span>
+                <span className="text-red-500 text-[8px] font-black">Required for Audit</span>
+              </label>
+              <textarea
+                value={transferApprovalRemarks}
+                onChange={(e) => setTransferApprovalRemarks(e.target.value)}
+                className="w-full px-4 py-3 bg-[#faf9f8] border border-[#edebe9] rounded-sm text-sm font-bold text-[#323130] focus:bg-white focus:ring-1 focus:ring-[#0078d4] focus:border-[#0078d4] outline-none transition-all min-h-[100px] resize-none"
+                placeholder={`Required: Reason for ${transferApprovalModal.mode === 'accept' ? 'authorizing' : transferApprovalModal.mode === 'hold' ? 'holding' : 'declining'} this transfer...`}
+              />
+            </div>
+
+            <div className="flex justify-end gap-3 pt-4 border-t border-neutral-100">
+              <button
+                onClick={() => setTransferApprovalModal(null)}
+                className="px-6 py-2.5 bg-white border border-neutral-200 text-neutral-500 hover:text-neutral-700 hover:bg-neutral-50 rounded-md font-bold text-sm transition-all"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  if (transferApprovalRemarks.trim()) {
+                    const mode = transferApprovalModal.mode;
+                    const request = transferApprovalModal.request;
+                    const remarks = transferApprovalRemarks;
+                    
+                    const action = mode === 'accept' ? onAcceptTransfer : mode === 'hold' ? onHoldTransfer : onDeclineTransfer;
+                    const label = mode === 'accept' ? 'Accepting Transfer...' : mode === 'hold' ? 'Holding Transfer...' : 'Declining Transfer...';
+                    
+                    const success = await wrapAction(() => action?.(request, remarks), label);
+                    if (success) {
+                      setTransferApprovalModal(null);
+                      setTransferApprovalRemarks('');
+                    }
+                  }
+                }}
+                disabled={!transferApprovalRemarks.trim() || isProcessing}
+                className={`px-8 py-2.5 rounded-md font-bold transition-all shadow-lg text-sm ${
+                  transferApprovalRemarks.trim()
+                    ? (transferApprovalModal.mode === 'decline' ? 'bg-red-600 hover:bg-red-700 text-white shadow-red-100' : 'bg-neutral-900 text-white hover:bg-black shadow-neutral-200')
+                    : 'bg-neutral-100 text-neutral-400 border border-neutral-200 cursor-not-allowed shadow-none'
+                }`}
+              >
+                Confirm {transferApprovalModal.mode.charAt(0).toUpperCase() + transferApprovalModal.mode.slice(1)}
               </button>
             </div>
           </div>
@@ -2914,26 +3168,38 @@ const MasterView: React.FC<MasterViewProps> = ({
                 ))}
               </select>
             </div>
+            <div className="space-y-1">
+              <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">Auction Remarks / Audit Note <span className="text-red-500">*</span></label>
+              <textarea
+                className="w-full px-4 py-3 bg-neutral-50 border border-neutral-200 rounded-sm text-sm font-bold text-neutral-700 focus:outline-none focus:ring-2 focus:ring-neutral-500/20 focus:bg-neutral-50 hover:bg-neutral-100 transition-all min-h-[80px]"
+                placeholder="Required for audit (e.g. consignment number, starting bid...)"
+                value={auctionRemarks}
+                onChange={(e) => setAuctionRemarks(e.target.value)}
+              />
+            </div>
+
             <div className="flex justify-end space-x-3">
               <button
                 onClick={() => {
                   setModalMode('none');
                   setSelectedAuctionId('');
                   setSelectedAuctionName('');
+                  setAuctionRemarks('');
                 }}
                 className="px-6 py-2.5 rounded-sm text-neutral-600 font-medium"
               >
                 Cancel
               </button>
               <button
-                disabled={!selectedAuctionId}
+                disabled={!selectedAuctionId || !auctionRemarks.trim()}
                 onClick={() => {
-                  if (selectedAuctionId && onAddToAuction) {
+                  if (selectedAuctionId && onAddToAuction && auctionRemarks.trim()) {
                     wrapAction(async () => {
-                      await onAddToAuction([artwork.id], selectedAuctionId, selectedAuctionName);
+                      await onAddToAuction([artwork.id], selectedAuctionId, selectedAuctionName, auctionRemarks);
                       setModalMode('none');
                       setSelectedAuctionId('');
                       setSelectedAuctionName('');
+                      setAuctionRemarks('');
                       if (onNavigateTo) {
                         onNavigateTo('operations', 'auctions');
                       }
@@ -3086,6 +3352,15 @@ const MasterView: React.FC<MasterViewProps> = ({
                   All installments require admin confirmation. This will be sent to the Payment Approval tab.
                 </p>
               </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">Payment Remarks / Audit Note <span className="text-red-500">*</span></label>
+                <textarea
+                  className="w-full px-5 py-3 bg-neutral-50 border border-neutral-200 rounded-sm text-sm font-bold text-neutral-700 focus:outline-none focus:ring-2 focus:ring-neutral-500/20 focus:bg-neutral-50 hover:bg-neutral-100 transition-all min-h-[80px]"
+                  placeholder="Required for audit (e.g. partial payment, cash via agent...)"
+                  value={installmentRemarks}
+                  onChange={(e) => setInstallmentRemarks(e.target.value)}
+                />
+              </div>
             </div>
 
             <div className="flex justify-end space-x-3 pt-4 border-t border-neutral-100">
@@ -3093,22 +3368,24 @@ const MasterView: React.FC<MasterViewProps> = ({
                 onClick={() => {
                   setModalMode('none');
                   setInstallmentAttachments([]);
+                  setInstallmentRemarks('');
                 }}
                 className="px-6 py-2.5 rounded-sm text-neutral-500 font-bold text-sm hover:bg-neutral-50 transition-all"
               >
                 Cancel
               </button>
               <button
-                disabled={!installmentAmount || parseFloat(installmentAmount) <= 0 || installmentAttachments.length === 0}
+                disabled={!installmentAmount || parseFloat(installmentAmount) <= 0 || installmentAttachments.length === 0 || !installmentRemarks.trim()}
                 onClick={() => {
                   const amt = parseFloat(installmentAmount);
-                  if (onAddInstallment) {
+                  if (onAddInstallment && installmentRemarks.trim()) {
                     wrapAction(async () => {
-                      await onAddInstallment(sale.id, amt, installmentDate, installmentReference, installmentAttachments);
+                      await onAddInstallment(sale.id, amt, installmentDate, installmentReference, installmentAttachments, installmentRemarks);
                       setModalMode('none');
                       setInstallmentAmount('');
                       setInstallmentReference('');
                       setInstallmentAttachments([]);
+                      setInstallmentRemarks('');
                     }, 'Submitting for Admin Approval...');
                   }
                 }}
@@ -3415,15 +3692,25 @@ const MasterView: React.FC<MasterViewProps> = ({
               </div>
             </div>
 
+            <div className="space-y-1">
+              <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">Sale Remarks / Audit Note <span className="text-red-500">*</span></label>
+              <textarea
+                className="w-full px-5 py-3 bg-neutral-50 border-0 rounded-sm text-sm font-bold text-neutral-700 focus:outline-none focus:ring-2 focus:ring-neutral-500/20 focus:bg-neutral-50 hover:bg-neutral-100 transition-all min-h-[80px]"
+                placeholder="Required for audit compliance (e.g. client background, special terms...)"
+                value={saleRemarks}
+                onChange={(e) => setSaleRemarks(e.target.value)}
+              />
+            </div>
+
             <div className="flex justify-end space-x-3">
               <button onClick={() => setModalMode('none')} className="px-6 py-2.5 rounded-md text-neutral-600 font-bold hover:bg-neutral-100 transition-all transform hover:-translate-y-0.5">Cancel</button>
               <button
                 onClick={() => {
-                  if (clientName && clientContact && saleRsa.length > 0 && (!saleDelivered || saleItdr.length > 0)) wrapAction(async () => {
+                  if (clientName && clientContact && saleRsa.length > 0 && (!saleDelivered || saleItdr.length > 0) && saleRemarks.trim()) wrapAction(async () => {
                     const selectedEvent = events.find(e => e.id === saleEventId);
                     const eventInfo = selectedEvent ? { id: selectedEvent.id, name: selectedEvent.title } : undefined;
                     const downpaymentAmount = (isDownpayment && saleDownpayment) ? parseFloat(saleDownpayment) : undefined;
-                    await onSale(artwork.id, clientName, clientEmail, clientContact, saleDelivered, eventInfo, saleAttachment, saleItdr.length > 0 ? saleItdr : undefined, saleRsa.length > 0 ? saleRsa : undefined, saleOrcr.length > 0 ? saleOrcr : undefined, downpaymentAmount, isDownpayment);
+                    await onSale(artwork.id, clientName, clientEmail, clientContact, saleDelivered, eventInfo, saleAttachment, saleItdr.length > 0 ? saleItdr : undefined, saleRsa.length > 0 ? saleRsa : undefined, saleOrcr.length > 0 ? saleOrcr : undefined, downpaymentAmount, isDownpayment, saleRemarks);
                     setModalMode('none');
                     setSaleAttachment(''); // Reset attachment
                     setSaleItdr([]);
@@ -3435,10 +3722,11 @@ const MasterView: React.FC<MasterViewProps> = ({
                     setClientName('');
                     setClientEmail('');
                     setClientContact('');
+                    setSaleRemarks('');
                   }, 'Processing Sale...', ArtworkStatus.SOLD);
                 }}
                 className="px-8 py-2.5 bg-neutral-900 text-white rounded-md font-bold shadow-lg shadow-neutral-200 hover:shadow-neutral-300 transform hover:-translate-y-0.5 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                disabled={!clientName || !clientContact || saleRsa.length === 0 || (saleDelivered && saleItdr.length === 0)}
+                disabled={!clientName || !clientContact || saleRsa.length === 0 || (saleDelivered && saleItdr.length === 0) || !saleRemarks.trim()}
               >
                 Confirm Sale
               </button>
@@ -3448,7 +3736,7 @@ const MasterView: React.FC<MasterViewProps> = ({
       )}
 
       {modalMode === 'certificate' && sale && <CertificateModal artwork={artwork} sale={sale} onClose={() => setModalMode('none')} />}
-      {modalMode === 'gatepass' && sale && <GatePassModal artwork={artwork} sale={sale} onClose={() => setModalMode('none')} />}
+
 
 
 
@@ -3584,9 +3872,9 @@ const MasterView: React.FC<MasterViewProps> = ({
           sale={sale ?? { clientName: 'Client' } as any}
           artwork={artwork}
           onClose={() => setShowDeliveryFinalizeModal(false)}
-          onConfirm={(itdr, rsa, orcr, carrier, referenceNumber) => {
+          onConfirm={(itdr, rsa, orcr, carrier, referenceNumber, remarks) => {
             wrapAction(
-              () => onDeliver(artwork.id, itdr, rsa, orcr, carrier, referenceNumber),
+              () => onDeliver(artwork.id, itdr, rsa, orcr, carrier, referenceNumber, remarks),
               'Processing Delivery...',
               ArtworkStatus.DELIVERED
             );
@@ -3785,7 +4073,7 @@ const StatusBadge: React.FC<{ status: ArtworkStatus }> = ({ status }) => {
     'RETURNED': 'bg-neutral-900 text-white border-neutral-900',
   };
   const displayText = status === ArtworkStatus.EXCLUSIVE_VIEW_ONLY ? 'NOT FOR SALE' : status;
-  return <span className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest border shadow-sm whitespace-nowrap ${styles[status] || 'bg-neutral-100 text-neutral-900 border-neutral-200'}`}>{displayText}</span>;
+  return <span className={`px-4 py-1.5 rounded-sm text-[10px] font-black uppercase tracking-[0.15em] border shadow-sm whitespace-nowrap transition-all ${styles[status] || 'bg-neutral-100 text-neutral-900 border-neutral-200'}`}>{displayText}</span>;
 };
 
 export default MasterView;

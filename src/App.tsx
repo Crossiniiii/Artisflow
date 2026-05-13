@@ -67,8 +67,7 @@ const App: React.FC = () => {
     operationsView, setOperationsView,
     importStatus, setImportStatus,
     targetSaleId, setTargetSaleId,
-    isMasterViewOpen, setIsMasterViewOpen,
-    gatePassSaleId, setGatePassSaleId
+    isMasterViewOpen, setIsMasterViewOpen
   } = useUI();
 
   const {
@@ -114,20 +113,11 @@ const App: React.FC = () => {
       handleConfirmAudit, handleReturnToGallery, handleSendToFramer, handleBulkSendToFramer,
       handleReturnFromFramer, handleDeleteFramerRecord, handleUpdateReturnRecord, handleBulkDeleteReturnRecords,
       handleSale, handleDeliver, handleApproveSale, handleDeclineSale, handleAddInstallment, handleDeleteSaleRecord,
-      handleEditPayment, handleApprovePaymentEdit, handleDeclinePaymentEdit, handleUpdateSale, handleDispatch
+      handleEditPayment, handleApprovePaymentEdit, handleDeclinePaymentEdit, handleUpdateSale, handleDispatch,
+      handleApproveDeliveryRequest, handleDeclineDeliveryRequest
     } = useArtworkOperations();
 
-  // Automate Gate Pass generation flow
-  useEffect(() => {
-    if (gatePassSaleId) {
-      const sale = sales.find(s => s.id === gatePassSaleId);
-      if (sale) {
-        setSelectedArtworkId(sale.artworkId);
-        setIsMasterViewOpen(true);
-        setActiveTab('master-view');
-      }
-    }
-  }, [gatePassSaleId, sales, setSelectedArtworkId, setIsMasterViewOpen, setActiveTab]);
+
   const {
     handleCreateTransferRequest, handleAcceptTransfer, handleDeclineTransfer,
     handleHoldTransfer, handleDeleteTransfer
@@ -137,52 +127,7 @@ const App: React.FC = () => {
   const { handleAddBranch, handleUpdateBranch, handleDeleteBranch, handleUpdateBranchAddress } = useBranchOperations();
     const { handleSendMessage, handleStartConversation, handleMarkRead, handleDeleteConversation } = useChatOperations();
   
-    const handleDeclineSaleWithMessaging = async (saleId: string, reason?: string, requestedFiles?: string[]) => {
-      await handleDeclineSale(saleId, reason, requestedFiles);
-      
-      if (!reason || !currentUser) return;
-  
-      const sale = sales.find(s => s.id === saleId);
-      if (!sale) return;
-  
-      // Find the agent - use agentId if available, fallback to name
-      const agent = accounts.find(a => a.id === sale.agentId) || 
-                    accounts.find(a => a.name === sale.agentName && a.role !== UserRole.ADMIN);
-      
-      if (!agent) return;
-  
-      // Find existing 1-on-1 conversation or start new one
-      let conversationId = conversations.find(c => 
-        c.participantIds.length === 2 && 
-        c.participantIds.includes(currentUser.id) && 
-        c.participantIds.includes(agent.id)
-      )?.id;
-  
-      if (!conversationId) {
-        conversationId = await handleStartConversation(
-          [currentUser.id, agent.id],
-          { [currentUser.id]: currentUser.name || 'Admin', [agent.id]: agent.name }
-        );
-      }
-  
-      if (conversationId) {
-        const artwork = artworks.find(a => a.id === sale.artworkId);
-        const artTitle = artwork?.title || sale.artworkSnapshot?.title || 'Unknown Artwork';
-        let messageText = `🚫 SALE DECLINED\nArtwork: ${artTitle}\nClient: ${sale.clientName}\nReason: ${reason}`;
-        
-        if (requestedFiles && requestedFiles.length > 0) {
-          const fileLabels = requestedFiles.map(f => {
-            if (f === 'itdr') return 'IT/DR';
-            if (f === 'rsa') return 'RSA/AR';
-            if (f === 'orcr') return 'OR/CR';
-            return f;
-          }).join(', ');
-          messageText += `\n\n♻️ RE-UPLOAD REQUESTED: ${fileLabels}`;
-        }
-        
-        await handleSendMessage(conversationId, messageText, currentUser);
-      }
-    };
+
 
   // History Stack Effect
   useEffect(() => {
@@ -299,10 +244,11 @@ const App: React.FC = () => {
   }, [currentUser]);
 
   // Track navigation history — push previous tab whenever activeTab changes
+  // Only push if we're NOT going to master-view (which is the leaf view)
   const prevTabRef = React.useRef<string | null>(null);
   useEffect(() => {
     const prevTab = prevTabRef.current;
-    if (prevTab && prevTab !== activeTab) {
+    if (prevTab && prevTab !== activeTab && activeTab === 'master-view') {
       setHistoryStack(prev => {
         const entry: { tab: string; operationsView?: typeof operationsView } = { tab: prevTab };
         if (prevTab === 'operations') {
@@ -565,7 +511,7 @@ const App: React.FC = () => {
                 sales={sales}
                 artworks={artworks}
                 onApproveSale={handleApproveSale}
-                onDeclineSale={handleDeclineSaleWithMessaging}
+                onDeclineSale={handleDeclineSale}
                 onApprovePaymentEdit={handleApprovePaymentEdit}
                 onDeclinePaymentEdit={handleDeclinePaymentEdit}
                 onUpdateSale={handleUpdateSale}
@@ -601,8 +547,8 @@ const App: React.FC = () => {
                 onReturnToGallery={handleReturnToGallery}
                 onSendToFramer={handleSendToFramer}
                 onReturnFromFramer={handleReturnFromFramer}
-                onTransfer={(id, dest, attachments) => {
-                  handleCreateTransferRequest([id], dest, attachments);
+                onTransfer={(id, dest, attachments, remarks) => {
+                  handleCreateTransferRequest([id], dest, attachments, remarks);
                 }}
                 onReserve={handleReserveArtwork}
                 onCancelReservation={handleCancelReservation}
@@ -625,7 +571,8 @@ const App: React.FC = () => {
                 artworks={artworks}
                 userPermissions={currentPermissions}
                 currentUser={currentUser}
-                onUpdateSale={handleUpdateSale}
+                onApproveRequest={handleApproveDeliveryRequest}
+                onDeclineRequest={handleDeclineDeliveryRequest}
               />
             </Suspense>
           );
@@ -859,8 +806,8 @@ const App: React.FC = () => {
                 onSendToFramer={handleSendToFramer}
                 onReturnFromFramer={handleReturnFromFramer}
                 onDelete={handleDeleteArtwork}
-                onTransfer={(id, dest, attachments) => {
-                  handleCreateTransferRequest([id], dest, attachments);
+                onTransfer={(id, dest, attachments, remarks) => {
+                  handleCreateTransferRequest([id], dest, attachments, remarks);
                 }}
                 onReserve={handleReserveArtwork}
                 onReservationComplete={handleReservationComplete}
@@ -888,7 +835,7 @@ const App: React.FC = () => {
                   }
                 }}
                 onBack={() => {
-                  if (gatePassSaleId) setGatePassSaleId(null);
+                  setSelectedArtworkId(null);
                   if (historyStack.length > 0) {
                     const prev = historyStack[historyStack.length - 1];
                     setHistoryStack(prevStack => prevStack.slice(0, -1));
@@ -897,10 +844,10 @@ const App: React.FC = () => {
                       setOperationsView(prev.operationsView);
                     }
                   } else {
-                    setActiveTab('dashboard');
+                    setActiveTab('operations');
                   }
                 }}
-                initialModalMode={gatePassSaleId ? 'gatepass' : 'none'}
+                initialModalMode="none"
               />
             </Suspense>
           ) : (
@@ -1006,7 +953,7 @@ const App: React.FC = () => {
                 sales={sales}
                 artworks={artworks}
                 onApproveSale={handleApproveSale}
-                onDeclineSale={handleDeclineSaleWithMessaging}
+                onDeclineSale={handleDeclineSale}
                 userPermissions={currentPermissions}
               />
             </Suspense>
@@ -1069,6 +1016,10 @@ const App: React.FC = () => {
         onOpenOperationsBranches={() => setOperationsView('branches')}
         isOpen={isMobileMenuOpen}
         onClose={() => setIsMobileMenuOpen(false)}
+        sales={sales}
+        currentUser={currentUser}
+        transferRequests={transferRequests}
+        returnRecords={returnRecords}
       />
       <div className="flex-1 flex flex-col overflow-hidden">
           <Header

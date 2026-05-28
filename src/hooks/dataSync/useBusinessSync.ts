@@ -58,10 +58,13 @@ export const useBusinessSync = ({
 
     const parseSaleRecord = (sale: any): SaleRecord => {
       const s = mapFromSnakeCase(sale);
+      const artworkSnapshot = typeof s.artworkSnapshot === 'string' ? JSON.parse(s.artworkSnapshot) : s.artworkSnapshot;
       return {
         ...s,
         installments: typeof s.installments === 'string' ? JSON.parse(s.installments) : (s.installments || []),
-        artworkSnapshot: typeof s.artworkSnapshot === 'string' ? JSON.parse(s.artworkSnapshot) : s.artworkSnapshot,
+        artworkSnapshot,
+        discountPercentage: s.discountPercentage !== undefined && s.discountPercentage !== null ? s.discountPercentage : artworkSnapshot?.discountPercentage,
+        discountedPrice: s.discountedPrice !== undefined && s.discountedPrice !== null ? s.discountedPrice : artworkSnapshot?.discountedPrice,
         requestedAttachments: typeof s.requestedAttachments === 'string' ? JSON.parse(s.requestedAttachments) : (s.requestedAttachments || []),
         itdrUrl: typeof s.itdrUrl === 'string' ? JSON.parse(s.itdrUrl) : (s.itdrUrl || []),
         rsaUrl: typeof s.rsaUrl === 'string' ? JSON.parse(s.rsaUrl) : (s.rsaUrl || []),

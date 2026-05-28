@@ -53,15 +53,29 @@ const normalizeActivityLog = (row: any): ActivityLog => {
   };
 };
 
+const parseJsonArray = <T,>(value: unknown): T[] => {
+  if (Array.isArray(value)) return value as T[];
+  if (typeof value !== 'string' || value.trim() === '') return [];
+
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed as T[] : [];
+  } catch {
+    return [];
+  }
+};
+
 const normalizeImportRecord = (row: any): ImportRecord => {
   const mapped = mapFromSnakeCase(row) as any;
   return {
     ...mapped,
     timestamp: mapped.importedAt || mapped.timestamp || row.imported_at || row.timestamp,
     recordCount: mapped.totalItems !== undefined ? mapped.totalItems : (mapped.recordCount !== undefined ? mapped.recordCount : row.total_items),
-    importedIds: typeof mapped.importedIds === 'string' ? JSON.parse(mapped.importedIds) : (mapped.importedIds || []),
-    updatedIds: typeof mapped.updatedIds === 'string' ? JSON.parse(mapped.updatedIds) : (mapped.updatedIds || []),
-    failedItems: typeof mapped.failedItems === 'string' ? JSON.parse(mapped.failedItems) : (mapped.failedItems || [])
+    successCount: mapped.successCount ?? row.success_count,
+    failCount: mapped.failCount ?? row.fail_count,
+    importedIds: parseJsonArray<string>(mapped.importedIds),
+    updatedIds: parseJsonArray<string>(mapped.updatedIds),
+    failedItems: parseJsonArray(mapped.failedItems)
   };
 };
 

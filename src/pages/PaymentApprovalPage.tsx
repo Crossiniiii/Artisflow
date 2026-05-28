@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { SaleRecord, Artwork, UserPermissions } from '../types';
-import { CheckCircle, XCircle, Tag, User, Calendar, Info, AlertCircle, Eye, ExternalLink, Paperclip, Clock, Shield, Trash2, LayoutGrid, Rows3 } from 'lucide-react';
+import { CheckCircle, XCircle, Tag, User, Calendar, Info, AlertCircle, Eye, ExternalLink, Paperclip, Clock, Shield, Trash2, LayoutGrid, Rows3, Search, Filter } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useActionProcessing } from '../hooks/useActionProcessing';
 import LoadingOverlay from '../components/LoadingOverlay';
@@ -34,13 +34,19 @@ const PaymentApprovalPage: React.FC<PaymentApprovalPageProps> = ({
   const [declineMode, setDeclineMode] = useState<'remediation' | 'straight'>('remediation');
   const [requestedFiles, setRequestedFiles] = useState<string[]>([]);
   const [approvalRemarks, setApprovalRemarks] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [paymentTypeFilter, setPaymentTypeFilter] = useState<'all' | 'downpayment' | 'installment'>('all');
+  const [pendingBranchFilter, setPendingBranchFilter] = useState<string>('All');
+  const [historySearchQuery, setHistorySearchQuery] = useState('');
+  const [historyStatusFilter, setHistoryStatusFilter] = useState<'all' | 'approved' | 'declined'>('all');
   const { isProcessing, processMessage, wrapAction } = useActionProcessing({
     itemTitle: 'Payment Approval',
     itemCode: 'PAY'
   });
 
   // Extract pending payments
-  const pendingPayments = (() => {
+  // Extract pending payments
+  const pendingPayments = useMemo(() => {
     const list: any[] = [];
     sales.forEach(sale => {
       // Prioritize live artwork but fallback to snapshot for historical accuracy
@@ -115,7 +121,34 @@ const PaymentApprovalPage: React.FC<PaymentApprovalPageProps> = ({
       });
     });
     return list.sort((a, b) => new Date(b.requestedAt).getTime() - new Date(a.requestedAt).getTime());
-  })();
+  }, [sales, artworks]);
+
+  const pendingBranches = useMemo(() => {
+    const set = new Set<string>();
+    pendingPayments.forEach(item => {
+      const branch = item.branch || 'Main';
+      if (branch) set.add(branch);
+    });
+    return ['All', ...Array.from(set)].sort();
+  }, [pendingPayments]);
+
+  const filteredPendingPayments = useMemo(() => {
+    return pendingPayments.filter(item => {
+      const searchLower = searchQuery.toLowerCase().trim();
+      const matchesSearch = !searchLower || 
+        item.clientName.toLowerCase().includes(searchLower) ||
+        (item.agentName || '').toLowerCase().includes(searchLower) ||
+        (item.requestedBy || '').toLowerCase().includes(searchLower) ||
+        (item.artwork?.title || '').toLowerCase().includes(searchLower) ||
+        (item.artwork?.artist || '').toLowerCase().includes(searchLower) ||
+        item.saleId.toLowerCase().includes(searchLower);
+
+      const matchesPaymentType = paymentTypeFilter === 'all' || item.type === paymentTypeFilter;
+      const matchesBranch = pendingBranchFilter === 'All' || item.branch === pendingBranchFilter;
+
+      return matchesSearch && matchesPaymentType && matchesBranch;
+    });
+  }, [pendingPayments, searchQuery, paymentTypeFilter, pendingBranchFilter]);
 
 
   // Aggregate Approval History
@@ -163,10 +196,32 @@ const PaymentApprovalPage: React.FC<PaymentApprovalPageProps> = ({
   })();
 
 
-  const branches = ['All', ...Array.from(new Set(approvalHistory.map(h => h.branch)))].filter(b => b !== 'Main').sort();
-  const filteredHistory = selectedBranch === 'All' 
-    ? approvalHistory 
-    : approvalHistory.filter(h => h.branch === selectedBranch);
+  const branches = useMemo(() => {
+    const set = new Set<string>();
+    approvalHistory.forEach(h => {
+      if (h.branch) set.add(h.branch);
+    });
+    return ['All', ...Array.from(set)].sort();
+  }, [approvalHistory]);
+
+  const filteredHistory = useMemo(() => {
+    return approvalHistory.filter(h => {
+      const matchesBranch = selectedBranch === 'All' || h.branch === selectedBranch;
+      const matchesStatus = historyStatusFilter === 'all' || 
+        (historyStatusFilter === 'approved' && !h.isDeclined) ||
+        (historyStatusFilter === 'declined' && h.isDeclined);
+      
+      const searchLower = historySearchQuery.toLowerCase().trim();
+      const matchesSearch = !searchLower ||
+        h.clientName.toLowerCase().includes(searchLower) ||
+        (h.agentName || '').toLowerCase().includes(searchLower) ||
+        (h.artwork?.title || '').toLowerCase().includes(searchLower) ||
+        (h.artwork?.artist || '').toLowerCase().includes(searchLower) ||
+        (h.branch || '').toLowerCase().includes(searchLower);
+      
+      return matchesBranch && matchesStatus && matchesSearch;
+    });
+  }, [approvalHistory, selectedBranch, historyStatusFilter, historySearchQuery]);
 
   const handleToggleSelectAllHistory = () => {
     if (selectedHistoryIds.length === filteredHistory.length && filteredHistory.length > 0) {
@@ -352,192 +407,271 @@ const PaymentApprovalPage: React.FC<PaymentApprovalPageProps> = ({
                   <p className="text-[10px] font-bold mt-1 tracking-widest">No pending financial entries require attention.</p>
                 </div>
               </div>
-            ) : viewMode === 'list' ? (
-              <div className="bg-white rounded-xl border border-slate-200 shadow-[0_2px_12px_rgba(15,23,42,0.04)] overflow-hidden">
-                <table className="w-full text-left border-collapse">
-                  <thead>
-                    <tr className="bg-slate-50 border-b border-slate-200">
-                      <th className="px-6 py-5 text-[10px] font-bold text-slate-400 uppercase tracking-[0.15em]">Artwork & Client</th>
-                      <th className="px-6 py-5 text-[10px] font-bold text-slate-400 uppercase tracking-[0.15em]">Type</th>
-                      <th className="px-6 py-5 text-[10px] font-bold text-slate-400 uppercase tracking-[0.15em]">Value</th>
-                      <th className="px-6 py-5 text-[10px] font-bold text-slate-400 uppercase tracking-[0.15em]">Agent</th>
-                      <th className="px-6 py-5 text-[10px] font-bold text-slate-400 uppercase tracking-[0.15em] text-right">Verification</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    <AnimatePresence mode="popLayout">
-                      {pendingPayments.map((item) => (
-                        <motion.tr 
-                          layout
-                          initial={{ opacity: 0, y: 10 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          exit={{ opacity: 0, scale: 0.98 }}
-                          key={`${item.saleId}-${item.paymentId}`} 
-                          className="group hover:bg-blue-50/30 transition-all cursor-pointer"
-                          onClick={() => setSelectedItem(item)}
-                        >
-                          <td className="px-6 py-5">
-                            <div className="flex items-center gap-4">
-                              <div className="w-12 h-12 rounded-lg bg-slate-100 overflow-hidden shrink-0 border border-slate-200 shadow-sm group-hover:scale-105 transition-transform">
-                                {item.artwork?.imageUrl ? (
-                                  <img src={item.artwork.imageUrl} className="w-full h-full object-cover transition-all duration-500" alt="" />
-                                ) : (
-                                  <div className="flex h-full w-full items-center justify-center text-slate-300">
-                                    <Tag size={16} />
+            ) : (
+              <div className="flex flex-col gap-6">
+                {/* Search and Filters Toolbar */}
+                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-slate-100/50 p-4 rounded-xl border border-slate-200/60 backdrop-blur-sm shadow-sm">
+                  <div className="relative flex-1 max-w-md w-full">
+                    <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+                    <input
+                      type="text"
+                      placeholder="Search by client, agent, or artwork..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 placeholder-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all shadow-sm"
+                    />
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-6 w-full lg:w-auto">
+                    {/* Payment Type filter */}
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1.5">
+                        <Filter size={11} />
+                        Type
+                      </span>
+                      <select
+                        value={paymentTypeFilter}
+                        onChange={(e) => setPaymentTypeFilter(e.target.value as any)}
+                        className="px-3 py-2 bg-white border border-slate-200 rounded-lg text-[11px] font-bold text-slate-700 focus:border-blue-500 outline-none transition-all shadow-sm cursor-pointer"
+                      >
+                        <option value="all">All</option>
+                        <option value="downpayment">Downpayment</option>
+                        <option value="installment">Installment</option>
+                      </select>
+                    </div>
+
+                    {/* Branch filter */}
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1.5">
+                        <Filter size={11} />
+                        Branch
+                      </span>
+                      <select
+                        value={pendingBranchFilter}
+                        onChange={(e) => setPendingBranchFilter(e.target.value)}
+                        className="px-3 py-2 bg-white border border-slate-200 rounded-lg text-[11px] font-bold text-slate-700 focus:border-blue-500 outline-none transition-all shadow-sm cursor-pointer"
+                      >
+                        <option value="All">All</option>
+                        {pendingBranches.filter(b => b !== 'All').map(branch => (
+                          <option key={branch} value={branch}>{branch}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* View Mode controls */}
+                    <div className="flex gap-1 p-1 bg-slate-200/60 rounded-lg border border-slate-200/40 ml-auto lg:ml-0">
+                      <button 
+                        onClick={() => setViewMode('list')}
+                        className={`p-2 rounded-md transition-all ${viewMode === 'list' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                        title="List View"
+                      >
+                        <Rows3 size={14} />
+                      </button>
+                      <button 
+                        onClick={() => setViewMode('grid')}
+                        className={`p-2 rounded-md transition-all ${viewMode === 'grid' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                        title="Grid View"
+                      >
+                        <LayoutGrid size={14} />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {filteredPendingPayments.length === 0 ? (
+                  <div className="py-20 bg-slate-50/40 rounded-xl border border-dashed border-slate-200/80 flex flex-col items-center justify-center text-slate-400 gap-3">
+                    <Search size={32} className="text-slate-300" />
+                    <div className="text-center">
+                      <p className="text-xs font-bold uppercase tracking-wider text-slate-600">No matching declarations</p>
+                      <p className="text-[10px] text-slate-400 mt-1">Try adjusting your filters or search query.</p>
+                    </div>
+                  </div>
+                ) : viewMode === 'list' ? (
+                  <div className="bg-white rounded-xl border border-slate-200 shadow-[0_2px_12px_rgba(15,23,42,0.04)] overflow-hidden">
+                    <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className="bg-slate-50 border-b border-slate-200">
+                          <th className="px-6 py-5 text-[10px] font-bold text-slate-400 uppercase tracking-[0.15em]">Artwork & Client</th>
+                          <th className="px-6 py-5 text-[10px] font-bold text-slate-400 uppercase tracking-[0.15em]">Type</th>
+                          <th className="px-6 py-5 text-[10px] font-bold text-slate-400 uppercase tracking-[0.15em]">Value</th>
+                          <th className="px-6 py-5 text-[10px] font-bold text-slate-400 uppercase tracking-[0.15em]">Agent</th>
+                          <th className="px-6 py-5 text-[10px] font-bold text-slate-400 uppercase tracking-[0.15em] text-right">Verification</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        <AnimatePresence mode="popLayout">
+                          {filteredPendingPayments.map((item) => (
+                            <motion.tr 
+                              layout
+                              initial={{ opacity: 0, y: 10 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              exit={{ opacity: 0, scale: 0.98 }}
+                              key={`${item.saleId}-${item.paymentId}`} 
+                              className="group hover:bg-blue-50/30 transition-all cursor-pointer"
+                              onClick={() => setSelectedItem(item)}
+                            >
+                              <td className="px-6 py-5">
+                                <div className="flex items-center gap-4">
+                                  <div className="w-12 h-12 rounded-lg bg-slate-100 overflow-hidden shrink-0 border border-slate-200 shadow-sm group-hover:scale-105 transition-transform">
+                                    {item.artwork?.imageUrl ? (
+                                      <img src={item.artwork.imageUrl} className="w-full h-full object-cover transition-all duration-500" alt="" />
+                                    ) : (
+                                      <div className="flex h-full w-full items-center justify-center text-slate-300">
+                                        <Tag size={16} />
+                                      </div>
+                                    )}
                                   </div>
-                                )}
-                              </div>
-                              <div className="min-w-0">
-                                <p className="text-sm font-bold text-slate-900 truncate tracking-tight mb-0.5">{item.artwork?.title || 'Unknown Artwork'}</p>
-                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{item.clientName}</p>
-                              </div>
-                            </div>
-                          </td>
-                          <td className="px-6 py-5">
-                            <span className={`px-3 py-1 rounded-full text-[9px] font-bold uppercase tracking-widest border ${item.type === 'downpayment' ? 'bg-blue-50 text-blue-700 border-blue-100' : 'bg-emerald-50 text-emerald-700 border-emerald-100'}`}>
-                              {item.type}
-                            </span>
-                          </td>
-                          <td className="px-6 py-5">
-                            <div className="flex flex-col">
-                              <span className={`text-sm font-black ${item.isOverpayment ? 'text-rose-600' : 'text-slate-900'} tracking-tight`}>
-                                {item.newAmount.toLocaleString('en-PH', { style: 'currency', currency: 'PHP' })}
-                              </span>
-                              {item.isOverpayment && (
-                                <div className="flex items-center gap-1 mt-1">
-                                  <AlertCircle size={10} className="text-rose-500" />
-                                  <span className="text-[8px] font-bold text-rose-400 uppercase tracking-tighter">Variance Detected</span>
+                                  <div className="min-w-0">
+                                    <p className="text-sm font-bold text-slate-900 truncate tracking-tight mb-0.5">{item.artwork?.title || 'Unknown Artwork'}</p>
+                                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{item.clientName}</p>
+                                  </div>
+                                </div>
+                              </td>
+                              <td className="px-6 py-5">
+                                <span className={`px-3 py-1 rounded-full text-[9px] font-bold uppercase tracking-widest border ${item.type === 'downpayment' ? 'bg-blue-50 text-blue-700 border-blue-100' : 'bg-emerald-50 text-emerald-700 border-emerald-100'}`}>
+                                  {item.type}
+                                </span>
+                              </td>
+                              <td className="px-6 py-5">
+                                <div className="flex flex-col">
+                                  <span className={`text-sm font-black ${item.isOverpayment ? 'text-rose-600' : 'text-slate-900'} tracking-tight`}>
+                                    {item.newAmount.toLocaleString('en-PH', { style: 'currency', currency: 'PHP' })}
+                                  </span>
+                                  {item.isOverpayment && (
+                                    <div className="flex items-center gap-1 mt-1">
+                                      <AlertCircle size={10} className="text-rose-500" />
+                                      <span className="text-[8px] font-bold text-rose-400 uppercase tracking-tighter">Variance Detected</span>
+                                    </div>
+                                  )}
+                                </div>
+                              </td>
+                              <td className="px-6 py-5">
+                                <div className="flex items-center gap-2.5">
+                                  <div className="w-7 h-7 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 border border-slate-200">
+                                    <User size={12} />
+                                  </div>
+                                  <span className="text-xs font-bold text-slate-600 truncate max-w-[120px]">{item.agentName || item.requestedBy}</span>
+                                </div>
+                              </td>
+                              <td className="px-6 py-5 text-right">
+                                <div className="flex items-center justify-end gap-2">
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setSelectedItem(item);
+                                    }}
+                                    className="inline-flex items-center justify-center px-4 py-2 rounded-lg border border-slate-200 text-[10px] font-bold uppercase tracking-widest text-slate-500 group-hover:text-blue-600 group-hover:border-blue-200 transition-all bg-white hover:bg-blue-50 active:scale-95"
+                                  >
+                                    Review
+                                  </button>
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      if (onBulkDeletePayments) {
+                                        onBulkDeletePayments([{ saleId: item.saleId, paymentId: item.paymentId }]);
+                                      }
+                                    }}
+                                    className="p-2 rounded-lg border border-slate-200 text-slate-400 hover:text-rose-600 hover:border-rose-200 transition-all bg-white hover:bg-rose-50"
+                                    title="Delete Request"
+                                  >
+                                    <Trash2 size={14} />
+                                  </button>
+                                </div>
+                              </td>
+                            </motion.tr>
+                          ))}
+                        </AnimatePresence>
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-5">
+                    <AnimatePresence mode="popLayout">
+                      {filteredPendingPayments.map((item) => (
+                        <motion.div
+                          layout
+                          initial={{ opacity: 0, scale: 0.95 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          exit={{ opacity: 0, scale: 0.95 }}
+                          key={`${item.saleId}-${item.paymentId}`}
+                          onClick={() => setSelectedItem(item)}
+                          className="group bg-white rounded-xl border border-slate-200 p-4 shadow-[0_2px_8px_rgba(15,23,42,0.02)] hover:shadow-[0_20px_40px_rgba(15,23,42,0.08)] hover:-translate-y-0.5 transition-all cursor-pointer flex flex-col justify-between"
+                        >
+                          <div className="flex gap-4">
+                            <div className="w-16 h-16 rounded-lg bg-slate-50 overflow-hidden border border-slate-100 shrink-0 shadow-inner">
+                              {item.artwork?.imageUrl ? (
+                                <img src={item.artwork.imageUrl} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" alt="" />
+                              ) : (
+                                <div className="flex h-full w-full items-center justify-center text-slate-200">
+                                  <Tag size={20} />
                                 </div>
                               )}
                             </div>
-                          </td>
-                          <td className="px-6 py-5">
-                            <div className="flex items-center gap-2.5">
-                              <div className="w-7 h-7 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 border border-slate-200">
-                                <User size={12} />
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-start justify-between gap-1.5">
+                                 <span className={`px-2 py-0.5 rounded-md text-[8px] font-black uppercase tracking-widest border ${item.type === 'downpayment' ? 'bg-blue-50 text-blue-700 border-blue-100' : 'bg-emerald-50 text-emerald-700 border-emerald-100'}`}>
+                                    {item.type}
+                                  </span>
+                                  <div className="flex items-center gap-1 text-slate-400">
+                                    <Clock size={9} />
+                                    <span className="text-[8.5px] font-bold">{new Date(item.requestedAt).toLocaleDateString()}</span>
+                                  </div>
                               </div>
-                              <span className="text-xs font-bold text-slate-600 truncate max-w-[120px]">{item.agentName || item.requestedBy}</span>
+                              <h4 className="text-xs font-black text-slate-900 mt-2 truncate uppercase tracking-tight">{item.artwork?.title || 'Unknown Artwork'}</h4>
+                              <div className="flex items-center justify-between mt-0.5">
+                                <p className="text-[9.5px] font-semibold text-slate-400 truncate max-w-[70px] uppercase tracking-wider">{item.clientName}</p>
+                                <span className="text-[9.5px] font-black text-indigo-600 uppercase tracking-widest">₱{(item.artwork?.price || 0).toLocaleString()}</span>
+                              </div>
                             </div>
-                          </td>
-                          <td className="px-6 py-5 text-right">
-                            <div className="flex items-center justify-end gap-2">
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setSelectedItem(item);
-                                }}
-                                className="inline-flex items-center justify-center px-4 py-2 rounded-lg border border-slate-200 text-[10px] font-bold uppercase tracking-widest text-slate-500 group-hover:text-blue-600 group-hover:border-blue-200 transition-all bg-white hover:bg-blue-50 active:scale-95"
-                              >
-                                Review
-                              </button>
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  if (onBulkDeletePayments) {
-                                    onBulkDeletePayments([{ saleId: item.saleId, paymentId: item.paymentId }]);
-                                  }
-                                }}
-                                className="p-2 rounded-lg border border-slate-200 text-slate-400 hover:text-rose-600 hover:border-rose-200 transition-all bg-white hover:bg-rose-50"
-                                title="Delete Request"
-                              >
-                                <Trash2 size={14} />
-                              </button>
+                          </div>
+
+                          <div className="mt-4 pt-4 border-t border-slate-50 flex items-end justify-between">
+                            <div>
+                               <p className="text-[8.5px] font-bold text-slate-400 uppercase tracking-widest mb-1">Verification Amt</p>
+                               <div className="flex flex-col">
+                                  <span className={`text-lg font-black ${item.isOverpayment ? 'text-rose-600' : 'text-slate-900'} tracking-tighter leading-none`}>
+                                    {item.newAmount.toLocaleString('en-PH', { style: 'currency', currency: 'PHP' })}
+                                  </span>
+                                  {item.isOverpayment && (
+                                    <div className="flex items-center gap-1 mt-1">
+                                      <AlertCircle size={9} className="text-rose-500" />
+                                      <span className="text-[7.5px] font-black text-rose-500 uppercase tracking-tighter">Variance Flagged</span>
+                                    </div>
+                                  )}
+                                </div>
                             </div>
-                          </td>
-                        </motion.tr>
+                            <div className="flex flex-col items-end gap-2">
+                               <div className="flex items-center gap-1.5">
+                                  <div className="w-4.5 h-4.5 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 border border-slate-200">
+                                    <User size={8} />
+                                  </div>
+                                  <span className="text-[9px] font-bold text-slate-500 truncate max-w-[80px]">{item.agentName || item.requestedBy}</span>
+                                </div>
+                                <div className="flex items-center gap-1.5">
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      if (onBulkDeletePayments) {
+                                        onBulkDeletePayments([{ saleId: item.saleId, paymentId: item.paymentId }]);
+                                      }
+                                    }}
+                                    className="p-1.5 bg-white text-slate-400 border border-slate-200 rounded-lg hover:text-rose-600 hover:border-rose-200 transition-all active:scale-95"
+                                    title="Delete Request"
+                                  >
+                                    <Trash2 size={12} />
+                                  </button>
+                                  <button className="px-3 py-1.5 bg-slate-900 text-white rounded-lg text-[8.5px] font-black uppercase tracking-[0.15em] shadow-md shadow-slate-200 hover:bg-slate-800 transition-all active:scale-95">
+                                     Verify Entry
+                                  </button>
+                                </div>
+                            </div>
+                          </div>
+                        </motion.div>
                       ))}
                     </AnimatePresence>
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                <AnimatePresence mode="popLayout">
-                  {pendingPayments.map((item) => (
-                    <motion.div
-                      layout
-                      initial={{ opacity: 0, scale: 0.95 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      exit={{ opacity: 0, scale: 0.95 }}
-                      key={`${item.saleId}-${item.paymentId}`}
-                      onClick={() => setSelectedItem(item)}
-                      className="group bg-white rounded-2xl border border-slate-200 p-5 shadow-[0_2px_8px_rgba(15,23,42,0.02)] hover:shadow-[0_20px_40px_rgba(15,23,42,0.08)] hover:-translate-y-1 transition-all cursor-pointer"
-                    >
-                      <div className="flex gap-5">
-                        <div className="w-20 h-20 rounded-xl bg-slate-50 overflow-hidden border border-slate-100 shrink-0 shadow-inner">
-                          {item.artwork?.imageUrl ? (
-                            <img src={item.artwork.imageUrl} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" alt="" />
-                          ) : (
-                            <div className="flex h-full w-full items-center justify-center text-slate-200">
-                              <Tag size={24} />
-                            </div>
-                          )}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-start justify-between gap-2">
-                             <span className={`px-2 py-0.5 rounded-md text-[8px] font-black uppercase tracking-widest border ${item.type === 'downpayment' ? 'bg-blue-50 text-blue-700 border-blue-100' : 'bg-emerald-50 text-emerald-700 border-emerald-100'}`}>
-                                {item.type}
-                              </span>
-                              <div className="flex items-center gap-1.5 text-slate-400">
-                                <Clock size={10} />
-                                <span className="text-[9px] font-bold">{new Date(item.requestedAt).toLocaleDateString()}</span>
-                              </div>
-                          </div>
-                          <h4 className="text-sm font-black text-slate-900 mt-2 truncate uppercase tracking-tight">{item.artwork?.title || 'Unknown Artwork'}</h4>
-                          <div className="flex items-center justify-between mt-0.5">
-                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{item.clientName}</p>
-                            <span className="text-[10px] font-black text-indigo-600 uppercase tracking-widest">₱{(item.artwork?.price || 0).toLocaleString()}</span>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="mt-6 pt-5 border-t border-slate-50 flex items-end justify-between">
-                        <div>
-                           <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Amount for Verification</p>
-                           <div className="flex flex-col">
-                              <span className={`text-xl font-black ${item.isOverpayment ? 'text-rose-600' : 'text-slate-900'} tracking-tighter leading-none`}>
-                                {item.newAmount.toLocaleString('en-PH', { style: 'currency', currency: 'PHP' })}
-                              </span>
-                              {item.isOverpayment && (
-                                <div className="flex items-center gap-1 mt-1.5">
-                                  <AlertCircle size={10} className="text-rose-500" />
-                                  <span className="text-[8px] font-black text-rose-500 uppercase tracking-tighter">Variance Flagged</span>
-                                </div>
-                              )}
-                           </div>
-                        </div>
-                        <div className="flex flex-col items-end">
-                           <div className="flex items-center gap-2 mb-2">
-                              <div className="w-5 h-5 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 border border-slate-200">
-                                <User size={10} />
-                              </div>
-                              <span className="text-[10px] font-bold text-slate-500">{item.agentName || item.requestedBy}</span>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  if (onBulkDeletePayments) {
-                                    onBulkDeletePayments([{ saleId: item.saleId, paymentId: item.paymentId }]);
-                                  }
-                                }}
-                                className="p-2 bg-white text-slate-400 border border-slate-200 rounded-lg hover:text-rose-600 hover:border-rose-200 transition-all active:scale-95"
-                                title="Delete Request"
-                              >
-                                <Trash2 size={14} />
-                              </button>
-                              <button className="px-4 py-2 bg-slate-900 text-white rounded-lg text-[9px] font-black uppercase tracking-[0.15em] shadow-lg shadow-slate-200 hover:bg-slate-800 transition-all active:scale-95">
-                                 Verify Entry
-                              </button>
-                            </div>
-                        </div>
-                      </div>
-                    </motion.div>
-                  ))}
-                </AnimatePresence>
-              </div>
-
-            )}
+                  </div>
+                )}
+              </div>)}
           </motion.div>
         ) : (
           <motion.div
@@ -549,82 +683,134 @@ const PaymentApprovalPage: React.FC<PaymentApprovalPageProps> = ({
             className="space-y-6"
           >
             <div className="flex flex-col gap-6">
-              {/* Branch Selector */}
-              <div className="flex flex-wrap gap-2 p-1 bg-neutral-100 rounded-sm w-fit border border-neutral-200">
-                {branches.map(branch => (
-                  <button
-                    key={branch}
-                    onClick={() => setSelectedBranch(branch)}
-                    className={`px-6 py-2 text-[10px] font-black uppercase tracking-widest rounded-sm transition-all ${selectedBranch === branch ? 'bg-white text-neutral-900 shadow-sm border border-neutral-200/50' : 'text-neutral-400 hover:text-neutral-600'}`}
-                  >
-                    {branch}
-                  </button>
-                ))}
+              {/* History Search & Filters Toolbar */}
+              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-slate-100/50 p-4 rounded-xl border border-slate-200/60 backdrop-blur-sm shadow-sm">
+                <div className="relative flex-1 max-w-md w-full">
+                  <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+                  <input
+                    type="text"
+                    placeholder="Search history by client, agent, or artwork..."
+                    value={historySearchQuery}
+                    onChange={(e) => setHistorySearchQuery(e.target.value)}
+                    className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 placeholder-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all shadow-sm"
+                  />
+                </div>
+
+                <div className="flex flex-wrap items-center gap-6 w-full lg:w-auto">
+                  {/* Status filter */}
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1.5">
+                      <Filter size={11} />
+                      Status
+                    </span>
+                    <select
+                      value={historyStatusFilter}
+                      onChange={(e) => setHistoryStatusFilter(e.target.value as any)}
+                      className="px-3 py-2 bg-white border border-slate-200 rounded-lg text-[11px] font-bold text-slate-700 focus:border-blue-500 outline-none transition-all shadow-sm cursor-pointer"
+                    >
+                      <option value="all">All</option>
+                      <option value="approved">Approved</option>
+                      <option value="declined">Declined</option>
+                    </select>
+                  </div>
+
+                  {/* Branch filter (dropdown) */}
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1.5">
+                      <Filter size={11} />
+                      Branch
+                    </span>
+                    <select
+                      value={selectedBranch}
+                      onChange={(e) => setSelectedBranch(e.target.value)}
+                      className="px-3 py-2 bg-white border border-slate-200 rounded-lg text-[11px] font-bold text-slate-700 focus:border-blue-500 outline-none transition-all shadow-sm cursor-pointer"
+                    >
+                      {branches.map(branch => (
+                        <option key={branch} value={branch}>{branch}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
               </div>
 
-              <div className="bg-white rounded-sm border border-neutral-200 shadow-sm overflow-hidden">
+              <div className="bg-white rounded-xl border border-slate-200 shadow-[0_4px_20px_rgba(15,23,42,0.02)] overflow-hidden">
                 <table className="w-full text-left border-collapse">
                   <thead>
-                    <tr className="bg-neutral-50 border-b border-neutral-200">
+                    <tr className="bg-slate-50/75 border-b border-slate-200">
                       <th className="px-6 py-4 w-10">
                         <input
                           type="checkbox"
                           checked={selectedHistoryIds.length === filteredHistory.length && filteredHistory.length > 0}
                           onChange={handleToggleSelectAllHistory}
-                          className="h-4 w-4 rounded border-neutral-300 text-neutral-900 focus:ring-neutral-900"
+                          className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
                         />
                       </th>
-                      <th className="px-6 py-4 text-[10px] font-black text-neutral-400 uppercase tracking-widest">Artwork</th>
-                      <th className="px-6 py-4 text-[10px] font-black text-neutral-400 uppercase tracking-widest">Client</th>
-                      <th className="px-6 py-4 text-[10px] font-black text-neutral-400 uppercase tracking-widest">Type</th>
-                      <th className="px-6 py-4 text-[10px] font-black text-neutral-400 uppercase tracking-widest">Status</th>
-                      <th className="px-6 py-4 text-[10px] font-black text-neutral-400 uppercase tracking-widest">Agent</th>
-                      <th className="px-6 py-4 text-[10px] font-black text-neutral-400 uppercase tracking-widest">Amount</th>
-                      <th className="px-6 py-4 text-[10px] font-black text-neutral-400 uppercase tracking-widest text-right">Verified Date</th>
+                      <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Artwork</th>
+                      <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Client</th>
+                      <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Type</th>
+                      <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Status</th>
+                      <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Agent</th>
+                      <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Amount</th>
+                      <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Verified Date</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-neutral-100">
+                  <tbody className="divide-y divide-slate-100">
                     {filteredHistory.length === 0 ? (
                       <tr>
-                        <td colSpan={7} className="px-6 py-24 text-center text-[10px] font-bold text-neutral-300 uppercase tracking-widest italic">
-                          No verified records found for this selection
+                        <td colSpan={8} className="px-6 py-20 text-center">
+                          <div className="flex flex-col items-center justify-center text-slate-400 gap-3 py-10">
+                            <Search size={32} className="text-slate-300" />
+                            <div className="text-center">
+                              <p className="text-xs font-bold uppercase tracking-wider text-slate-600">No matching history records</p>
+                              <p className="text-[10px] text-slate-400 mt-1">Try adjusting your filters or search query.</p>
+                            </div>
+                          </div>
                         </td>
                       </tr>
                     ) : (
                       filteredHistory.map((h) => (
-                        <tr key={h.id} className={`hover:bg-neutral-50/30 transition-all group ${selectedHistoryIds.includes(h.id) ? 'bg-indigo-50/30' : ''}`}>
+                        <tr key={h.id} className="hover:bg-slate-50/40 transition-all group duration-200">
                           <td className="px-6 py-4">
                             <input
                               type="checkbox"
                               checked={selectedHistoryIds.includes(h.id)}
                               onChange={() => handleToggleSelectHistory(h.id)}
                               onClick={(e) => e.stopPropagation()}
-                              className="h-4 w-4 rounded border-neutral-300 text-neutral-900 focus:ring-neutral-900"
+                              className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
                             />
                           </td>
                           <td className="px-6 py-4">
-                            <div className="flex items-center gap-3">
-                              <div className="w-8 h-8 rounded-sm bg-neutral-50 overflow-hidden border border-neutral-100 shadow-sm">
-                                {h.artwork?.imageUrl && <img src={h.artwork.imageUrl} className="w-full h-full object-cover grayscale group-hover:grayscale-0 transition-all" alt="" />}
+                            <div className="flex items-center gap-4">
+                              <div className="w-10 h-10 rounded-lg bg-slate-50 overflow-hidden border border-slate-100 shadow-sm shrink-0">
+                                {h.artwork?.imageUrl ? (
+                                  <img src={h.artwork.imageUrl} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" alt="" />
+                                ) : (
+                                  <div className="flex h-full w-full items-center justify-center text-slate-200">
+                                    <Tag size={16} />
+                                  </div>
+                                )}
                               </div>
-                              <span className="text-[11px] font-black text-neutral-800 uppercase tracking-tight">{h.artwork?.title}</span>
+                              <div>
+                                <span className="text-[11px] font-black text-slate-800 uppercase tracking-tight block group-hover:text-blue-600 transition-colors">{h.artwork?.title || 'Untitled Artwork'}</span>
+                                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-0.5 block">{h.artwork?.artist || 'Unknown Artist'}</span>
+                              </div>
                             </div>
                           </td>
-                          <td className="px-6 py-4 text-[11px] font-bold text-neutral-600">{h.clientName}</td>
+                          <td className="px-6 py-4 text-[11px] font-bold text-slate-600">{h.clientName}</td>
                           <td className="px-6 py-4">
-                            <span className="px-2 py-0.5 rounded-sm bg-neutral-100 text-neutral-500 text-[8px] font-black uppercase tracking-widest border border-neutral-200">
+                            <span className="px-2 py-0.5 rounded-md bg-slate-50 text-slate-500 text-[9px] font-bold uppercase tracking-widest border border-slate-200">
                               {h.type}
                             </span>
                           </td>
                           <td className="px-6 py-4">
-                            <span className={`px-2 py-0.5 rounded-sm text-[8px] font-black uppercase tracking-widest border ${h.isDeclined ? 'bg-rose-50 text-rose-700 border-rose-100' : 'bg-emerald-50 text-emerald-700 border-emerald-100'}`}>
+                            <span className={`px-2.5 py-1 rounded-md text-[8.5px] font-black uppercase tracking-widest border ${h.isDeclined ? 'bg-rose-50 text-rose-700 border-rose-100/80' : 'bg-emerald-50 text-emerald-700 border-emerald-100/80'}`}>
                               {h.isDeclined ? 'Declined' : 'Approved'}
                             </span>
                           </td>
-                          <td className="px-6 py-4 text-[11px] font-bold text-neutral-600">{h.agentName}</td>
-                          <td className="px-6 py-4 text-[11px] font-black text-neutral-900">₱{h.amount.toLocaleString()}</td>
+                          <td className="px-6 py-4 text-[11px] font-bold text-slate-600">{h.agentName}</td>
+                          <td className="px-6 py-4 text-[11px] font-black text-slate-900">₱{h.amount.toLocaleString()}</td>
                           <td className="px-6 py-4 text-right">
-                            <div className="inline-flex items-center gap-2 text-neutral-400">
+                            <div className="inline-flex items-center gap-2 text-slate-400">
                               <Calendar size={12} />
                               <span className="text-[10px] font-bold">{new Date(h.approvedAt).toLocaleDateString()}</span>
                             </div>
@@ -942,12 +1128,8 @@ const PaymentApprovalPage: React.FC<PaymentApprovalPageProps> = ({
                     setSelectedItem(null);
                     setApprovalRemarks('');
                   }, 'Finalizing Payment Approval...', { silent: true })}
-                  disabled={!approvalRemarks.trim()}
-                  className={`flex-1 h-11 rounded-lg text-[10px] font-black uppercase tracking-widest shadow-lg transition-all flex items-center justify-center gap-2 active:scale-95 ${
-                    approvalRemarks.trim()
-                      ? 'bg-slate-900 text-white shadow-slate-200 hover:bg-black'
-                      : 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed shadow-none'
-                  }`}
+                  disabled={false}
+                  className={`flex-1 h-11 rounded-lg text-[10px] font-black uppercase tracking-widest shadow-lg transition-all flex items-center justify-center gap-2 active:scale-95 bg-slate-900 text-white shadow-slate-200 hover:bg-black`}
                 >
                   <CheckCircle size={16} />
                   Approve Entry

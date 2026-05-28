@@ -40,14 +40,24 @@ const DeliveryRequestsPage: React.FC<DeliveryRequestsPageProps> = ({
       const artwork = artworks.find(a => a.id === sale.artworkId) || ({ ...sale.artworkSnapshot, id: sale.artworkId, status: 'Sold', createdAt: sale.saleDate } as any);
       if (!artwork) return false;
 
+      const title = (artwork.title || '').toLowerCase();
+      const code = (artwork.code || '').toLowerCase();
+      const clientName = (sale.clientName || '').toLowerCase();
+      const requestId = (sale.deliveryRequest?.id || '').toLowerCase();
+      const search = searchQuery.toLowerCase();
+
       const matchesSearch = 
-        artwork.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        artwork.code.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        sale.clientName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        sale.deliveryRequest?.id?.toLowerCase().includes(searchQuery.toLowerCase());
+        title.includes(search) ||
+        code.includes(search) ||
+        clientName.includes(search) ||
+        requestId.includes(search);
 
       return matchesSearch;
-    }).sort((a, b) => new Date(b.deliveryRequest!.requestedAt).getTime() - new Date(a.deliveryRequest!.requestedAt).getTime());
+    }).sort((a, b) => {
+      const dateA = new Date(a.deliveryRequest?.requestedAt || 0).getTime();
+      const dateB = new Date(b.deliveryRequest?.requestedAt || 0).getTime();
+      return dateB - dateA;
+    });
   }, [sales, artworks, searchQuery]);
 
   const handleApprove = (sale: SaleRecord) => {
@@ -252,12 +262,7 @@ const DeliveryRequestsPage: React.FC<DeliveryRequestsPageProps> = ({
                            </div>
                            <button 
                              onClick={() => handleApprove(selectedSale)}
-                             disabled={!approvalRemarks.trim()}
-                             className={`w-full py-2.5 rounded-[2px] font-semibold text-sm transition-all shadow-sm flex items-center justify-center gap-2 ${
-                                approvalRemarks.trim() 
-                                  ? 'bg-[#0078d4] text-white hover:bg-[#106ebe]' 
-                                  : 'bg-[#f3f2f1] text-[#a19f9d] cursor-not-allowed border border-[#edebe9] shadow-none'
-                              }`}
+                             className="w-full py-2.5 rounded-[2px] font-semibold text-sm transition-all shadow-sm flex items-center justify-center gap-2 bg-[#0078d4] text-white hover:bg-[#106ebe]"
                            >
                              <CheckCircle2 size={16} />
                              Approve

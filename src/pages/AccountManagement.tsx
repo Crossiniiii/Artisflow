@@ -2,6 +2,15 @@ import React, { useEffect, useState } from 'react';
 import { UserAccount, UserRole, UserPermissions } from '../types';
 import { ICONS, getDefaultPermissions, APP_TABS, getDefaultAccessibleTabs } from '../constants';
 
+const emailToName = (email: string): string => {
+  if (!email) return '';
+  const username = email.split('@')[0];
+  return username
+    .split(/[._-]/)
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(' ');
+};
+
 interface AccountManagementProps {
   accounts: UserAccount[];
   branches?: string[];
@@ -172,13 +181,15 @@ const AccountManagement: React.FC<AccountManagementProps> = ({
     branch: string;
     role: UserRole;
     permissions: UserPermissions;
+    password?: string;
   }>({
     firstName: '',
     fullName: '',
     email: '',
     branch: '',
-    role: UserRole.SALES_AGENT,
-    permissions: getDefaultPermissions(UserRole.SALES_AGENT)
+    role: UserRole.BRANCH_USER,
+    permissions: getDefaultPermissions(UserRole.BRANCH_USER),
+    password: ''
   });
 
   const hideableTabs = [
@@ -259,18 +270,22 @@ const AccountManagement: React.FC<AccountManagementProps> = ({
       fullName: acc.fullName || acc.name || '',
       email: acc.email || '',
       branch: acc.branch || '',
-      role: acc.role || UserRole.SALES_AGENT,
-      permissions: acc.permissions || getDefaultPermissions(acc.role || UserRole.SALES_AGENT)
+      role: acc.role || UserRole.BRANCH_USER,
+      permissions: acc.permissions || getDefaultPermissions(acc.role || UserRole.BRANCH_USER),
+      password: acc.password || ''
     });
     setShowEditModal(true);
   };
 
+  const seenIds = new Set<string>();
   const filteredAccounts = accounts.filter(acc => {
+    if (!acc.id || seenIds.has(acc.id)) return false;
+    seenIds.add(acc.id);
     const name = (acc.name || acc.fullName || acc.firstName || '').toString().trim();
     const email = (acc.email || '').toString().trim();
     const hasName = name.length > 0 && name.toLowerCase() !== 'undefined' && name.toLowerCase() !== 'null';
     const hasEmail = email.length > 0 && email.toLowerCase() !== 'undefined' && email.toLowerCase() !== 'null';
-    const isValid = (hasName || hasEmail) && acc.id;
+    const isValid = (hasName || hasEmail);
     if (!isValid) return false;
     if (activeTab === 'staff') return acc.role !== UserRole.EXCLUSIVE;
     return acc.role === UserRole.EXCLUSIVE;
@@ -317,8 +332,8 @@ const AccountManagement: React.FC<AccountManagementProps> = ({
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-neutral-900">Account Management</h1>
-          <p className="text-sm text-neutral-500">Manage gallery staff access and role permissions.</p>
+          <h1 className="text-2xl font-bold text-neutral-900">Branch Account Management</h1>
+          <p className="text-sm text-neutral-500">Manage gallery branch accounts, staff access, and role permissions.</p>
         </div>
         <div className="flex items-center space-x-3">
           <button
@@ -335,21 +350,22 @@ const AccountManagement: React.FC<AccountManagementProps> = ({
           </button>
           <button
             onClick={() => {
-              const defaultRole = activeTab === 'exclusive' ? UserRole.EXCLUSIVE : UserRole.SALES_AGENT;
+              const defaultRole = activeTab === 'exclusive' ? UserRole.EXCLUSIVE : UserRole.BRANCH_USER;
               setFormData({
                 firstName: '',
                 fullName: '',
                 email: '',
                 branch: '',
                 role: defaultRole,
-                permissions: getDefaultPermissions(defaultRole)
+                permissions: getDefaultPermissions(defaultRole),
+                password: ''
               });
               setShowAddModal(true);
             }}
             className="flex items-center space-x-2 bg-neutral-900 text-white px-6 py-3 rounded-md hover:bg-black transition-all shadow-md hover:shadow-lg transform hover:-translate-y-0.5 font-bold"
           >
             {ICONS.Add}
-            <span>Create New User</span>
+            <span>Create Branch Account</span>
           </button>
         </div>
       </div>
@@ -570,33 +586,23 @@ const AccountManagement: React.FC<AccountManagementProps> = ({
             <div className="p-8 space-y-4">
               {activeModalTab === 'details' && (
                 <>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-bold text-neutral-500 uppercase">First Name</label>
-                      <input
-                        type="text"
-                        className="w-full px-4 py-3 bg-neutral-50 border border-neutral-200 rounded-sm"
-                        value={formData.firstName}
-                        onChange={e => setFormData({ ...formData, firstName: e.target.value })}
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-bold text-neutral-500 uppercase">Full Name</label>
-                      <input
-                        type="text"
-                        className="w-full px-4 py-3 bg-neutral-50 border border-neutral-200 rounded-sm"
-                        value={formData.fullName}
-                        onChange={e => setFormData({ ...formData, fullName: e.target.value })}
-                      />
-                    </div>
-                  </div>
                   <div className="space-y-1">
                     <label className="text-[10px] font-bold text-neutral-500 uppercase">Email</label>
                     <input
                       type="email"
                       className="w-full px-4 py-3 bg-neutral-50 border border-neutral-200 rounded-sm"
                       value={formData.email}
-                      onChange={e => setFormData({ ...formData, email: e.target.value })}
+                      placeholder="e.g. john.doe@artisflow.com"
+                      onChange={e => {
+                        const email = e.target.value;
+                        const guessedName = emailToName(email);
+                        setFormData({
+                          ...formData,
+                          email,
+                          firstName: guessedName.split(' ')[0] || '',
+                          fullName: guessedName
+                        });
+                      }}
                     />
                   </div>
                   <div className="space-y-1">
@@ -605,20 +611,33 @@ const AccountManagement: React.FC<AccountManagementProps> = ({
                       Managed via Google Sign-in
                     </div>
                   </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-neutral-500 uppercase">Password</label>
+                    <input
+                      type="password"
+                      className="w-full px-4 py-3 bg-neutral-50 border border-neutral-200 rounded-sm text-sm"
+                      value={formData.password || ''}
+                      onChange={e => setFormData({ ...formData, password: e.target.value })}
+                      placeholder="Enter account password..."
+                    />
+                  </div>
                   {activeTab === 'staff' && (
                     <>
                       <div className="space-y-1">
-                        <label className="text-[10px] font-bold text-neutral-500 uppercase">Branch</label>
-                        <select
+                        <label className="text-[10px] font-bold text-neutral-500 uppercase">Branch Name</label>
+                        <input
+                          list="add-branches-list"
+                          type="text"
                           className="w-full px-4 py-3 bg-neutral-50 border border-neutral-200 rounded-sm text-sm"
                           value={formData.branch}
                           onChange={e => setFormData({ ...formData, branch: e.target.value })}
-                        >
-                          <option value="">Select Branch</option>
+                          placeholder="Select or type branch name..."
+                        />
+                        <datalist id="add-branches-list">
                           {branches.map(b => (
-                            <option key={b} value={b}>{b}</option>
+                            <option key={b} value={b} />
                           ))}
-                        </select>
+                        </datalist>
                       </div>
                       <div className="space-y-1">
                         <label className="text-[10px] font-bold text-neutral-500 uppercase">System Role</label>
@@ -627,7 +646,7 @@ const AccountManagement: React.FC<AccountManagementProps> = ({
                           value={formData.role}
                           onChange={e => handleRoleChange(e.target.value as UserRole)}
                         >
-                          <option value={UserRole.SALES_AGENT}>Sales Agent</option>
+                          <option value={UserRole.BRANCH_USER}>Branch User</option>
                           <option value={UserRole.INVENTORY_PERSONNEL}>Inventory Personnel</option>
                           <option value={UserRole.ADMIN}>Administrator</option>
                         </select>
@@ -658,14 +677,16 @@ const AccountManagement: React.FC<AccountManagementProps> = ({
                       fullName: formData.fullName,
                       position: formData.role,
                       branch: formData.branch,
-                      permissions: formData.permissions
+                      permissions: formData.permissions,
+                      password: formData.password
                     });
-                    const defaultRole = UserRole.SALES_AGENT;
+                    const defaultRole = UserRole.BRANCH_USER;
                     setShowAddModal(false);
                     setFormData({
                       firstName: '', fullName: '', email: '', branch: '',
                       role: defaultRole,
-                      permissions: getDefaultPermissions(defaultRole)
+                      permissions: getDefaultPermissions(defaultRole),
+                      password: ''
                     });
                   }}
                   className="px-8 py-2.5 bg-neutral-900 text-white rounded-sm font-bold shadow-lg"
@@ -709,33 +730,23 @@ const AccountManagement: React.FC<AccountManagementProps> = ({
             <div className="p-8 space-y-4">
               {activeModalTab === 'details' && (
                 <>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-bold text-neutral-500 uppercase">First Name</label>
-                      <input
-                        type="text"
-                        className="w-full px-4 py-3 bg-neutral-50 border border-neutral-200 rounded-sm"
-                        value={formData.firstName}
-                        onChange={e => setFormData({ ...formData, firstName: e.target.value })}
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-bold text-neutral-500 uppercase">Full Name</label>
-                      <input
-                        type="text"
-                        className="w-full px-4 py-3 bg-neutral-50 border border-neutral-200 rounded-sm"
-                        value={formData.fullName}
-                        onChange={e => setFormData({ ...formData, fullName: e.target.value })}
-                      />
-                    </div>
-                  </div>
                   <div className="space-y-1">
                     <label className="text-[10px] font-bold text-neutral-500 uppercase">Email</label>
                     <input
                       type="email"
                       className="w-full px-4 py-3 bg-neutral-50 border border-neutral-200 rounded-sm"
                       value={formData.email}
-                      onChange={e => setFormData({ ...formData, email: e.target.value })}
+                      placeholder="e.g. john.doe@artisflow.com"
+                      onChange={e => {
+                        const email = e.target.value;
+                        const guessedName = emailToName(email);
+                        setFormData({
+                          ...formData,
+                          email,
+                          firstName: guessedName.split(' ')[0] || '',
+                          fullName: guessedName
+                        });
+                      }}
                     />
                   </div>
                   <div className="space-y-1">
@@ -744,20 +755,33 @@ const AccountManagement: React.FC<AccountManagementProps> = ({
                       Managed via Google Sign-in
                     </div>
                   </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-neutral-500 uppercase">Password</label>
+                    <input
+                      type="password"
+                      className="w-full px-4 py-3 bg-neutral-50 border border-neutral-200 rounded-sm text-sm"
+                      value={formData.password || ''}
+                      onChange={e => setFormData({ ...formData, password: e.target.value })}
+                      placeholder="Enter account password..."
+                    />
+                  </div>
                   {activeTab === 'staff' && (
                     <>
                       <div className="space-y-1">
-                        <label className="text-[10px] font-bold text-neutral-500 uppercase">Branch</label>
-                        <select
+                        <label className="text-[10px] font-bold text-neutral-500 uppercase">Branch Name</label>
+                        <input
+                          list="edit-branches-list"
+                          type="text"
                           className="w-full px-4 py-3 bg-neutral-50 border border-neutral-200 rounded-sm text-sm"
                           value={formData.branch}
                           onChange={e => setFormData({ ...formData, branch: e.target.value })}
-                        >
-                          <option value="">Select Branch</option>
+                          placeholder="Select or type branch name..."
+                        />
+                        <datalist id="edit-branches-list">
                           {branches.map(b => (
-                            <option key={b} value={b}>{b}</option>
+                            <option key={b} value={b} />
                           ))}
-                        </select>
+                        </datalist>
                       </div>
                       <div className="space-y-1">
                         <label className="text-[10px] font-bold text-neutral-500 uppercase">System Role</label>
@@ -766,7 +790,7 @@ const AccountManagement: React.FC<AccountManagementProps> = ({
                           value={formData.role}
                           onChange={e => handleRoleChange(e.target.value as UserRole)}
                         >
-                          <option value={UserRole.SALES_AGENT}>Sales Agent</option>
+                          <option value={UserRole.BRANCH_USER}>Branch User</option>
                           <option value={UserRole.INVENTORY_PERSONNEL}>Inventory Personnel</option>
                           <option value={UserRole.ADMIN}>Administrator</option>
                         </select>
@@ -798,15 +822,17 @@ const AccountManagement: React.FC<AccountManagementProps> = ({
                       fullName: formData.fullName,
                       position: formData.role,
                       branch: formData.branch,
-                      permissions: formData.permissions
+                      permissions: formData.permissions,
+                      password: formData.password
                     });
-                    const defaultRole = UserRole.SALES_AGENT;
+                    const defaultRole = UserRole.BRANCH_USER;
                     setShowEditModal(false);
                     setEditingAccount(null);
                     setFormData({
                       firstName: '', fullName: '', email: '', branch: '',
                       role: defaultRole,
-                      permissions: getDefaultPermissions(defaultRole)
+                      permissions: getDefaultPermissions(defaultRole),
+                      password: ''
                     });
                   }}
                   className="px-8 py-2.5 bg-neutral-900 text-white rounded-sm font-bold shadow-lg"

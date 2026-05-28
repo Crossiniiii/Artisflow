@@ -23,3 +23,43 @@
   --color-blue-accent: #3B82F6;
   --color-blue-hover: #2563EB;
 }
+
+/* Premium Notification Toast Animations */
+@keyframes toast-slide-in {
+  from {
+    transform: translateX(120%) translateY(0);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0) translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes toast-slide-out {
+  from {
+    transform: translateX(0) translateY(0);
+    opacity: 1;
+  }
+  to {
+    transform: translateX(120%) translateY(0);
+    opacity: 0;
+  }
+}
+
+.toast-enter {
+  animation: toast-slide-in 0.45s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.toast-exit {
+  animation: toast-slide-out 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Hide scrollbar for horizontal scrolling elements */
+.hide-scrollbar {
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;  /* Firefox */
+}
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;  /* Chrome, Safari and Opera */
+}

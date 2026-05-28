@@ -66,9 +66,9 @@ export const useDataSync = ({ activeTab, currentUser, selectedArtworkId }: UseDa
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
 
-  const shouldLoadFullArtworks = ['inventory', 'operations', 'artwork-transfer', 'master-view', 'galleria', 'analytics', 'sales-history', 'approvals', 'requests', 'snapshots', 'audit-logs', 'import-history', 'framer', 'returned', 'deliveries', 'delivery-requests'].includes(activeTab) || !!selectedArtworkId;
-  const shouldLoadFullBusinessData = ['inventory', 'operations', 'artwork-transfer', 'master-view', 'galleria', 'analytics', 'sales-history', 'approvals', 'requests', 'snapshots', 'framer', 'returned', 'deliveries', 'delivery-requests'].includes(activeTab) || !!selectedArtworkId;
-  const shouldSyncOperationalData = ['operations', 'artwork-transfer', 'audit-logs', 'import-history', 'analytics', 'snapshots', 'master-view', 'framer', 'returned', 'deliveries', 'delivery-requests'].includes(activeTab);
+  const shouldLoadFullArtworks = ['inventory', 'operations', 'artwork-transfer', 'master-view', 'galleria', 'analytics', 'finance', 'sales-history', 'approvals', 'requests', 'snapshots', 'audit-logs', 'import-history', 'framer', 'returned', 'deliveries', 'delivery-requests'].includes(activeTab) || !!selectedArtworkId;
+  const shouldLoadFullBusinessData = ['inventory', 'operations', 'artwork-transfer', 'master-view', 'galleria', 'analytics', 'finance', 'sales-history', 'approvals', 'requests', 'snapshots', 'framer', 'returned', 'deliveries', 'delivery-requests'].includes(activeTab) || !!selectedArtworkId;
+  const shouldSyncOperationalData = ['operations', 'artwork-transfer', 'audit-logs', 'import-history', 'analytics', 'finance', 'snapshots', 'master-view', 'framer', 'returned', 'deliveries', 'delivery-requests'].includes(activeTab);
   const shouldSyncMessaging = activeTab === 'chat';
 
   const handleSyncError = useCallback((error: any, context: string) => {

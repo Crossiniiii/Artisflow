@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
@@ -12,9 +11,12 @@ import {
   FileText,
   Tag,
   Home,
-  User
+  User,
+  Truck,
+  MapPin,
+  Calendar
 } from 'lucide-react';
-import { SaleRecord, Artwork, SaleStatus } from '../types';
+import { SaleRecord, Artwork, SaleStatus, DeliveryRequestStatus } from '../types';
 import { OptimizedImage } from '../components/OptimizedImage';
 
 interface AgentRequestsPageProps {
@@ -27,6 +29,7 @@ interface AgentRequestsPageProps {
 
 const AgentRequestsPage: React.FC<AgentRequestsPageProps> = ({ sales, artworks, currentUser, onViewArtwork }) => {
   const [activeTab, setActiveTab] = useState<'all' | 'pending' | 'declined' | 'approved'>('all');
+  const [requestType, setRequestType] = useState<'all' | 'sales' | 'deliveries'>('all');
 
   const mySales = useMemo(() => {
     return sales
@@ -35,12 +38,53 @@ const AgentRequestsPage: React.FC<AgentRequestsPageProps> = ({ sales, artworks, 
   }, [sales, currentUser]);
 
   const filteredSales = useMemo(() => {
-    if (activeTab === 'all') return mySales;
-    if (activeTab === 'pending') return mySales.filter(s => s.status === SaleStatus.FOR_SALE_APPROVAL || !s.status);
-    if (activeTab === 'declined') return mySales.filter(s => s.status === SaleStatus.DECLINED);
-    if (activeTab === 'approved') return mySales.filter(s => s.status === SaleStatus.APPROVED);
-    return mySales;
-  }, [mySales, activeTab]);
+    let baseSales = mySales;
+    if (requestType === 'sales') {
+      // Show all sales
+    } else if (requestType === 'deliveries') {
+      baseSales = mySales.filter(s => !!s.deliveryRequest);
+    }
+
+    if (activeTab === 'all') return baseSales;
+
+    if (activeTab === 'pending') {
+      return baseSales.filter(s => {
+        if (requestType === 'deliveries') {
+          return s.deliveryRequest?.status === DeliveryRequestStatus.PENDING;
+        } else if (requestType === 'sales') {
+          return s.status === SaleStatus.FOR_SALE_APPROVAL || !s.status;
+        } else {
+          return (s.status === SaleStatus.FOR_SALE_APPROVAL || !s.status) || (s.deliveryRequest?.status === DeliveryRequestStatus.PENDING);
+        }
+      });
+    }
+
+    if (activeTab === 'declined') {
+      return baseSales.filter(s => {
+        if (requestType === 'deliveries') {
+          return s.deliveryRequest?.status === DeliveryRequestStatus.DECLINED || s.deliveryRequest?.status === DeliveryRequestStatus.CANCELLED;
+        } else if (requestType === 'sales') {
+          return s.status === SaleStatus.DECLINED;
+        } else {
+          return s.status === SaleStatus.DECLINED || (s.deliveryRequest?.status === DeliveryRequestStatus.DECLINED || s.deliveryRequest?.status === DeliveryRequestStatus.CANCELLED);
+        }
+      });
+    }
+
+    if (activeTab === 'approved') {
+      return baseSales.filter(s => {
+        if (requestType === 'deliveries') {
+          return s.deliveryRequest?.status === DeliveryRequestStatus.APPROVED || s.deliveryRequest?.status === DeliveryRequestStatus.DISPATCHED || s.isDelivered;
+        } else if (requestType === 'sales') {
+          return s.status === SaleStatus.APPROVED;
+        } else {
+          return s.status === SaleStatus.APPROVED || (s.deliveryRequest?.status === DeliveryRequestStatus.APPROVED || s.deliveryRequest?.status === DeliveryRequestStatus.DISPATCHED || s.isDelivered);
+        }
+      });
+    }
+
+    return baseSales;
+  }, [mySales, activeTab, requestType]);
 
   const getArtwork = (id: string) => artworks.find(a => a.id === id);
 
@@ -74,6 +118,56 @@ const AgentRequestsPage: React.FC<AgentRequestsPageProps> = ({ sales, artworks, 
     }
   };
 
+  const getDeliveryStatusBadge = (status?: DeliveryRequestStatus, isDelivered?: boolean) => {
+    if (isDelivered) {
+      return (
+        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-black uppercase tracking-widest border border-emerald-200 shadow-sm">
+          <Truck size={12} />
+          Delivered
+        </span>
+      );
+    }
+    switch (status) {
+      case DeliveryRequestStatus.PENDING:
+        return (
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-50 text-blue-700 text-[10px] font-black uppercase tracking-widest border border-blue-100 shadow-sm">
+            <Clock size={12} />
+            Delivery Pending
+          </span>
+        );
+      case DeliveryRequestStatus.APPROVED:
+        return (
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-indigo-50 text-indigo-700 text-[10px] font-black uppercase tracking-widest border border-indigo-100 shadow-sm">
+            <Calendar size={12} />
+            Delivery Scheduled
+          </span>
+        );
+      case DeliveryRequestStatus.DISPATCHED:
+        return (
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-50 text-amber-700 text-[10px] font-black uppercase tracking-widest border border-amber-100 shadow-sm animate-pulse">
+            <Truck size={12} />
+            Out for Delivery
+          </span>
+        );
+      case DeliveryRequestStatus.DECLINED:
+        return (
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-rose-50 text-rose-700 text-[10px] font-black uppercase tracking-widest border border-rose-100 shadow-sm">
+            <XCircle size={12} />
+            Delivery Declined
+          </span>
+        );
+      case DeliveryRequestStatus.CANCELLED:
+        return (
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-neutral-100 text-neutral-600 text-[10px] font-black uppercase tracking-widest border border-neutral-200 shadow-sm">
+            <XCircle size={12} />
+            Delivery Cancelled
+          </span>
+        );
+      default:
+        return null;
+    }
+  };
+
   return (
     <div className="max-w-[1400px] mx-auto space-y-10 animate-in fade-in duration-500">
       {/* Header Section */}
@@ -84,7 +178,26 @@ const AgentRequestsPage: React.FC<AgentRequestsPageProps> = ({ sales, artworks, 
             Submission Hub
           </div>
           <h1 className="text-4xl font-black text-neutral-900 tracking-tight">My Requests</h1>
-          <p className="text-sm font-medium text-neutral-500 mt-2">Track your sale declarations and handle admin feedback.</p>
+          <p className="text-sm font-medium text-neutral-500 mt-2">Track your sale declarations, delivery requests, and handle admin feedback.</p>
+        </div>
+      </div>
+
+      {/* Filter / Type Controls */}
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-neutral-50 p-5 rounded-2xl border border-neutral-200/80">
+        <div className="flex flex-wrap gap-2">
+          {(['all', 'sales', 'deliveries'] as const).map(type => (
+            <button
+              key={type}
+              onClick={() => setRequestType(type)}
+              className={`px-5 py-2.5 text-xs font-black uppercase tracking-wider rounded-xl transition-all ${
+                requestType === type
+                  ? 'bg-neutral-900 text-white shadow-md'
+                  : 'text-neutral-500 hover:text-neutral-800 bg-white border border-neutral-200'
+              }`}
+            >
+              {type === 'all' ? 'All Requests' : type === 'sales' ? 'Sales Declarations' : 'Delivery Requests'}
+            </button>
+          ))}
         </div>
 
         <div className="flex gap-1 p-1 bg-neutral-100 rounded-xl border border-neutral-200">
@@ -118,7 +231,7 @@ const AgentRequestsPage: React.FC<AgentRequestsPageProps> = ({ sales, artworks, 
             </div>
             <div className="text-center">
               <p className="text-sm font-black uppercase tracking-[0.2em] text-neutral-400">No requests found</p>
-              <p className="text-[10px] font-bold mt-1 tracking-widest">Your sale declarations will appear here once submitted.</p>
+              <p className="text-[10px] font-bold mt-1 tracking-widest">Your submitted items will appear here once registered.</p>
             </div>
           </div>
         ) : (
@@ -149,8 +262,9 @@ const AgentRequestsPage: React.FC<AgentRequestsPageProps> = ({ sales, artworks, 
                       </div>
                     )}
                     <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent lg:hidden" />
-                    <div className="absolute bottom-4 left-4 lg:hidden">
+                    <div className="absolute bottom-4 left-4 lg:hidden flex flex-col gap-1.5">
                       {getStatusBadge(sale.status)}
+                      {sale.deliveryRequest && getDeliveryStatusBadge(sale.deliveryRequest.status, sale.isDelivered)}
                     </div>
                   </div>
 
@@ -158,8 +272,9 @@ const AgentRequestsPage: React.FC<AgentRequestsPageProps> = ({ sales, artworks, 
                   <div className="flex-1 p-6 lg:p-8 flex flex-col justify-between gap-6">
                     <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
                       <div>
-                        <div className="hidden lg:block mb-3">
+                        <div className="hidden lg:flex items-center gap-2 mb-3">
                           {getStatusBadge(sale.status)}
+                          {sale.deliveryRequest && getDeliveryStatusBadge(sale.deliveryRequest.status, sale.isDelivered)}
                         </div>
                         <h3 className="text-2xl font-black text-neutral-900 tracking-tight leading-tight">{art?.title || 'Untitled Artwork'}</h3>
                         <p className="text-sm font-bold text-neutral-500 uppercase tracking-widest mt-1">{art?.artist || 'Unknown Artist'}</p>
@@ -219,6 +334,75 @@ const AgentRequestsPage: React.FC<AgentRequestsPageProps> = ({ sales, artworks, 
                         </div>
                       </div>
                     </div>
+
+                    {/* Integrated Delivery logistics details */}
+                    {sale.deliveryRequest && (
+                      <div className="p-5 bg-neutral-50 rounded-2xl border border-neutral-200/80 space-y-4">
+                        <div className="flex items-center justify-between border-b border-neutral-200 pb-2">
+                          <div className="flex items-center gap-2">
+                            <Truck size={16} className="text-neutral-500" />
+                            <span className="text-[10px] font-black text-neutral-600 uppercase tracking-widest">Delivery Logistics Request</span>
+                          </div>
+                          {getDeliveryStatusBadge(sale.deliveryRequest.status, sale.isDelivered)}
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                          <div className="flex items-start gap-2.5">
+                            <MapPin size={15} className="text-neutral-400 mt-0.5 flex-shrink-0" />
+                            <div>
+                              <span className="text-[9px] font-bold text-neutral-400 uppercase tracking-wider block mb-0.5">Destination Address</span>
+                              <span className="font-bold text-neutral-800 leading-relaxed">
+                                {sale.deliveryRequest.clientAddress || 
+                                 [sale.deliveryRequest.street, sale.deliveryRequest.barangay, sale.deliveryRequest.city, sale.deliveryRequest.province].filter(Boolean).join(', ')}
+                              </span>
+                            </div>
+                          </div>
+                          
+                          <div className="flex items-start gap-2.5">
+                            <Calendar size={15} className="text-neutral-400 mt-0.5 flex-shrink-0" />
+                            <div>
+                              <span className="text-[9px] font-bold text-neutral-400 uppercase tracking-wider block mb-0.5">Scheduled Delivery Date</span>
+                              <span className="font-bold text-neutral-800">
+                                {sale.deliveryRequest.deliveryDate ? new Date(sale.deliveryRequest.deliveryDate).toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) : 'To Be Scheduled'}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Extra Details */}
+                        {(sale.deliveryRequest.extraPersonnelCount > 0 || (sale.deliveryRequest.toolsNeeded && sale.deliveryRequest.toolsNeeded.length > 0)) && (
+                          <div className="pt-2.5 border-t border-neutral-200/60 flex flex-wrap gap-x-6 gap-y-2 text-[11px]">
+                            {sale.deliveryRequest.extraPersonnelCount > 0 && (
+                              <div className="text-neutral-600">
+                                <strong>Personnel:</strong> {sale.deliveryRequest.extraPersonnelCount} Extra Crew Member(s)
+                              </div>
+                            )}
+                            {sale.deliveryRequest.toolsNeeded && sale.deliveryRequest.toolsNeeded.length > 0 && (
+                              <div className="text-neutral-600">
+                                <strong>Required Tools:</strong> {sale.deliveryRequest.toolsNeeded.join(', ')}
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {sale.deliveryRequest.status === DeliveryRequestStatus.DECLINED && sale.deliveryRequest.declineReason && (
+                          <div className="pt-3 border-t border-neutral-200 flex items-start gap-2 text-xs text-rose-700 bg-rose-50/50 p-2.5 rounded-lg border border-rose-100">
+                            <AlertCircle size={14} className="mt-0.5 flex-shrink-0" />
+                            <div>
+                              <strong>Logistics Decline Reason:</strong> "{sale.deliveryRequest.declineReason}"
+                            </div>
+                          </div>
+                        )}
+                        {sale.deliveryRequest.status === DeliveryRequestStatus.CANCELLED && sale.deliveryRequest.cancellationReason && (
+                          <div className="pt-3 border-t border-neutral-200 flex items-start gap-2 text-xs text-neutral-600 bg-neutral-100 p-2.5 rounded-lg border border-neutral-200">
+                            <AlertCircle size={14} className="mt-0.5 flex-shrink-0" />
+                            <div>
+                              <strong>Logistics Cancellation Reason:</strong> "{sale.deliveryRequest.cancellationReason}"
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
 
                     {isDeclined && sale.declineReason && (
                       <div className="mt-4 p-5 bg-white rounded-2xl border border-rose-100 shadow-sm animate-in slide-in-from-left-2 duration-500">

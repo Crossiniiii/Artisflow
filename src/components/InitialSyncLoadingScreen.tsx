@@ -138,7 +138,7 @@ const InitialSyncLoadingScreen: React.FC<InitialSyncLoadingScreenProps> = ({
 
         <div className="bg-neutral-50 rounded-xl p-4 mb-6">
           <Step label="Artworks Database" isLoading={isLoadingArtworks} />
-          <Step label="User Accounts" isLoading={isLoadingUsers} />
+          <Step label="Branch Accounts" isLoading={isLoadingUsers} />
           <Step label="Events & Exhibitions" isLoading={isLoadingEvents} />
           <Step label="Sales Records" isLoading={isLoadingSales} />
         </div>

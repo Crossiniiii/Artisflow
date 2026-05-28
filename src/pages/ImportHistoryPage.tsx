@@ -107,12 +107,11 @@ const ImportHistoryPage: React.FC<ImportHistoryPageProps> = ({ logs, preventDupl
         backgroundColor: '#ffffff'
       });
 
-      const imgData = canvas.toDataURL('image/png');
       const pdf = new jsPDF('l', 'mm', 'a4');
       const pdfWidth = pdf.internal.pageSize.getWidth();
       const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
 
-      pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+      pdf.addImage(canvas, 'PNG', 0, 0, pdfWidth, pdfHeight);
       pdf.save(`Import_History_${new Date().toISOString().split('T')[0]}.pdf`);
     } catch (err) {
       console.error('Failed to export PDF', err);
@@ -180,6 +179,26 @@ const ImportHistoryPage: React.FC<ImportHistoryPageProps> = ({ logs, preventDupl
     }
   };
 
+  const getNewImportCount = (log: ImportRecord) => {
+    const importedCount = log.importedIds?.length || 0;
+    const updatedCount = log.updatedIds?.length || 0;
+    if (importedCount > 0 || updatedCount > 0) return Math.max(importedCount - updatedCount, 0);
+    if (typeof log.successCount === 'number') return log.successCount;
+    if (typeof log.failCount === 'number') return Math.max((log.recordCount || 0) - log.failCount, 0);
+    return log.status === 'Failed' ? 0 : log.recordCount || 0;
+  };
+
+  const getFailedImportCount = (log: ImportRecord) => {
+    return log.failedItems?.length || log.failCount || 0;
+  };
+
+  const isItemDetailMissing = (log: ImportRecord) => {
+    return getNewImportCount(log) + (log.updatedIds?.length || 0) + getFailedImportCount(log) > 0
+      && (log.importedIds?.length || 0) === 0
+      && (log.updatedIds?.length || 0) === 0
+      && (log.failedItems?.length || 0) === 0;
+  };
+
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
       {analyzingLog && (
@@ -221,9 +240,7 @@ const ImportHistoryPage: React.FC<ImportHistoryPageProps> = ({ logs, preventDupl
                     : 'border-transparent text-neutral-400 hover:text-neutral-600'
                   }`}
               >
-                New ({
-                  (analyzingLog.importedIds?.length || 0) - (analyzingLog.updatedIds?.length || 0)
-                })
+                New ({getNewImportCount(analyzingLog)})
               </button>
               <button
                 onClick={() => setAnalysisTab('repeating')}
@@ -241,7 +258,7 @@ const ImportHistoryPage: React.FC<ImportHistoryPageProps> = ({ logs, preventDupl
                     : 'border-transparent text-neutral-400 hover:text-neutral-600'
                   }`}
               >
-                Failed ({analyzingLog.failedItems?.length || 0})
+                Failed ({getFailedImportCount(analyzingLog)})
               </button>
             </div>
 
@@ -251,6 +268,20 @@ const ImportHistoryPage: React.FC<ImportHistoryPageProps> = ({ logs, preventDupl
                 if (analysisTab === 'failed') {
                   const failedItems = analyzingLog.failedItems || [];
                   if (failedItems.length === 0) {
+                    const failedCount = getFailedImportCount(analyzingLog);
+                    if (failedCount > 0) {
+                      return (
+                        <div className="flex flex-col items-center justify-center h-64 text-center max-w-md mx-auto">
+                          <div className="w-16 h-16 bg-amber-50 rounded-sm flex items-center justify-center text-amber-500 mb-4 border border-amber-100">
+                            <HelpCircle size={32} />
+                          </div>
+                          <p className="text-neutral-700 font-bold">{failedCount} failed item{failedCount === 1 ? '' : 's'} were recorded.</p>
+                          <p className="text-sm text-neutral-500 mt-2">
+                            This older import log did not save row-level failure details, so the exact failed rows cannot be displayed.
+                          </p>
+                        </div>
+                      );
+                    }
                     return (
                       <div className="flex flex-col items-center justify-center h-64 text-center">
                         <div className="w-16 h-16 bg-neutral-100 rounded-sm flex items-center justify-center text-neutral-300 mb-4">
@@ -289,6 +320,26 @@ const ImportHistoryPage: React.FC<ImportHistoryPageProps> = ({ logs, preventDupl
                 const artworksToShow = getLogArtworks(analyzingLog, analysisTab === 'imported' ? 'imported' : 'updated');
 
                 if (artworksToShow.length === 0) {
+                  if (isItemDetailMissing(analyzingLog)) {
+                    const count = analysisTab === 'imported'
+                      ? getNewImportCount(analyzingLog)
+                      : analyzingLog.updatedIds?.length || 0;
+
+                    if (count > 0) {
+                      return (
+                        <div className="flex flex-col items-center justify-center h-64 text-center max-w-md mx-auto">
+                          <div className="w-16 h-16 bg-amber-50 rounded-sm flex items-center justify-center text-amber-500 mb-4 border border-amber-100">
+                            <HelpCircle size={32} />
+                          </div>
+                          <p className="text-neutral-700 font-bold">{count} {analysisTab === 'imported' ? 'new' : 'repeating'} item{count === 1 ? '' : 's'} were recorded.</p>
+                          <p className="text-sm text-neutral-500 mt-2">
+                            This older import log only saved summary counts, so the exact artwork list is unavailable.
+                          </p>
+                        </div>
+                      );
+                    }
+                  }
+
                   return (
                     <div className="flex flex-col items-center justify-center h-64 text-center">
                       <div className="w-16 h-16 bg-neutral-100 rounded-sm flex items-center justify-center text-neutral-300 mb-4">

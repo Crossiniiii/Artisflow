@@ -22,6 +22,7 @@ CREATE TABLE IF NOT EXISTS profiles (
   permissions JSONB,
   last_login TEXT,
   position TEXT,
+  password TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -396,6 +397,24 @@ ALTER PUBLICATION supabase_realtime ADD TABLE notifications;
 ALTER PUBLICATION supabase_realtime ADD TABLE conversations;
 ALTER PUBLICATION supabase_realtime ADD TABLE messages;
 ALTER PUBLICATION supabase_realtime ADD TABLE branches;
+
+-- ============================================================
+-- 19. PERFORMANCE OPTIMIZATION INDEXES
+-- ============================================================
+-- Accelerate authentication lookups
+CREATE UNIQUE INDEX IF NOT EXISTS idx_profiles_email ON profiles (email);
+
+-- Partial index for unread notifications count (highly optimized)
+CREATE INDEX IF NOT EXISTS idx_notifications_unread ON notifications (is_read) WHERE is_read = FALSE;
+
+-- Accelerate event dashboard status filters
+CREATE INDEX IF NOT EXISTS idx_events_status ON events (status);
+
+-- Logistics and logical lookup columns
+CREATE INDEX IF NOT EXISTS idx_transfer_requests_artwork_id ON transfer_requests (artwork_id);
+CREATE INDEX IF NOT EXISTS idx_transfer_requests_status ON transfer_requests (status);
+CREATE INDEX IF NOT EXISTS idx_returns_artwork_id ON returns (artwork_id);
+CREATE INDEX IF NOT EXISTS idx_framer_records_artwork_id ON framer_records (artwork_id);
 
 -- ============================================================
 -- DONE! Your new Supabase project is ready.

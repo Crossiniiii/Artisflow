@@ -73,6 +73,13 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({ status, sale, artworkP
                     Update Required
                 </div>
             );
+        } else if (dStatus === 'Cancelled') {
+            logBadge = (
+                <div className="flex items-center gap-1.5 px-2 py-0.5 bg-[#f3f2f1] text-[#605e5c] border border-[#c8c6c4]/50 rounded-sm text-[8px] font-black uppercase tracking-widest shadow-sm">
+                    <div className="w-1.5 h-1.5 rounded-full bg-[#605e5c]" />
+                    Delivery Cancelled
+                </div>
+            );
         }
 
         if (logBadge) {

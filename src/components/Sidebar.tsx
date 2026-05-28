@@ -52,17 +52,16 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, userRole, us
 
   const allMenuItems: MenuItem[] = [
     { id: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard />, groupId: 'main' },
-    { id: 'finance', label: 'Finance', icon: <CreditCard />, groupId: 'inventory' },
+    { id: 'finance', label: 'Finance', icon: <CreditCard />, groupId: 'sales' },
     { id: 'analytics', label: 'Inventory Insights', icon: <BarChart3 />, groupId: 'inventory' },
     { id: 'artwork-transfer', label: 'Artwork T/R', icon: <ArrowRightLeft />, groupId: 'inventory' },
     { id: 'snapshots', label: 'Artwork Timeline', icon: <History />, groupId: 'inventory' },
     { id: 'approvals', label: 'Finance Approval', icon: <ShieldCheck />, groupId: 'sales' },
     { id: 'requests', label: 'My Requests', icon: <MessageSquare />, groupId: 'sales' },
     { id: 'sales-history', label: 'Sales History', icon: ICONS.Sales, groupId: 'sales' },
-    { id: 'deliveries', label: 'Delivery Approval', icon: ICONS.Truck, groupId: 'sales' },
+    { id: 'deliveries', label: 'Delivery Approval', icon: ICONS.Truck, groupId: 'inventory' },
     { id: 'operations', label: 'Gallery Operations', icon: <Settings2 />, groupId: 'management' },
-    { id: 'accounts', label: 'User Accounts', icon: ICONS.Users, groupId: 'management' },
-    { id: 'chat', label: 'Inbox & Messaging', icon: ICONS.Chat, groupId: 'management' },
+    { id: 'accounts', label: 'Branch Accounts', icon: ICONS.Users, groupId: 'management' },
     { id: 'audit-logs', label: 'System Audit Logs', icon: <ShieldEllipsis />, groupId: 'logs' },
     { id: 'import-history', label: 'Import History', icon: <FileSpreadsheet />, groupId: 'logs' }
   ];
@@ -230,7 +229,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, userRole, us
                       <span className={`transition-colors duration-200 ${isActive ? 'text-white' : 'text-neutral-400 group-hover:text-neutral-900'}`}>
                         {React.cloneElement(item.icon as React.ReactElement<any>, { size: 16 })}
                       </span>
-                      <span className="text-[12px] font-black tracking-tight flex-1 text-left uppercase">
+                      <span className="text-[12px] font-black tracking-tight flex-1 text-left uppercase whitespace-nowrap">
                         {item.label}
                       </span>
 

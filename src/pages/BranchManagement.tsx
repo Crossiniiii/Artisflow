@@ -1,16 +1,18 @@
 import React, { useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { Plus, Trash2, Edit2, MapPin, Building2, Search, Package, Sparkles, ArrowLeft, XCircle, AlertCircle, AlertTriangle, ShoppingBag, Clock, ArrowRightLeft, Calendar, CheckCircle2, ClipboardCheck, Gavel, X, Eye, EyeOff, Frame, RotateCcw, Image as ImageIcon, Wrench, Upload, RefreshCw, ChevronRight } from 'lucide-react';
+import { Plus, Trash2, Edit2, MapPin, Building2, Search, Package, Sparkles, ArrowLeft, XCircle, AlertCircle, ShoppingBag, Calendar, CheckCircle2, ChevronRight, X } from 'lucide-react';
 import { Artwork, ArtworkStatus, Branch, ExhibitionEvent, SaleRecord, UserPermissions } from '../types';
 import { PriceRangeFilter } from '../components/PriceRangeFilter';
 import { BulkActionModal } from '../components/modals/BulkActionModal';
-import { compressImage } from '../utils/imageUtils';
-import { compressBase64Image } from '../services/imageService';
 import { BRANCH_CATEGORIES } from '../constants';
 import { OptimizedImage } from '../components/OptimizedImage';
+import { formatDimensions } from '../utils/unitUtils';
 import { useActionProcessing } from '../hooks/useActionProcessing';
-import LoadingOverlay from '../components/LoadingOverlay';
-import { OptimizedTextarea } from '../components/OptimizedTextarea';
+
+// Import extracted sub-components
+import { BranchFormModal } from '../components/branch/BranchFormModal';
+import { BranchInventoryCart } from '../components/branch/BranchInventoryCart';
+import { ArtistInventoryViewerModal } from '../components/branch/ArtistInventoryViewerModal';
 
 interface BranchManagementProps {
   branches: string[];
@@ -38,7 +40,6 @@ interface BranchManagementProps {
   canEdit?: boolean;
   permissions?: UserPermissions;
 }
-
 
 const BranchManagement: React.FC<BranchManagementProps> = ({
   branches,
@@ -117,7 +118,6 @@ const BranchManagement: React.FC<BranchManagementProps> = ({
     });
   }, [artworks, permissions]);
 
-
   const priceStats = useMemo(() => {
     const branchArtworks = activeBranch ? permittedArtworks.filter(a => a.currentBranch === activeBranch) : [];
     const prices = branchArtworks.map(a => a.price || 0).filter(p => p > 0);
@@ -143,7 +143,6 @@ const BranchManagement: React.FC<BranchManagementProps> = ({
   const [statusFilter, setStatusFilter] = useState<string>('All');
   const [mediumFilter, setMediumFilter] = useState<string>('All');
   const [searchQuery, setSearchQuery] = useState<string>('');
-  const [sortBy, setSortBy] = useState<string>('Newest');
   const [bulkActionModal, setBulkActionModal] = useState<{ type: 'sale' | 'reserve' | 'delete' | 'transfer' | 'auction' | 'framer' | 'return' } | null>(null);
   const [bulkActionValue, setBulkActionValue] = useState('');
   const [bulkClientEmail, setBulkClientEmail] = useState('');
@@ -151,14 +150,13 @@ const BranchManagement: React.FC<BranchManagementProps> = ({
   
   const existingCategories = useMemo(() => {
     const cats = new Set<string>();
-    // Add predefined categories
     BRANCH_CATEGORIES.forEach(c => cats.add(c));
-    // Add categories currently in use by branches
     Object.values(branchCategories || {}).forEach(c => {
       if (c) cats.add(c);
     });
     return Array.from(cats).sort();
   }, [branchCategories]);
+
   const [bulkDownpayment, setBulkDownpayment] = useState('');
   const [bulkSaleDownpayments, setBulkSaleDownpayments] = useState<Record<string, string>>({});
   const [bulkSaleInstallmentsEnabled, setBulkSaleInstallmentsEnabled] = useState<Record<string, boolean>>({});
@@ -467,7 +465,7 @@ const BranchManagement: React.FC<BranchManagementProps> = ({
             setReservationTab('auction');
             setBulkActionModal({ type: 'reserve' });
           } else {
-            setReservationTab(type === 'reserve' ? 'person' : 'person');
+            setReservationTab('person');
             setBulkActionModal({ type: type as any });
           }
           setIsCartOpen(true);
@@ -501,7 +499,6 @@ const BranchManagement: React.FC<BranchManagementProps> = ({
   const handleBulkActionSubmit = async (targetTabInput?: any) => {
     if (!bulkActionModal || selectedArtworkIds.length === 0) return;
 
-    // Derive target tab if not provided (e.g. called from onClick which passes MouseEvent)
     let targetTab: any = typeof targetTabInput === 'string' ? targetTabInput : null;
 
     if (!targetTab) {
@@ -726,40 +723,24 @@ const BranchManagement: React.FC<BranchManagementProps> = ({
     }
     return true;
   });
+
   const availableYearOptions: number[] = [];
   for (let year = now.getFullYear(); year >= 2000; year--) {
     availableYearOptions.push(year);
   }
+
   const branchTotalItems = activeBranchArtworks.length;
   const branchAvailableCount = activeBranchArtworks.filter(a => a.status === ArtworkStatus.AVAILABLE).length;
   const branchReservedCount = activeBranchArtworks.filter(a => a.status === ArtworkStatus.RESERVED).length;
   const branchSoldCount = activeBranchArtworks.filter(a => a.status === ArtworkStatus.SOLD).length;
   const branchDeliveredCount = activeBranchArtworks.filter(a => a.status === ArtworkStatus.DELIVERED).length;
   const branchCancelledCount = activeBranchArtworks.filter(a => a.status === ArtworkStatus.CANCELLED).length;
-  const branchTotalValue = activeBranchArtworks.reduce((sum, art) => sum + (art.price || 0), 0);
   const branchAvailableValue = activeBranchArtworks
     .filter(a => a.status === ArtworkStatus.AVAILABLE)
     .reduce((sum, art) => sum + (art.price || 0), 0);
-  const branchAveragePrice = branchTotalItems > 0 ? branchTotalValue / branchTotalItems : 0;
-  const branchAvailablePercentage =
-    branchTotalItems > 0 ? Math.round((branchAvailableCount / branchTotalItems) * 100) : 0;
-  const branchSellThroughPercentage =
-    branchTotalItems > 0 ? Math.round(((branchSoldCount + branchDeliveredCount) / branchTotalItems) * 100) : 0;
+
   const activeBranchAddress = activeBranch ? branchAddresses?.[activeBranch] : undefined;
-  const activeBranchIds = new Set(activeBranchArtworks.map(a => a.id));
-  const branchSales = (sales || []).filter(
-    s => !s.isCancelled && activeBranchIds.has(s.artworkId)
-  );
-  const branchSalesCount = branchSales.length;
-  const branchDeliveredSalesCount = branchSales.filter(s => s.isDelivered).length;
-  const branchLastSaleDate =
-    branchSalesCount > 0
-      ? new Date(
-        Math.max(
-          ...branchSales.map(s => new Date(s.saleDate).getTime())
-        )
-      )
-      : null;
+
   const cartArtworks = useMemo(() => {
     const rawCart = permittedArtworks.filter(a => selectedArtworkIds.includes(String(a.id)));
     return Array.from(new Map(rawCart.map(item => [String(item.id), item])).values());
@@ -770,6 +751,7 @@ const BranchManagement: React.FC<BranchManagementProps> = ({
     () => cartArtworks.reduce((sum, art) => sum + (art.price || 0), 0),
     [cartArtworks]
   );
+
   const availableForArtist =
     selectedArtist
       ? activeBranchArtworks.filter(
@@ -875,14 +857,14 @@ const BranchManagement: React.FC<BranchManagementProps> = ({
     );
   }, [currentList, modalSearch, modalStatus, modalMedium, modalYear, modalSize, modalFramedSize, showSelectedOnly, selectedArtworkIds]);
 
-  const modalUniqueMediums = useMemo(() => Array.from(new Set(currentList.map(a => a.medium).filter(Boolean))).sort(), [currentList]);
+  const modalUniqueMediums = useMemo(() => Array.from(new Set(currentList.map(a => a.medium).filter((m): m is string => Boolean(m)))).sort(), [currentList]);
   const modalUniqueYears = useMemo(() => Array.from(new Set(currentList.map(a => {
     const d = new Date(a.date || a.createdAt);
     return !isNaN(d.getTime()) ? d.getFullYear().toString() : '';
-  }).filter(Boolean))).sort().reverse(), [currentList]);
-  const modalUniqueStatuses = useMemo(() => Array.from(new Set(currentList.map(a => a.status).filter(Boolean))).sort(), [currentList]);
-  const modalUniqueSizes = useMemo(() => Array.from(new Set(currentList.map(a => a.dimensions).filter(Boolean))).sort(), [currentList]);
-  const modalUniqueFramedSizes = useMemo(() => Array.from(new Set(currentList.map(a => a.sizeFrame).filter(Boolean))).sort(), [currentList]);
+  }).filter((y): y is string => Boolean(y)))).sort().reverse(), [currentList]);
+  const modalUniqueStatuses = useMemo(() => Array.from(new Set(currentList.map(a => a.status as string).filter((s): s is string => Boolean(s)))).sort(), [currentList]);
+  const modalUniqueSizes = useMemo(() => Array.from(new Set(currentList.map(a => a.dimensions).filter((d): d is string => Boolean(d)))).sort(), [currentList]);
+  const modalUniqueFramedSizes = useMemo(() => Array.from(new Set(currentList.map(a => a.sizeFrame).filter((f): f is string => Boolean(f)))).sort(), [currentList]);
 
   const allSelectedForArtist =
     filteredCurrentList.length > 0 &&
@@ -1165,7 +1147,6 @@ const BranchManagement: React.FC<BranchManagementProps> = ({
             </div>
           )}
         </div>
-
       </div>
 
       {errorModal && (
@@ -1181,10 +1162,7 @@ const BranchManagement: React.FC<BranchManagementProps> = ({
               </button>
             </div>
             <div className="p-6 space-y-4">
-              <div
-                className={`p-4 rounded-xl flex items-start gap-3 ${errorModal.onConfirm ? 'bg-neutral-50 text-neutral-900' : 'bg-neutral-50 text-neutral-900'
-                  }`}
-              >
+              <div className="p-4 rounded-xl flex items-start gap-3 bg-neutral-50 text-neutral-900">
                 <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
                 <p className="text-sm whitespace-pre-line leading-relaxed">{errorModal.message}</p>
               </div>
@@ -1218,12 +1196,10 @@ const BranchManagement: React.FC<BranchManagementProps> = ({
 
       {activeBranch && createPortal(
         <div
-          className={`fixed inset-x-0 top-0 z-[120] flex items-center justify-center bg-neutral-900/60 backdrop-blur-sm p-4 transition-all duration-300`}
-          style={{
-            bottom: '0'
-          }}
+          className="fixed inset-x-0 top-0 z-[120] flex items-center justify-center bg-neutral-900/60 backdrop-blur-sm p-4"
+          style={{ bottom: '0' }}
         >
-          <div className={`bg-white w-full max-w-5xl rounded-3xl shadow-2xl overflow-hidden flex flex-col border border-neutral-200 transition-all duration-300 max-h-full`}>
+          <div className="bg-white w-full max-w-5xl rounded-3xl shadow-2xl overflow-hidden flex flex-col border border-neutral-200 max-h-full">
             <div className="px-6 py-4 border-b border-neutral-200 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 bg-white relative">
               <div className="flex items-start gap-4 pr-0 md:pr-20 w-full md:w-auto">
                 <button
@@ -1269,39 +1245,36 @@ const BranchManagement: React.FC<BranchManagementProps> = ({
             </div>
             <div className="flex-1 overflow-y-auto bg-neutral-50">
               <div className="max-w-6xl mx-auto px-6 pt-6 pb-24 space-y-4">
-                {!exclusiveBranches?.includes(activeBranch) && (branchTotalItems === 0 || branchAvailableCount > 0 || branchReservedCount > 0 || branchSoldCount > 0 || branchDeliveredCount > 0) && (
-                  <>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                      <div className="bg-white border border-neutral-200 rounded-md p-4 shadow-sm flex flex-col">
-                        <span className="text-[11px] font-bold uppercase tracking-wider text-neutral-500">Total Items</span>
-                        <span className="mt-1 text-2xl font-black text-neutral-900">{branchTotalItems.toLocaleString()}</span>
-                      </div>
-                      <div className="bg-white border border-neutral-200 rounded-md p-4 shadow-sm flex flex-col">
-                        <span className="text-[11px] font-bold uppercase tracking-wider text-neutral-700">Available</span>
-                        <span className="mt-1 text-2xl font-black text-neutral-900">{branchAvailableCount.toLocaleString()}</span>
-                        <span className="text-[11px] text-neutral-500 mt-1">₱{branchAvailableValue.toLocaleString()} value</span>
-                      </div>
-                      <div className="bg-white border border-neutral-200 rounded-md p-4 shadow-sm flex flex-col">
-                        <span className="text-[11px] font-bold uppercase tracking-wider text-neutral-700">Reserved</span>
-                        <span className="mt-1 text-xl font-black text-neutral-900">{branchReservedCount.toLocaleString()}</span>
-                        <span className="text-[11px] text-neutral-500 mt-1">{branchCancelledCount.toLocaleString()} cancelled</span>
-                      </div>
-                      <div className="bg-white border border-neutral-200 rounded-md p-4 shadow-sm flex flex-col">
-                        <span className="text-[11px] font-bold uppercase tracking-wider text-neutral-700">Sold / Delivered</span>
-                        <span className="mt-1 text-xl font-black text-neutral-900">
-                          {branchSoldCount.toLocaleString()} Sold
-                        </span>
-                        <span className="text-[11px] text-neutral-500 mt-1">
-                          {branchDeliveredCount.toLocaleString()} Delivered
-                        </span>
-                      </div>
+                {!exclusiveBranches?.includes(activeBranch) && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div className="bg-white border border-neutral-200 rounded-md p-4 shadow-sm flex flex-col">
+                      <span className="text-[11px] font-bold uppercase tracking-wider text-neutral-500">Total Items</span>
+                      <span className="mt-1 text-2xl font-black text-neutral-900">{branchTotalItems.toLocaleString()}</span>
                     </div>
-                  </>
+                    <div className="bg-white border border-neutral-200 rounded-md p-4 shadow-sm flex flex-col">
+                      <span className="text-[11px] font-bold uppercase tracking-wider text-neutral-700">Available</span>
+                      <span className="mt-1 text-2xl font-black text-neutral-900">{branchAvailableCount.toLocaleString()}</span>
+                      <span className="text-[11px] text-neutral-500 mt-1">₱{branchAvailableValue.toLocaleString()} value</span>
+                    </div>
+                    <div className="bg-white border border-neutral-200 rounded-md p-4 shadow-sm flex flex-col">
+                      <span className="text-[11px] font-bold uppercase tracking-wider text-neutral-700">Reserved</span>
+                      <span className="mt-1 text-xl font-black text-neutral-900">{branchReservedCount.toLocaleString()}</span>
+                      <span className="text-[11px] text-neutral-500 mt-1">{branchCancelledCount.toLocaleString()} cancelled</span>
+                    </div>
+                    <div className="bg-white border border-neutral-200 rounded-md p-4 shadow-sm flex flex-col">
+                      <span className="text-[11px] font-bold uppercase tracking-wider text-neutral-700">Sold / Delivered</span>
+                      <span className="mt-1 text-xl font-black text-neutral-900">
+                        {branchSoldCount.toLocaleString()} Sold
+                      </span>
+                      <span className="text-[11px] text-neutral-500 mt-1">
+                        {branchDeliveredCount.toLocaleString()} Delivered
+                      </span>
+                    </div>
+                  </div>
                 )}
                 <div className="bg-white rounded-2xl border border-neutral-200 shadow-sm">
                   <div className="px-6 py-5 border-b border-neutral-100 flex flex-col xl:flex-row xl:items-center justify-between gap-6 bg-white relative overflow-hidden">
                     <div className="absolute top-0 right-0 w-64 h-full bg-gradient-to-l from-neutral-50 to-transparent pointer-events-none" />
-
                     <div className="relative z-10 flex items-center gap-4">
                       <div className="flex items-center justify-center w-12 h-12 rounded-sm bg-neutral-900 text-white shadow-lg shadow-neutral-900/20">
                         <Sparkles size={20} />
@@ -1363,8 +1336,7 @@ const BranchManagement: React.FC<BranchManagementProps> = ({
                         </div>
                       </div>
 
-                      <div className={`flex flex-col md:flex-row flex-wrap items-start md:items-center gap-3 transition-all duration-300 overflow-hidden ${isMobileFiltersOpen ? 'max-h-[500px] opacity-100' : 'max-h-0 opacity-0 md:max-h-none md:opacity-100'
-                        }`}>
+                      <div className={`flex flex-col md:flex-row flex-wrap items-start md:items-center gap-3 transition-all duration-300 overflow-hidden ${isMobileFiltersOpen ? 'max-h-[500px] opacity-100' : 'max-h-0 opacity-0 md:max-h-none md:opacity-100'}`}>
                         <div className="flex items-center bg-white rounded-sm border border-neutral-200 shadow-sm hover:border-neutral-300 transition-colors">
                           <div className="pl-3 pr-2 py-2.5 border-r border-neutral-100 bg-neutral-50 rounded-l-sm">
                             <Calendar size={14} className="text-neutral-400" />
@@ -1420,47 +1392,45 @@ const BranchManagement: React.FC<BranchManagementProps> = ({
 
                   <div className="p-6 space-y-6">
                     {activeBranchArtworks.length > 0 ? (
-                      <>
-                        <div className="relative z-10">
-                          <p className="text-[11px] font-medium text-neutral-600 mb-2">
-                            Artists with work at this location.
-                          </p>
-                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                            {Array.from(new Set(activeBranchArtworks.map(a => a.artist))).sort().map(artist => {
-                              const artistArtworks = activeBranchArtworks.filter(a => a.artist === artist);
-                              const sampleArt = artistArtworks[0];
-                              const isActiveArtist = selectedArtist === artist;
-                              return (
-                                <button
-                                  key={artist}
-                                  type="button"
-                                  onClick={() => setSelectedArtist(artist)}
-                                  className={`flex flex-col items-stretch rounded-md border text-left text-xs transition-all shadow-sm overflow-hidden ${isActiveArtist
-                                    ? 'bg-neutral-900 text-white border-transparent shadow-md'
-                                    : 'bg-white/95 border-neutral-100 hover:border-neutral-300 hover:shadow-md'
-                                    }`}
-                                >
-                                  {sampleArt && (
-                                    <div className={`aspect-[4/3] overflow-hidden ${isActiveArtist ? 'bg-black/20' : 'bg-neutral-100'}`}>
-                                      <OptimizedImage
-                                        src={sampleArt.imageUrl || undefined}
-                                        alt={artist}
-                                        className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
-                                      />
-                                    </div>
-                                  )}
-                                  <div className="px-3 py-3 flex flex-col gap-0.5">
-                                    <span className={`text-sm font-bold truncate ${isActiveArtist ? 'text-white' : 'text-neutral-900'}`}>{artist}</span>
-                                    <span className={`text-[11px] ${isActiveArtist ? 'text-neutral-100' : 'text-neutral-500'}`}>
-                                      {artistArtworks.length} piece{artistArtworks.length !== 1 ? 's' : ''}
-                                    </span>
+                      <div className="relative z-10">
+                        <p className="text-[11px] font-medium text-neutral-600 mb-2">
+                          Artists with work at this location.
+                        </p>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                          {Array.from(new Set(activeBranchArtworks.map(a => a.artist))).sort().map(artist => {
+                            const artistArtworks = activeBranchArtworks.filter(a => a.artist === artist);
+                            const sampleArt = artistArtworks[0];
+                            const isActiveArtist = selectedArtist === artist;
+                            return (
+                              <button
+                                key={artist}
+                                type="button"
+                                onClick={() => setSelectedArtist(artist)}
+                                className={`flex flex-col items-stretch rounded-md border text-left text-xs transition-all shadow-sm overflow-hidden ${isActiveArtist
+                                  ? 'bg-neutral-900 text-white border-transparent shadow-md'
+                                  : 'bg-white/95 border-neutral-100 hover:border-neutral-300 hover:shadow-md'
+                                }`}
+                              >
+                                {sampleArt && (
+                                  <div className={`aspect-[4/3] overflow-hidden ${isActiveArtist ? 'bg-black/20' : 'bg-neutral-100'}`}>
+                                    <OptimizedImage
+                                      src={sampleArt.imageUrl || undefined}
+                                      alt={artist}
+                                      className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+                                    />
                                   </div>
-                                </button>
-                              );
-                            })}
-                          </div>
+                                )}
+                                <div className="px-3 py-3 flex flex-col gap-0.5">
+                                  <span className={`text-sm font-bold truncate ${isActiveArtist ? 'text-white' : 'text-neutral-900'}`}>{artist}</span>
+                                  <span className={`text-[11px] ${isActiveArtist ? 'text-neutral-100' : 'text-neutral-500'}`}>
+                                    {artistArtworks.length} piece{artistArtworks.length !== 1 ? 's' : ''}
+                                  </span>
+                                </div>
+                              </button>
+                            );
+                          })}
                         </div>
-                      </>
+                      </div>
                     ) : (
                       <div className="relative z-10 text-center py-8 text-neutral-400">
                         <Package size={32} className="mx-auto mb-2 opacity-60" />
@@ -1476,291 +1446,50 @@ const BranchManagement: React.FC<BranchManagementProps> = ({
         document.body
       )}
 
-      {(activeBranch && selectedArtist) ? createPortal(
-        <div className="fixed inset-0 z-[130] flex items-center justify-center bg-neutral-900/80 backdrop-blur-sm p-4">
-          <div className="bg-white w-full max-w-5xl max-h-[90vh] rounded-3xl shadow-2xl overflow-hidden flex flex-col">
-            <div className="px-4 py-4 sm:px-6 sm:py-4 border-b border-neutral-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 relative">
-              <div className="flex items-center gap-3 w-full sm:w-auto pr-0 sm:pr-24">
-                <button
-                  onClick={() => setIsCartOpen(true)}
-                  className="w-9 h-9 rounded-sm flex items-center justify-center transition-all bg-neutral-100 text-neutral-400 hover:bg-neutral-200 hover:text-neutral-600 flex-shrink-0"
-                  title="Review Selection"
-                >
-                  <ShoppingBag size={18} />
-                </button>
-                <div className="min-w-0 flex-1">
-                  <p className="text-[10px] sm:text-[11px] font-bold text-neutral-500 uppercase tracking-[0.18em] truncate">
-                    Artworks
-                  </p>
-                  <p className="text-sm font-bold text-neutral-900 truncate">
-                    {selectedArtist} at {activeBranch}
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setSelectedArtist(null)}
-                className="w-full sm:w-auto static sm:absolute sm:right-6 sm:top-1/2 sm:-translate-y-1/2 inline-flex items-center justify-center gap-2 px-3 py-2 sm:py-1.5 rounded-xl sm:rounded-full text-xs font-semibold text-neutral-600 bg-neutral-100 sm:bg-transparent hover:bg-neutral-200 sm:hover:bg-neutral-100 z-10 transition-colors"
-              >
-                <XCircle className="w-4 h-4" />
-                <span>Close Viewer</span>
-              </button>
-            </div>
-            <div className="flex-1 overflow-y-auto p-6 space-y-3">
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex flex-wrap items-center gap-2">
-                  <p className="text-xs font-bold text-neutral-700 uppercase tracking-wider">
-                    Paintings by {selectedArtist}
-                  </p>
-                  <span
-                    onClick={() => setArtistStatusFilter('All')}
-                    className={`text-[10px] font-bold px-2 py-0.5 rounded-full border transition-all cursor-pointer ${artistStatusFilter === 'All'
-                      ? 'text-white bg-neutral-900 border-neutral-900 shadow-sm'
-                      : 'text-neutral-500 bg-neutral-50 border-neutral-100 hover:bg-neutral-100'
-                      }`}
-                  >
-                    {availableForArtist.length + reservedForArtist.length + soldForArtist.length + exclusiveForArtist.length + retouchForArtist.length + framerForArtist.length} pieces
-                  </span>
-                  <span
-                    onClick={() => setArtistStatusFilter(ArtworkStatus.AVAILABLE)}
-                    className={`text-[10px] font-bold px-2 py-0.5 rounded-sm border ${artistStatusFilter === ArtworkStatus.AVAILABLE
-                      ? 'text-white bg-emerald-600 border-emerald-600'
-                      : 'text-neutral-600 bg-neutral-50 border-neutral-100 cursor-pointer hover:bg-neutral-100 transition-colors'
-                      }`}
-                  >
-                    {availableForArtist.length} available
-                  </span>
-                  {reservedForArtist.length > 0 && (
-                    <span
-                      onClick={() => setArtistStatusFilter(ArtworkStatus.RESERVED)}
-                      className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${artistStatusFilter === ArtworkStatus.RESERVED
-                        ? 'text-neutral-900 bg-neutral-100 border-neutral-200'
-                        : 'text-neutral-700 bg-neutral-50 border-neutral-100 cursor-pointer hover:bg-neutral-100 transition-colors'
-                        }`}
-                    >
-                      {reservedForArtist.length} reserved
-                    </span>
-                  )}
-                  {soldForArtist.length > 0 && (
-                    <span
-                      onClick={() => setArtistStatusFilter(ArtworkStatus.SOLD)}
-                      className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${artistStatusFilter === ArtworkStatus.SOLD
-                        ? 'text-red-700 bg-red-50 border-red-200'
-                        : 'text-neutral-600 bg-neutral-50 border-red-200 cursor-pointer hover:bg-neutral-100 transition-colors'
-                        }`}
-                    >
-                      {soldForArtist.length} sold
-                    </span>
-                  )}
-                  {exclusiveForArtist.length > 0 && (
-                    <span
-                      onClick={() => setArtistStatusFilter(ArtworkStatus.EXCLUSIVE_VIEW_ONLY)}
-                      className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${artistStatusFilter === ArtworkStatus.EXCLUSIVE_VIEW_ONLY
-                        ? 'text-neutral-900 bg-neutral-200 border-neutral-300'
-                        : 'text-neutral-600 bg-neutral-100 border-neutral-200 cursor-pointer hover:bg-neutral-200 transition-colors'
-                        }`}
-                    >
-                      {exclusiveForArtist.length} view only
-                    </span>
-                  )}
-                  {auctionForArtist.length > 0 && (
-                    <span
-                      onClick={() => setArtistStatusFilter('Auction')}
-                      className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${artistStatusFilter === 'Auction'
-                        ? 'text-amber-900 bg-amber-100 border-amber-200'
-                        : 'text-neutral-600 bg-neutral-50 border-neutral-100 cursor-pointer hover:bg-neutral-100 transition-colors'
-                        }`}
-                    >
-                      {auctionForArtist.length} auction
-                    </span>
-                  )}
-                  {retouchForArtist.length > 0 && (
-                    <span
-                      onClick={() => setArtistStatusFilter(ArtworkStatus.FOR_RETOUCH)}
-                      className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${artistStatusFilter === ArtworkStatus.FOR_RETOUCH
-                        ? 'text-purple-900 bg-purple-100 border-purple-200'
-                        : 'text-neutral-600 bg-neutral-50 border-neutral-100 cursor-pointer hover:bg-neutral-100 transition-colors'
-                        }`}
-                    >
-                      {retouchForArtist.length} retouch
-                    </span>
-                  )}
-                  {framerForArtist.length > 0 && (
-                    <span
-                      onClick={() => setArtistStatusFilter(ArtworkStatus.FOR_FRAMING)}
-                      className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${artistStatusFilter === ArtworkStatus.FOR_FRAMING
-                        ? 'text-blue-900 bg-blue-100 border-blue-200'
-                        : 'text-neutral-600 bg-neutral-50 border-neutral-100 cursor-pointer hover:bg-neutral-100 transition-colors'
-                        }`}
-                    >
-                      {framerForArtist.length} framer
-                    </span>
-                  )}
-                  <span className="ml-2 text-[10px] font-semibold text-neutral-400 uppercase tracking-wider">
-                    Showing: {
-                      artistStatusFilter === 'All' ? 'Total Portfolio' :
-                        artistStatusFilter === ArtworkStatus.AVAILABLE ? 'Available' :
-                          artistStatusFilter === ArtworkStatus.RESERVED ? 'Reserved' :
-                            artistStatusFilter === ArtworkStatus.EXCLUSIVE_VIEW_ONLY ? 'Not For Sale' :
-                              artistStatusFilter === ArtworkStatus.SOLD ? 'Sold' :
-                                artistStatusFilter === 'Auction' ? 'Auction' :
-                                  artistStatusFilter === ArtworkStatus.FOR_RETOUCH ? 'For Retouch' :
-                                    artistStatusFilter === ArtworkStatus.FOR_FRAMING ? 'For Framing' :
-                                      'Items'
-                    }
-                  </span>
-                </div>
-                {filteredCurrentList.length > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => handleSelectAllForArtist(filteredCurrentList)}
-                    disabled={!canEdit}
-                    className={`px-3 py-1 rounded-full text-[11px] font-semibold border transition-colors ${!canEdit ? 'bg-neutral-100 text-neutral-400 border-neutral-200 cursor-not-allowed' : 'bg-neutral-900 text-neutral-50 border-neutral-700 hover:bg-black'}`}
-                  >
-                    {allSelectedForArtist ? 'Clear Selection' : 'Select All'}
-                  </button>
-                )}
-              </div>
+      {/* Artist Inventory Portfolio modal popup */}
+      <ArtistInventoryViewerModal
+        isOpen={Boolean(activeBranch && selectedArtist)}
+        onClose={() => setSelectedArtist(null)}
+        selectedArtist={selectedArtist || ''}
+        activeBranch={activeBranch || ''}
+        availableForArtist={availableForArtist}
+        reservedForArtist={reservedForArtist}
+        soldForArtist={soldForArtist}
+        exclusiveForArtist={exclusiveForArtist}
+        auctionForArtist={auctionForArtist}
+        retouchForArtist={retouchForArtist}
+        framerForArtist={framerForArtist}
+        artistStatusFilter={artistStatusFilter}
+        setArtistStatusFilter={setArtistStatusFilter}
+        filteredCurrentList={filteredCurrentList}
+        selectedArtworkIds={selectedArtworkIds}
+        toggleSelect={toggleSelect}
+        handleDeleteArtwork={handleDeleteArtwork}
+        handleSelectAllForArtist={handleSelectAllForArtist}
+        modalSearch={modalSearch}
+        setModalSearch={setModalSearch}
+        modalStatus={modalStatus}
+        setModalStatus={setModalStatus}
+        modalMedium={modalMedium}
+        setModalMedium={setModalMedium}
+        modalYear={modalYear}
+        setModalYear={setModalYear}
+        modalSize={modalSize}
+        setModalSize={setModalSize}
+        modalFramedSize={modalFramedSize}
+        setModalFramedSize={setModalFramedSize}
+        modalUniqueStatuses={modalUniqueStatuses}
+        modalUniqueMediums={modalUniqueMediums}
+        modalUniqueYears={modalUniqueYears}
+        modalUniqueSizes={modalUniqueSizes}
+        modalUniqueFramedSizes={modalUniqueFramedSizes}
+        allSelectedForArtist={allSelectedForArtist}
+        onViewArtwork={onViewArtwork}
+        canEdit={canEdit}
+        setIsCartOpen={setIsCartOpen}
+      />
 
-              <div className="flex flex-col xl:flex-row items-center gap-3 mb-4 p-3 bg-neutral-50 rounded-xl border border-neutral-100">
-                <div className="relative flex-1 w-full">
-                  <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
-                  <input
-                    type="text"
-                    placeholder="Search in this view..."
-                    value={modalSearch}
-                    onChange={e => setModalSearch(e.target.value)}
-                    className="w-full pl-9 pr-3 py-2 bg-white border border-neutral-200 rounded-lg text-xs font-semibold focus:outline-none focus:border-neutral-900 transition-colors"
-                  />
-                </div>
-                <div className="flex flex-wrap items-center gap-2 w-full xl:w-auto">
-                  <select
-                    value={modalStatus}
-                    onChange={e => setModalStatus(e.target.value)}
-                    className="flex-1 min-w-[120px] bg-white border border-neutral-200 rounded-lg px-3 py-2 text-xs font-semibold focus:outline-none focus:border-neutral-900 cursor-pointer"
-                  >
-                    <option value="All">All Statuses</option>
-                    {modalUniqueStatuses.map(s => <option key={s} value={s}>{s}</option>)}
-                  </select>
-                  <select
-                    value={modalMedium}
-                    onChange={e => setModalMedium(e.target.value)}
-                    className="flex-1 min-w-[120px] bg-white border border-neutral-200 rounded-lg px-3 py-2 text-xs font-semibold focus:outline-none focus:border-neutral-900 cursor-pointer"
-                  >
-                    <option value="All">All Mediums</option>
-                    {modalUniqueMediums.map(m => <option key={m} value={m}>{m}</option>)}
-                  </select>
-                  <select
-                    value={modalYear}
-                    onChange={e => setModalYear(e.target.value)}
-                    className="flex-1 min-w-[100px] bg-white border border-neutral-200 rounded-lg px-3 py-2 text-xs font-semibold focus:outline-none focus:border-neutral-900 cursor-pointer"
-                  >
-                    <option value="All">All Years</option>
-                    {modalUniqueYears.map(y => <option key={y} value={String(y)}>{y}</option>)}
-                  </select>
-                  <select
-                    value={modalSize}
-                    onChange={e => setModalSize(e.target.value)}
-                    className="flex-1 min-w-[120px] bg-white border border-neutral-200 rounded-lg px-3 py-2 text-xs font-semibold focus:outline-none focus:border-neutral-900 cursor-pointer"
-                  >
-                    <option value="All">All Sizes</option>
-                    {modalUniqueSizes.map(s => <option key={s} value={s}>{s}</option>)}
-                  </select>
-                  <select
-                    value={modalFramedSize}
-                    onChange={e => setModalFramedSize(e.target.value)}
-                    className="flex-1 min-w-[120px] bg-white border border-neutral-200 rounded-lg px-3 py-2 text-xs font-semibold focus:outline-none focus:border-neutral-900 cursor-pointer"
-                  >
-                    <option value="All">Framed Sizes</option>
-                    {modalUniqueFramedSizes.map(s => <option key={s} value={s}>{s}</option>)}
-                  </select>
-                </div>
-              </div>
-
-              {filteredCurrentList.length > 0 ? (
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
-                  {filteredCurrentList.map(art => (
-                    <div
-                      key={art.id}
-                      onClick={() => onViewArtwork?.(art.id)}
-                      className={`group bg-white rounded-xl sm:rounded-2xl border ${selectedArtworkIds.includes(art.id)
-                        ? 'border-neutral-900 ring-2 sm:ring-4 ring-neutral-900/10'
-                        : 'border-neutral-200'
-                        } overflow-hidden hover:shadow-xl transition-all duration-300 cursor-pointer flex flex-col h-full hover:-translate-y-1 relative`}
-                    >
-                      <div
-                        onClick={(e) => toggleSelect(art.id, e)}
-                        className={`absolute top-2 left-2 z-10 w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all ${selectedArtworkIds.includes(art.id)
-                          ? 'bg-neutral-900 border-neutral-900 text-white'
-                          : 'bg-white/80 backdrop-blur border-neutral-300 opacity-0 group-hover:opacity-100'
-                          } ${!canEdit ? 'hidden' : 'cursor-pointer'}`}
-                      >
-                        {selectedArtworkIds.includes(art.id) && (
-                          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                          </svg>
-                        )}
-                      </div>
-
-                      <button
-                        onClick={(e) => handleDeleteArtwork(art.id, e)}
-                        className={`absolute top-2 right-2 z-10 w-7 h-7 rounded-full bg-white/80 backdrop-blur border border-neutral-200 flex items-center justify-center text-neutral-400 hover:text-red-600 hover:bg-red-50 hover:border-red-200 transition-all opacity-0 group-hover:opacity-100 ${!canEdit ? 'hidden' : 'cursor-pointer'}`}
-                        title="Delete Artwork"
-                      >
-                        <Trash2 size={12} />
-                      </button>
-                      <div className="w-full aspect-[4/5] sm:aspect-[4/3] overflow-hidden relative flex-shrink-0 bg-neutral-100">
-                        <OptimizedImage
-                          src={art.imageUrl || undefined}
-                          alt={art.title}
-                          className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
-                        />
-                        {art.status === ArtworkStatus.RESERVED && (
-                          <div className="absolute bottom-0 left-0 right-0 bg-amber-500/90 text-white text-[9px] font-bold px-2 py-1 text-center backdrop-blur-sm">
-                            {art.reservationDetails || 'RESERVED'}
-                          </div>
-                        )}
-                      </div>
-                      <div className="p-2 sm:p-4 flex-1 flex flex-col min-w-0">
-                        <div className="mb-1 space-y-0.5">
-                          <h4 className="text-xs sm:text-sm font-bold text-neutral-900 leading-tight line-clamp-1 group-hover:text-neutral-600 transition-colors">
-                            {art.title}
-                          </h4>
-                          <p className="text-[10px] sm:text-xs text-neutral-500 line-clamp-1">
-                            {art.medium}
-                          </p>
-                          <p className="text-[9px] sm:text-[11px] text-neutral-400 line-clamp-1">
-                            {art.dimensions}
-                          </p>
-                        </div>
-                        <div className="mt-auto pt-2 flex items-center justify-between border-t border-neutral-100">
-                          <p className="text-[10px] sm:text-[11px] text-neutral-500 font-medium truncate">
-                            ₱{(art.price || 0).toLocaleString()}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-[11px] text-neutral-400">
-                  {availableForArtist.length + reservedForArtist.length + soldForArtist.length + exclusiveForArtist.length === 0
-                    ? 'No paintings for this artist at this branch.'
-                    : artistStatusFilter === ArtworkStatus.AVAILABLE
-                      ? 'No available paintings for this artist at this branch.'
-                      : artistStatusFilter === ArtworkStatus.RESERVED
-                        ? 'No reserved paintings for this artist at this branch.'
-                        : artistStatusFilter === ArtworkStatus.EXCLUSIVE_VIEW_ONLY
-                          ? 'No "Not For Sale" paintings for this artist at this branch.'
-                          : 'No sold paintings for this artist at this branch.'}
-                </p>
-              )}
-            </div>
-          </div>
-        </div>,
-        document.body
-      ) : null}
-
+      {/* Selection floating pill bar */}
       {selectedArtworkIds.length > 0 && !isCartOpen && createPortal(
         <div className="fixed bottom-10 left-1/2 transform -translate-x-1/2 z-[125] animate-in slide-in-from-bottom-10 fade-in duration-500 max-w-[95vw]">
           <div className="relative group">
@@ -1797,290 +1526,27 @@ const BranchManagement: React.FC<BranchManagementProps> = ({
         document.body
       )}
 
-      {isCartOpen && createPortal(
-        <div className="fixed inset-0 z-[130] flex items-center justify-center bg-neutral-900/40 backdrop-blur-sm p-4 sm:p-6 animate-in fade-in duration-300">
-          <div className="bg-[#f3f2f1] w-full max-w-5xl h-[90vh] rounded-xl shadow-[0_32px_64px_-16px_rgba(0,0,0,0.25)] overflow-hidden flex flex-col border border-white/20 relative">
+      {/* Batch workspace cart overlay */}
+      <BranchInventoryCart
+        isOpen={isCartOpen}
+        onClose={() => setIsCartOpen(false)}
+        cartArtworks={cartArtworks}
+        setSelectedArtworkIds={setSelectedArtworkIds}
+        bulkActionModal={bulkActionModal}
+        onBulkActionClick={handleBulkActionClick}
+        permissions={permissions}
+        canEdit={canEdit}
+        activeBranch={activeBranch}
+        exclusiveBranches={exclusiveBranches}
+        cartItemCount={cartItemCount}
+        cartTotalValue={cartTotalValue}
+      />
 
-            {/* Microsoft Fluent Header */}
-            <div className="px-6 py-4 bg-white border-b border-[#edebe9] flex items-center justify-between shrink-0">
-              <div className="flex items-center gap-4">
-                <div className="w-10 h-10 rounded-lg bg-[#0078d4] text-white flex items-center justify-center shadow-lg shadow-[#0078d4]/10">
-                  {bulkActionModal?.type === 'sale' ? <Sparkles size={20} strokeWidth={2.5} /> : <ShoppingBag size={20} strokeWidth={2.5} />}
-                </div>
-                <div>
-                  <h2 className="text-lg font-bold text-[#323130] tracking-tight leading-none">
-                    {bulkActionModal?.type === 'sale' ? 'Process Sale Declaration' : 'Artwork Batch Workspace'}
-                  </h2>
-                  <div className="flex items-center gap-2 mt-1.5">
-                    <div className="flex items-center gap-1.5 px-2 py-0.5 bg-[#f3f2f1] rounded-md border border-[#edebe9]">
-                      <span className="w-1.5 h-1.5 rounded-full bg-[#107c10]"></span>
-                      <span className="text-[10px] font-bold text-[#605e5c] uppercase tracking-wider">
-                        {cartItemCount} Item{cartItemCount !== 1 ? 's' : ''} Selected
-                      </span>
-                    </div>
-                    <span className="text-[10px] font-medium text-[#a19f9d] italic">
-                      Ready for automated workflow
-                    </span>
-                  </div>
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setIsCartOpen(false)}
-                  className="h-9 px-4 rounded-md bg-[#f3f2f1] text-[#323130] text-xs font-semibold hover:bg-[#edebe9] transition-all flex items-center gap-2 border border-[#edebe9]"
-                >
-                  <X size={14} />
-                  <span>Close Workspace</span>
-                </button>
-              </div>
-            </div>
-            {/* Unified Workflow Injection */}
-            {/* Cart View Content */}
-
-              <div className="flex-1 flex flex-col overflow-hidden">
-                {/* Artworks List — Top Section (scrollable) */}
-                <div className="custom-scrollbar flex-1 overflow-y-auto bg-[linear-gradient(180deg,#ffffff_0%,#f9fbfd_100%)] px-10 py-6">
-                  {cartArtworks.length > 0 ? (
-                    <div className="grid grid-cols-1 gap-3 max-w-full mx-auto">
-                      {cartArtworks.map((art, idx) => (
-                        <div
-                          key={art.id}
-                          className="group relative flex items-center rounded-xl border border-[#dfe3e8] bg-[linear-gradient(180deg,#ffffff_0%,#f8fbff_100%)] p-5 shadow-[0_10px_24px_rgba(0,0,0,0.04)] transition-all duration-300 hover:-translate-y-0.5 hover:border-[#0078d4]/40 hover:shadow-[0_18px_32px_rgba(0,120,212,0.10)]"
-                        >
-                          <div className="absolute left-0 top-6 bottom-6 w-1 bg-[#0078d4] opacity-0 transition-all duration-300 group-hover:opacity-100" />
-
-                          <div className="flex items-center gap-5 flex-1 min-w-0">
-                            <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-lg border border-[#dfe3e8] bg-[#f8f9fa] shadow-[0_6px_16px_rgba(0,0,0,0.05)] transition-transform duration-500 group-hover:scale-[1.03]">
-                              {art.imageUrl ? (
-                                <OptimizedImage
-                                  src={art.imageUrl || undefined}
-                                  alt={art.title}
-                                  className="w-full h-full object-cover"
-                                />
-                              ) : (
-                                <div className="w-full h-full flex items-center justify-center text-[#c8c6c4]">
-                                  <ImageIcon size={28} />
-                                </div>
-                              )}
-                            </div>
-
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2.5 mb-1.5">
-                                <span className="rounded-md border border-[#deecf9] bg-[#eff6fc] px-2.5 py-0.5 text-[9px] font-black uppercase tracking-[0.18em] text-[#0078d4]">
-                                  ASSET-{String(idx + 1).padStart(2, '0')}
-                                </span>
-                                <span className="text-[9px] font-black text-[#a19f9d] uppercase tracking-[0.25em] truncate">
-                                  {art.code}
-                                </span>
-                              </div>
-                              <h4 className="truncate text-base font-black leading-none tracking-[-0.03em] text-[#323130]">
-                                {art.title}
-                              </h4>
-                              <div className="flex items-center gap-3 mt-2 text-[11px] text-[#605e5c] font-bold">
-                                <span className="text-black">{art.artist}</span>
-                                <span className="w-1 h-1 rounded-full bg-[#c8c6c4]" />
-                                <span className="truncate opacity-60 uppercase font-black text-[8px]">{art.medium}</span>
-                                {art.currentBranch && (
-                                  <>
-                                    <span className="w-1 h-1 rounded-full bg-[#c8c6c4]" />
-                                    <div className="flex items-center gap-1 text-[#0078d4]">
-                                      <MapPin size={11} />
-                                      <span className="truncate">{art.currentBranch}</span>
-                                    </div>
-                                  </>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-
-                          <div className="ml-6 flex shrink-0 items-center gap-6 border-l border-[#edebe9] pl-6 text-right">
-                            <div>
-                              <p className="text-[9px] font-black text-[#a19f9d] uppercase tracking-[0.25em] mb-1">Valuation</p>
-                              <p className="text-lg font-black text-[#323130] tracking-tight">
-                                ₱{(art.price || 0).toLocaleString()}
-                              </p>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => setSelectedArtworkIds(prev => prev.filter(id => id !== art.id))}
-                              className="group/trash flex h-10 w-10 items-center justify-center rounded-lg border border-[#edebe9] bg-white text-[#a4262c] transition-all hover:border-rose-200 hover:bg-rose-50 hover:shadow-[0_8px_18px_rgba(164,38,44,0.10)]"
-                              title="Remove item"
-                            >
-                              <Trash2 size={20} className="group-hover/trash:scale-110 transition-transform" />
-                            </button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="flex h-full flex-col items-center justify-center gap-6 text-[#a19f9d]">
-                      <div className="flex h-24 w-24 items-center justify-center rounded-[20px] border border-[#edebe9] bg-[#f8f9fa] shadow-inner">
-                        <ShoppingBag size={40} className="text-[#c8c6c4]" />
-                      </div>
-                      <div className="text-center space-y-1.5">
-                        <p className="text-xl font-black text-[#323130] tracking-tight">Workspace Entry Vacant</p>
-                        <p className="text-xs font-bold text-[#a19f9d] uppercase tracking-widest">Select items from branch inventory</p>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* Bottom Section — Summary + Actions */}
-                <div className="shrink-0 border-t border-[#edebe9] bg-[linear-gradient(180deg,#fbfcfe_0%,#f5f7fa_100%)]">
-                  <div className="custom-scrollbar overflow-y-auto max-h-[50vh] px-10 py-8">
-                    {/* Inline Summary Stats */}
-                    <div className="flex items-center gap-6 mb-8">
-                      <div className="flex items-center gap-3">
-                        <div className="flex h-9 w-9 items-center justify-center rounded-lg border border-[#edebe9] bg-white text-[#0078d4] shadow-[0_4px_10px_rgba(0,0,0,0.04)]">
-                          <Sparkles size={16} />
-                        </div>
-                        <div className="flex items-baseline gap-2">
-                          <span className="text-3xl font-black text-[#323130] tracking-tighter">{cartItemCount}</span>
-                          <span className="text-[10px] font-black text-[#a19f9d] uppercase tracking-widest">Units</span>
-                        </div>
-                      </div>
-                      <div className="w-px h-8 bg-[#edebe9]" />
-                      <div className="flex items-baseline gap-2">
-                        <span className="text-2xl font-black text-[#323130]">₱{(cartTotalValue / 1000).toFixed(1)}k</span>
-                        <span className="rounded-md bg-green-50 px-2 py-0.5 text-[10px] font-black uppercase text-[#107c10]">Live</span>
-                      </div>
-                      <div className="w-px h-8 bg-[#edebe9]" />
-                      <span className="flex items-center gap-1.5 rounded-md bg-[#0f172a] px-3 py-1 text-[9px] font-black text-white">
-                        <CheckCircle2 size={11} strokeWidth={3} /> VERIFIED
-                      </span>
-                      <div className="flex-1" />
-                      <button
-                        type="button"
-                        onClick={() => setIsCartOpen(false)}
-                        className="group flex items-center gap-2 rounded-xl bg-[#0f172a] px-6 py-2.5 text-[10px] font-black uppercase tracking-[0.2em] text-white shadow-[0_10px_20px_rgba(15,23,42,0.16)] transition-all hover:scale-[1.02] active:scale-[0.98]"
-                      >
-                        <span>Dismiss</span>
-                        <X size={14} strokeWidth={3} className="group-hover:rotate-90 transition-transform" />
-                      </button>
-                    </div>
-
-                    {/* Operations Grid */}
-                    <div className="flex items-center gap-4 mb-5">
-                      <h3 className="text-[9px] font-black text-[#a19f9d] uppercase tracking-[0.25em] shrink-0">Operations</h3>
-                      <div className="h-px w-full bg-[#edebe9]"></div>
-                    </div>
-
-                    <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
-                      {!(activeBranch && exclusiveBranches?.includes(activeBranch)) && (
-                        <>
-                          <button
-                            type="button"
-                            onClick={() => handleBulkActionClick('sale')}
-                            disabled={permissions ? !permissions.canSellArtwork : !canEdit}
-                            className="group flex items-center gap-4 rounded-xl bg-[linear-gradient(135deg,#3d7edb_0%,#2665bf_100%)] p-4 text-white shadow-[0_12px_24px_rgba(0,120,212,0.20)] transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_18px_32px_rgba(0,120,212,0.28)] disabled:opacity-40 disabled:cursor-not-allowed"
-                          >
-                            <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-white/10 bg-white/18 shrink-0">
-                              <ShoppingBag size={20} />
-                            </div>
-                            <div className="text-left min-w-0">
-                              <p className="text-sm font-black tracking-tight leading-none uppercase">Sale</p>
-                              <p className="text-[8px] font-bold uppercase tracking-widest opacity-60 mt-1">Transaction</p>
-                            </div>
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => handleBulkActionClick('reserve')}
-                            disabled={permissions ? !permissions.canReserveArtwork : !canEdit}
-                            className="group flex items-center gap-4 rounded-xl border border-[#e3e7eb] bg-white p-4 text-[#323130] shadow-[0_8px_18px_rgba(0,0,0,0.04)] transition-all duration-300 hover:-translate-y-0.5 hover:border-[#0078d4]/35 hover:shadow-[0_14px_28px_rgba(0,120,212,0.08)] disabled:opacity-40 disabled:cursor-not-allowed"
-                          >
-                            <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-[#edebe9] bg-[#f3f2f1] text-[#0078d4] shrink-0">
-                              <Clock size={20} />
-                            </div>
-                            <div className="text-left min-w-0">
-                              <p className="text-sm font-black tracking-tight leading-none">Reserve</p>
-                              <p className="text-[8px] font-bold uppercase tracking-widest text-[#a19f9d] mt-1">Hold Asset</p>
-                            </div>
-                          </button>
-                        </>
-                      )}
-
-                      <button
-                        type="button"
-                        onClick={() => handleBulkActionClick('transfer')}
-                        disabled={permissions ? !permissions.canTransferArtwork : !canEdit}
-                        className="group flex items-center gap-4 rounded-xl border border-[#e3e7eb] bg-white p-4 text-[#323130] shadow-[0_8px_18px_rgba(0,0,0,0.04)] transition-all duration-300 hover:-translate-y-0.5 hover:border-[#0078d4]/35 hover:shadow-[0_14px_28px_rgba(0,120,212,0.08)] disabled:opacity-40 disabled:cursor-not-allowed"
-                      >
-                        <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-[#edebe9] bg-[#f3f2f1] text-[#0078d4] shrink-0">
-                          <ArrowRightLeft size={20} />
-                        </div>
-                        <div className="text-left min-w-0">
-                          <p className="text-sm font-black tracking-tight leading-none">Transfer</p>
-                          <p className="text-[8px] font-bold uppercase tracking-widest text-[#a19f9d] mt-1">Branch Route</p>
-                        </div>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => handleBulkActionClick('framer')}
-                        disabled={permissions ? !permissions.canEditArtwork : !canEdit}
-                        className="group flex items-center gap-4 rounded-xl border border-[#e3e7eb] bg-white p-4 text-[#323130] shadow-[0_8px_18px_rgba(0,0,0,0.04)] transition-all hover:-translate-y-0.5 hover:border-[#0078d4]/35 hover:shadow-[0_14px_28px_rgba(0,120,212,0.08)] disabled:opacity-40 disabled:cursor-not-allowed"
-                      >
-                        <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-[#edebe9] bg-[#f3f2f1] text-[#0078d4] shrink-0">
-                          <Frame size={20} className="group-hover:rotate-12 transition-transform" />
-                        </div>
-                        <div className="text-left min-w-0">
-                          <p className="text-sm font-black tracking-tight leading-none">Framing</p>
-                          <p className="text-[8px] font-bold uppercase tracking-widest text-[#a19f9d] mt-1">Repair</p>
-                        </div>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => handleBulkActionClick('return')}
-                        disabled={permissions ? !permissions.canEditArtwork : !canEdit}
-                        className="group flex items-center gap-4 rounded-xl border border-[#e3e7eb] bg-white p-4 text-[#323130] shadow-[0_8px_18px_rgba(0,0,0,0.04)] transition-all hover:-translate-y-0.5 hover:border-[#0078d4]/35 hover:shadow-[0_14px_28px_rgba(0,120,212,0.08)] disabled:opacity-40 disabled:cursor-not-allowed"
-                      >
-                        <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-[#edebe9] bg-[#f3f2f1] text-[#0078d4] shrink-0">
-                          <RotateCcw size={20} className="group-hover:rotate-[-12deg] transition-transform" />
-                        </div>
-                        <div className="text-left min-w-0">
-                          <p className="text-sm font-black tracking-tight leading-none">Voiding</p>
-                          <p className="text-[8px] font-bold uppercase tracking-widest text-[#a19f9d] mt-1">Return</p>
-                        </div>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => handleBulkActionClick('delete')}
-                        disabled={permissions ? !permissions.canDeleteArtwork : !canEdit}
-                        className="group flex items-center gap-4 rounded-xl border border-rose-100 bg-white p-4 text-rose-400 shadow-[0_8px_18px_rgba(0,0,0,0.02)] transition-all hover:-translate-y-0.5 hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-20 disabled:cursor-not-allowed"
-                      >
-                        <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-rose-100 bg-rose-50 text-rose-400 shrink-0 group-hover:text-rose-600">
-                          <Trash2 size={20} />
-                        </div>
-                        <div className="text-left min-w-0">
-                          <p className="text-sm font-black tracking-tight leading-none">Purge</p>
-                          <p className="text-[8px] font-bold uppercase tracking-widest mt-1 opacity-60">Delete</p>
-                        </div>
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-          </div>
-        </div>,
-        document.body
-      )}
-
-      {/* Bulk Action Modal */}
+      {/* Bulk Action parameters Modal */}
       {bulkActionModal && (
         <BulkActionModal
           bulkActionModal={bulkActionModal}
-          onClose={() => {
-            setBulkActionModal(null);
-            setBulkTempItdr(null);
-            setBulkTempRsa(null);
-            setBulkTempOrCr(null);
-            setActiveBulkAttachmentTab('itdr');
-          }}
+          onClose={handleCloseBulkModal}
           selectedIds={selectedArtworkIds}
           setSelectedIds={setSelectedArtworkIds}
           artworks={permittedArtworks}
@@ -2133,156 +1599,33 @@ const BranchManagement: React.FC<BranchManagementProps> = ({
           returnProofImage={bulkTempItdr}
           setReturnProofImage={(val) => {
             setBulkTempItdr(Array.isArray(val) ? val : ((val as string) || null));
-
           }}
           onSubmit={handleBulkActionSubmit}
         />
       )}
 
-      {/* Add/Edit Modal */}
-      {isModalOpen && createPortal(
-        <>
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-neutral-900/50 backdrop-blur-sm p-4">
-            <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in duration-200 border border-neutral-200/80">
-              <div className="px-6 py-4 bg-neutral-900 text-white flex justify-between items-center">
-                <h3 className="font-bold text-sm tracking-[0.18em] uppercase">
-                  {editingBranch ? 'Edit Branch' : 'Add New Branch'}
-                </h3>
-                <button onClick={handleClose} className="text-white/80 hover:text-white">
-                  <Plus size={24} className="rotate-45" />
-                </button>
-              </div>
-
-              <form onSubmit={handleSubmit} className="p-6 space-y-4">
-                {!editingBranch && (
-                  <div className="flex border-b border-neutral-200 mb-4">
-                    <button
-                      type="button"
-                      onClick={() => setIsExclusive(false)}
-                      className={`flex-1 py-2 text-xs font-bold uppercase tracking-wider border-b-2 transition-colors ${!isExclusive ? 'border-neutral-900 text-neutral-900' : 'border-transparent text-neutral-400 hover:text-neutral-600'}`}
-                    >
-                      Standard Branch
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setIsExclusive(true)}
-                      className={`flex-1 py-2 text-xs font-bold uppercase tracking-wider border-b-2 transition-colors ${isExclusive ? 'border-neutral-900 text-neutral-900' : 'border-transparent text-neutral-400 hover:text-neutral-600'}`}
-                    >
-                      Exclusive
-                    </button>
-                  </div>
-                )}
-
-                <div>
-                  <label className="block text-xs font-bold text-neutral-600 uppercase tracking-wider mb-2">Branch Name</label>
-                  <input
-                    type="text"
-                    value={branchName}
-                    onChange={(e) => setBranchName(e.target.value)}
-                    placeholder="e.g., North Wing Gallery"
-                    className="w-full px-4 py-3 bg-neutral-50 border border-neutral-200 rounded-xl text-neutral-900 font-medium focus:outline-none focus:ring-2 focus:ring-neutral-900/10 focus:border-neutral-900"
-                    autoFocus
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-neutral-600 uppercase tracking-wider mb-2">Address</label>
-                  <input
-                    type="text"
-                    value={branchAddress}
-                    onChange={(e) => setBranchAddress(e.target.value)}
-                    placeholder="e.g., 123 Art Street, Makati City"
-                    className="w-full px-4 py-3 bg-neutral-50 border border-neutral-200 rounded-xl text-neutral-900 font-medium focus:outline-none focus:ring-2 focus:ring-neutral-900/10 focus:border-neutral-900"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-neutral-600 uppercase tracking-wider mb-2">Category</label>
-                  <select
-                    value={branchCategory}
-                    onChange={(e) => setBranchCategory(e.target.value)}
-                    className="w-full px-4 py-3 bg-neutral-50 border border-neutral-200 rounded-xl text-neutral-900 font-medium focus:outline-none focus:ring-2 focus:ring-neutral-900/10 focus:border-neutral-900 appearance-none cursor-pointer"
-                  >
-                    {existingCategories.map(cat => (
-                      <option key={cat} value={cat}>{cat}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-neutral-600 uppercase tracking-wider mb-2">Branch Logo</label>
-                  <div className="relative group">
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={async (e) => {
-                        const file = e.target.files?.[0];
-                        if (!file) return;
-                        const reader = new FileReader();
-                        reader.onload = async (ev) => {
-                          const rawBase64 = ev.target?.result as string;
-                          const compressed = await compressBase64Image(rawBase64, 512, 200 * 1024); // Smaller for logos
-                          setBranchLogo(compressed);
-                        };
-                        reader.readAsDataURL(file);
-                      }}
-                      className="absolute inset-0 opacity-0 cursor-pointer z-10"
-                    />
-                    <div className="w-full py-6 bg-neutral-50 border-2 border-neutral-200 border-dashed rounded-xl flex flex-col items-center justify-center gap-2 group-hover:bg-neutral-100 transition-all">
-                      {branchLogo ? (
-                        <div className="relative">
-                          <img src={branchLogo} alt="Logo Preview" className="h-16 w-16 object-contain rounded-lg" />
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              setBranchLogo(null);
-                            }}
-                            className="absolute -top-2 -right-2 p-1 bg-rose-500 text-white rounded-full shadow-sm hover:bg-rose-600 transition-colors"
-                          >
-                            <X size={10} />
-                          </button>
-                        </div>
-                      ) : (
-                        <>
-                          <Upload size={20} className="text-neutral-400" />
-                          <p className="text-[10px] font-bold text-neutral-500 uppercase tracking-wider text-center px-4">
-                            Upload Logo (PNG/JPG)
-                          </p>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="pt-2 flex space-x-3">
-                  <button
-                    type="button"
-                    onClick={handleClose}
-                    className="flex-1 px-4 py-3 bg-white border border-neutral-200 text-neutral-700 font-bold rounded-xl hover:bg-neutral-50 transition-colors"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={!canEdit || !branchName.trim()}
-                    className="flex-1 px-4 py-3 bg-neutral-900 text-white font-bold rounded-xl hover:bg-black transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {editingBranch ? 'Save Changes' : 'Create Branch'}
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-          <LoadingOverlay
-            isVisible={isSyncing}
-            title={processMessage}
-            progress={{ current: syncProgress, total: 100 }}
-          />
-        </>,
-        document.body
-      )}
+      {/* Launch New Branch Add/Edit Modal */}
+      <BranchFormModal
+        isOpen={isModalOpen}
+        onClose={handleClose}
+        editingBranch={editingBranch}
+        branchName={branchName}
+        setBranchName={setBranchName}
+        branchAddress={branchAddress}
+        setBranchAddress={setBranchAddress}
+        branchCategory={branchCategory}
+        setBranchCategory={setBranchCategory}
+        branchLogo={branchLogo}
+        setBranchLogo={setBranchLogo}
+        isExclusive={isExclusive}
+        setIsExclusive={setIsExclusive}
+        existingCategories={existingCategories}
+        onSubmit={handleSubmit}
+        canEdit={canEdit}
+        isSyncing={isSyncing}
+        syncProgress={syncProgress}
+        processMessage={processMessage}
+      />
     </div>
   );
 };

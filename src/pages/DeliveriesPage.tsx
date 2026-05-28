@@ -1,8 +1,8 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { SaleRecord, Artwork, ArtworkStatus, SaleStatus, UserPermissions, DeliveryRequest, DeliveryRequestStatus, ActivityLog, Branch, ReturnType, FramerRecord, ReturnRecord, TransferRequest, ExhibitionEvent, UserRole } from '../types';
 import { ICONS } from '../constants';
-import { Truck, Package, Clock, Search, ChevronRight, CheckCircle2, AlertCircle, Calendar, LayoutGrid, List as ListIcon, MapPin, Users, Wrench, X, User, Filter, Info, ArrowLeft, Inbox } from 'lucide-react';
+import { Truck, Clock, Search, CheckCircle2, AlertCircle, LayoutGrid, List as ListIcon, Users, X, User, Filter, Info, Inbox, RefreshCw, Ban, Paperclip, Upload, Trash2 } from 'lucide-react';
 import { OptimizedImage } from '../components/OptimizedImage';
 import { StatusBadge } from '../components/StatusBadge';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -10,6 +10,9 @@ import MasterView from './MasterView';
 import DeliveryFinalizationModal from '../components/modals/DeliveryFinalizationModal';
 import DeliveryRequestModal from '../components/modals/DeliveryRequestModal';
 import DeliveryRequestsPage from './DeliveryRequestsPage';
+import { uploadBase64ToStorage } from '../services/supabaseStorageService';
+
+type DeliveryTab = 'requests' | 'active' | 'rescheduled' | 'pending' | 'delivered' | 'failed';
 
 interface DeliveriesPageProps {
   sales: SaleRecord[];
@@ -68,11 +71,55 @@ const DeliveriesPage: React.FC<DeliveriesPageProps> = ({
   const [requestModalSale, setRequestModalSale] = useState<{sale: SaleRecord, artwork: any} | null>(null);
   const [finalizeModalSale, setFinalizeModalSale] = useState<{sale: SaleRecord, artwork: any} | null>(null);
   const [detailsSale, setDetailsSale] = useState<{sale: SaleRecord, artwork: Artwork} | null>(null);
+  const [deliveryActionSale, setDeliveryActionSale] = useState<{sale: SaleRecord, artwork: Artwork, mode: 'reschedule' | 'cancel'} | null>(null);
+  const [rescheduleDate, setRescheduleDate] = useState('');
+  const [rescheduleReason, setRescheduleReason] = useState('');
+  const [cancelReason, setCancelReason] = useState('');
+  const [returnDestination, setReturnDestination] = useState('Main Office');
+  const [returnItdrAttachment, setReturnItdrAttachment] = useState('');
+  const [returnItdrAttachmentName, setReturnItdrAttachmentName] = useState('');
   const [selectedClientId, setSelectedClientId] = useState<string | 'All'>('All');
-  const [activeTab, setActiveTab] = useState<'requests' | 'active' | 'pending' | 'delivered' | 'failed'>('requests');
+  const [activeTab, setActiveTab] = useState<DeliveryTab>('requests');
+  const [now, setNow] = useState(() => new Date());
+
+  useEffect(() => {
+    const interval = window.setInterval(() => setNow(new Date()), 30000);
+    return () => window.clearInterval(interval);
+  }, []);
+
+  const getDeliveryDueTime = (sale: SaleRecord) => {
+    const dateValue = sale.deliveryRequest?.deliveryDate || sale.deliveryDate;
+    if (!dateValue) return null;
+    const normalizedDate = dateValue.includes('T') ? dateValue : `${dateValue}T00:00:00`;
+    const dueTime = new Date(normalizedDate).getTime();
+    return Number.isNaN(dueTime) ? null : dueTime;
+  };
+
+  const isWaitingOnReschedule = (sale: SaleRecord) => {
+    if (!sale.deliveryRequest?.rescheduledAt) return false;
+    const dueTime = getDeliveryDueTime(sale);
+    return dueTime !== null && dueTime > now.getTime();
+  };
+
+  const getRescheduleCountdown = (sale: SaleRecord) => {
+    const dueTime = getDeliveryDueTime(sale);
+    if (dueTime === null) return 'Awaiting active slot';
+
+    const remaining = Math.max(0, dueTime - now.getTime());
+    if (remaining === 0) return 'Ready for active delivery';
+
+    const totalMinutes = Math.ceil(remaining / 60000);
+    const days = Math.floor(totalMinutes / 1440);
+    const hours = Math.floor((totalMinutes % 1440) / 60);
+    const minutes = totalMinutes % 60;
+
+    if (days > 0) return `${days}d ${hours}h remaining`;
+    if (hours > 0) return `${hours}h ${minutes}m remaining`;
+    return `${minutes}m remaining`;
+  };
 
   const tabCounts = useMemo(() => {
-    const counts = { requests: 0, active: 0, pending: 0, delivered: 0, failed: 0 };
+    const counts = { requests: 0, active: 0, rescheduled: 0, pending: 0, delivered: 0, failed: 0 };
     sales.forEach(sale => {
       if (sale.status !== SaleStatus.APPROVED || sale.isCancelled) return;
       
@@ -80,14 +127,16 @@ const DeliveriesPage: React.FC<DeliveriesPageProps> = ({
         counts.delivered++;
       } else {
         const status = sale.deliveryRequest?.status;
+        const isRescheduled = isWaitingOnReschedule(sale);
         if (status === DeliveryRequestStatus.PENDING) counts.requests++;
+        else if ((status === DeliveryRequestStatus.APPROVED || status === DeliveryRequestStatus.DISPATCHED) && isRescheduled) counts.rescheduled++;
         else if (status === DeliveryRequestStatus.APPROVED || status === DeliveryRequestStatus.DISPATCHED) counts.active++;
         else if (!status) counts.pending++;
-        else if (status === DeliveryRequestStatus.DECLINED) counts.failed++;
+        else if (status === DeliveryRequestStatus.DECLINED || status === DeliveryRequestStatus.CANCELLED) counts.failed++;
       }
     });
     return counts;
-  }, [sales]);
+  }, [sales, now]);
 
   const deliveryItems = useMemo(() => {
     return sales.filter(sale => {
@@ -99,32 +148,40 @@ const DeliveriesPage: React.FC<DeliveriesPageProps> = ({
       // Filter by Tab
       const hasRequest = !!sale.deliveryRequest;
       const requestStatus = sale.deliveryRequest?.status;
+      const isRescheduled = isWaitingOnReschedule(sale);
 
       if (activeTab === 'requests') {
         if (sale.isDelivered || requestStatus !== DeliveryRequestStatus.PENDING) return false;
       } else if (activeTab === 'active') {
-        if (sale.isDelivered || (requestStatus !== DeliveryRequestStatus.APPROVED && requestStatus !== DeliveryRequestStatus.DISPATCHED)) return false;
+        if (sale.isDelivered || isRescheduled || (requestStatus !== DeliveryRequestStatus.APPROVED && requestStatus !== DeliveryRequestStatus.DISPATCHED)) return false;
+      } else if (activeTab === 'rescheduled') {
+        if (sale.isDelivered || !isRescheduled || (requestStatus !== DeliveryRequestStatus.APPROVED && requestStatus !== DeliveryRequestStatus.DISPATCHED)) return false;
       } else if (activeTab === 'pending') {
         if (sale.isDelivered || hasRequest) return false; // Show only those without requests
       } else if (activeTab === 'delivered') {
         if (!sale.isDelivered) return false;
       } else if (activeTab === 'failed') {
-        if (sale.isDelivered || requestStatus !== DeliveryRequestStatus.DECLINED) return false;
+        if (sale.isDelivered || (requestStatus !== DeliveryRequestStatus.DECLINED && requestStatus !== DeliveryRequestStatus.CANCELLED)) return false;
       }
       
       const artwork = artworks.find(a => a.id === sale.artworkId) || ({ ...sale.artworkSnapshot, id: sale.artworkId, status: 'Sold', createdAt: sale.saleDate } as any);
       if (!artwork) return false;
 
+      const title = (artwork.title || '').toLowerCase();
+      const code = (artwork.code || '').toLowerCase();
+      const clientName = (sale.clientName || '').toLowerCase();
+      const search = searchQuery.toLowerCase();
+
       const matchesSearch = 
-        artwork.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        artwork.code.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        sale.clientName.toLowerCase().includes(searchQuery.toLowerCase());
+        title.includes(search) ||
+        code.includes(search) ||
+        clientName.includes(search);
       
       const matchesBranch = selectedBranch === 'All' || 
         (artwork as Artwork).currentBranch === selectedBranch || 
         (sale.artworkSnapshot?.currentBranch === selectedBranch);
 
-      const registryKey = activeTab === 'requests' ? (sale.agentName || 'Unknown Agent') : sale.clientName;
+      const registryKey = activeTab === 'requests' ? (sale.agentName || 'Unknown Agent') : (sale.clientName || 'Unknown Client');
       const matchesRegistrySelection = selectedClientId === 'All' || registryKey === selectedClientId;
 
       return matchesSearch && matchesBranch && matchesRegistrySelection;
@@ -133,7 +190,7 @@ const DeliveriesPage: React.FC<DeliveriesPageProps> = ({
       const dateB = b.deliveryDate || b.saleDate;
       return new Date(dateB).getTime() - new Date(dateA).getTime();
     });
-  }, [sales, artworks, searchQuery, selectedBranch, selectedClientId, activeTab]);
+  }, [sales, artworks, searchQuery, selectedBranch, selectedClientId, activeTab, now]);
 
   const allClientStats = useMemo(() => {
     const stats: { [key: string]: number } = {};
@@ -144,18 +201,21 @@ const DeliveriesPage: React.FC<DeliveriesPageProps> = ({
       // Tab Filtering for counts
       const hasRequest = !!sale.deliveryRequest;
       const requestStatus = sale.deliveryRequest?.status;
+      const isRescheduled = isWaitingOnReschedule(sale);
 
       let matchesTab = false;
       if (activeTab === 'requests') {
         matchesTab = !sale.isDelivered && requestStatus === DeliveryRequestStatus.PENDING;
       } else if (activeTab === 'active') {
-        matchesTab = !sale.isDelivered && (requestStatus === DeliveryRequestStatus.APPROVED || requestStatus === DeliveryRequestStatus.DISPATCHED);
+        matchesTab = !sale.isDelivered && !isRescheduled && (requestStatus === DeliveryRequestStatus.APPROVED || requestStatus === DeliveryRequestStatus.DISPATCHED);
+      } else if (activeTab === 'rescheduled') {
+        matchesTab = !sale.isDelivered && isRescheduled && (requestStatus === DeliveryRequestStatus.APPROVED || requestStatus === DeliveryRequestStatus.DISPATCHED);
       } else if (activeTab === 'pending') {
         matchesTab = !sale.isDelivered && !hasRequest;
       } else if (activeTab === 'delivered') {
         matchesTab = sale.isDelivered === true;
       } else if (activeTab === 'failed') {
-        matchesTab = !sale.isDelivered && requestStatus === DeliveryRequestStatus.DECLINED;
+        matchesTab = !sale.isDelivered && (requestStatus === DeliveryRequestStatus.DECLINED || requestStatus === DeliveryRequestStatus.CANCELLED);
       }
 
       if (matchesTab) {
@@ -164,7 +224,7 @@ const DeliveriesPage: React.FC<DeliveriesPageProps> = ({
       }
     });
     return Object.entries(stats).sort(([a], [b]) => a.localeCompare(b));
-  }, [sales, activeTab]);
+  }, [sales, activeTab, now]);
 
   const filteredClientStats = useMemo(() => {
     if (!clientSearchQuery) return allClientStats;
@@ -180,6 +240,40 @@ const DeliveriesPage: React.FC<DeliveriesPageProps> = ({
     });
     return Array.from(b).sort();
   }, [artworks]);
+
+  const returnDestinationOptions = useMemo(() => {
+    const options = new Map<string, string>();
+    const addOption = (value?: string) => {
+      const trimmed = value?.trim();
+      if (!trimmed) return;
+      const key = trimmed.toLowerCase();
+      if (!options.has(key)) options.set(key, trimmed);
+    };
+
+    addOption('Main Office');
+    addOption(deliveryActionSale?.artwork.currentBranch);
+    addOption(deliveryActionSale?.sale.artworkSnapshot?.currentBranch);
+    addOption(currentUser?.branch);
+    branches.forEach(addOption);
+    deliveryBranches.forEach(addOption);
+
+    return Array.from(options.values()).sort((a, b) => {
+      if (a === 'Main Office') return -1;
+      if (b === 'Main Office') return 1;
+      return a.localeCompare(b);
+    });
+  }, [branches, currentUser?.branch, deliveryActionSale, deliveryBranches]);
+
+  const currentReturnBranch = (
+    deliveryActionSale?.artwork.currentBranch ||
+    deliveryActionSale?.sale.artworkSnapshot?.currentBranch ||
+    currentUser?.branch ||
+    ''
+  ).trim();
+
+  const returnRequiresItdr = !!returnDestination.trim() &&
+    returnDestination.trim().toLowerCase() !== 'main office' &&
+    (!currentReturnBranch || returnDestination.trim().toLowerCase() !== currentReturnBranch.toLowerCase());
 
   const handleSubmitRequest = (requestData: Partial<DeliveryRequest>) => {
     if (!requestModalSale || !onUpdateSale) return;
@@ -201,6 +295,75 @@ const DeliveriesPage: React.FC<DeliveriesPageProps> = ({
       deliveryRequest: newRequest
     });
     setRequestModalSale(null);
+  };
+
+  const resetDeliveryActionForm = () => {
+    setDeliveryActionSale(null);
+    setRescheduleDate('');
+    setRescheduleReason('');
+    setCancelReason('');
+    setReturnDestination('Main Office');
+    setReturnItdrAttachment('');
+    setReturnItdrAttachmentName('');
+  };
+
+  const handleReturnItdrAttachment = (file?: File) => {
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      setReturnItdrAttachment(String(reader.result || ''));
+      setReturnItdrAttachmentName(file.name);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleRescheduleDelivery = async () => {
+    if (!deliveryActionSale || !deliveryActionSale.sale.deliveryRequest || !onUpdateSale || !rescheduleDate) return;
+
+    const existingRemarks = deliveryActionSale.sale.deliveryRequest.remarks || '';
+    const updateNote = `Rescheduled to ${new Date(rescheduleDate).toLocaleDateString()}${rescheduleReason ? `: ${rescheduleReason}` : ''}`;
+    const updatedRequest: DeliveryRequest = {
+      ...deliveryActionSale.sale.deliveryRequest,
+      deliveryDate: rescheduleDate,
+      status: DeliveryRequestStatus.APPROVED,
+      rescheduledAt: new Date().toISOString(),
+      rescheduledBy: currentUser?.name || 'System User',
+      rescheduleReason: rescheduleReason || undefined,
+      remarks: existingRemarks ? `${existingRemarks}\n${updateNote}` : updateNote
+    };
+
+    const ok = await onUpdateSale(deliveryActionSale.sale.id, { deliveryRequest: updatedRequest });
+    if (ok !== false) resetDeliveryActionForm();
+  };
+
+  const handleCancelDelivery = async () => {
+    if (!deliveryActionSale || !deliveryActionSale.sale.deliveryRequest || !onUpdateSale || !cancelReason.trim()) return;
+    if (returnRequiresItdr && !returnItdrAttachment) return;
+
+    const uploadedReturnItdr = returnRequiresItdr
+      ? await uploadBase64ToStorage(returnItdrAttachment, 'images', 'attachments')
+      : undefined;
+
+    const destinationText = returnRequiresItdr
+      ? `${returnDestination} / ITDR attached`
+      : returnDestination;
+    const existingRemarks = deliveryActionSale.sale.deliveryRequest.remarks || '';
+    const cancelNote = `Delivery cancelled. Return destination: ${destinationText}. Reason: ${cancelReason.trim()}`;
+    const updatedRequest: DeliveryRequest = {
+      ...deliveryActionSale.sale.deliveryRequest,
+      status: DeliveryRequestStatus.CANCELLED,
+      cancelledAt: new Date().toISOString(),
+      cancelledBy: currentUser?.name || 'System User',
+      cancellationReason: cancelReason.trim(),
+      returnDestination: destinationText,
+      returnItdrNumber: undefined,
+      returnItdrAttachment: returnRequiresItdr ? (uploadedReturnItdr || returnItdrAttachment) : undefined,
+      remarks: existingRemarks ? `${existingRemarks}\n${cancelNote}` : cancelNote
+    };
+
+    const ok = await onUpdateSale(deliveryActionSale.sale.id, { deliveryRequest: updatedRequest });
+    if (ok !== false) resetDeliveryActionForm();
   };
 
   return (
@@ -332,38 +495,67 @@ const DeliveriesPage: React.FC<DeliveriesPageProps> = ({
           </div>
 
           <div className="flex items-center gap-3">
-            <div className="flex items-center gap-1 bg-[#f3f2f1] p-1 rounded-sm border border-[#edebe9]">
+            <div className="flex items-center gap-1 bg-[#f3f2f1] p-1 rounded-sm border border-[#edebe9] relative isolate">
               {[
                 { id: 'requests', label: 'Requests', icon: Inbox, count: tabCounts.requests, color: '#0078d4' },
                 { id: 'active', label: 'Active', icon: Truck, count: tabCounts.active, color: '#107c10' },
+                { id: 'rescheduled', label: 'Rescheduled', icon: RefreshCw, count: tabCounts.rescheduled, color: '#8764b8' },
                 { id: 'pending', label: 'Pending', icon: Clock, count: tabCounts.pending, color: '#ffb900' },
                 { id: 'delivered', label: 'Delivered', icon: CheckCircle2, count: tabCounts.delivered, color: '#0078d4' },
                 { id: 'failed', label: 'Failed', icon: AlertCircle, count: tabCounts.failed, color: '#d13438' }
-              ].map(tab => (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id as any)}
-                  className={`px-4 py-1.5 rounded-sm text-[10px] font-black uppercase tracking-widest flex items-center gap-2 transition-all ${
-                    activeTab === tab.id 
-                      ? tab.id === 'requests'
-                        ? 'bg-[#0078d4] text-white shadow-lg shadow-blue-200 ring-1 ring-[#005a9e]'
-                        : 'bg-white text-[#323130] shadow-sm ring-1 ring-[#edebe9]' 
-                      : 'text-[#605e5c] hover:bg-white/50'
-                  }`}
-                >
-                  <tab.icon size={14} style={{ color: activeTab === tab.id ? (tab.id === 'requests' ? '#ffffff' : tab.color) : (tab.id === 'requests' && tab.count > 0 ? '#e11d48' : undefined) }} />
-                  {tab.label}
-                  {tab.count > 0 && (
-                    <span className={`px-1.5 py-0.5 rounded-sm text-[8px] animate-pulse ${
-                      activeTab === tab.id 
-                        ? tab.id === 'requests' ? 'bg-white text-[#0078d4]' : 'bg-[#323130] text-white'
-                        : tab.id === 'requests' ? 'bg-rose-600 text-white shadow-sm shadow-rose-200' : 'bg-[#edebe9] text-[#605e5c]'
-                    }`}>
-                      {tab.count}
-                    </span>
-                  )}
-                </button>
-              ))}
+              ].map(tab => {
+                const isActive = activeTab === tab.id;
+                return (
+                  <motion.button
+                    key={tab.id}
+                    onClick={() => setActiveTab(tab.id as DeliveryTab)}
+                    className={`px-4 py-1.5 rounded-sm text-[10px] font-black uppercase tracking-widest flex items-center gap-2 relative transition-colors duration-200 z-10 select-none ${
+                      isActive 
+                        ? tab.id === 'requests'
+                          ? 'text-white'
+                          : 'text-[#323130]' 
+                        : 'text-[#605e5c] hover:text-[#323130]'
+                    }`}
+                    whileHover={{ scale: 1.04, y: -0.5 }}
+                    whileTap={{ scale: 0.96, y: 0 }}
+                    transition={{ type: "spring", stiffness: 500, damping: 25 }}
+                  >
+                    {isActive && (
+                      <motion.div
+                        layoutId="activeDeliveryTabPill"
+                        className={`absolute inset-0 rounded-sm -z-10 shadow-sm border ${
+                          tab.id === 'requests'
+                            ? 'bg-[#0078d4] border-[#005a9e] shadow-lg shadow-blue-200/20'
+                            : 'bg-white border-[#edebe9]'
+                        }`}
+                        transition={{ type: 'spring', stiffness: 450, damping: 30 }}
+                      />
+                    )}
+
+                    <tab.icon 
+                      size={14} 
+                      className="transition-transform duration-200"
+                      style={{ 
+                        color: isActive 
+                          ? (tab.id === 'requests' ? '#ffffff' : tab.color) 
+                          : (tab.id === 'requests' && tab.count > 0 ? '#e11d48' : undefined) 
+                      }} 
+                    />
+                    
+                    <span>{tab.label}</span>
+                    
+                    {tab.count > 0 && (
+                      <span className={`px-1.5 py-0.5 rounded-sm text-[8px] transition-all duration-200 ${
+                        isActive 
+                          ? tab.id === 'requests' ? 'bg-white text-[#0078d4]' : 'bg-[#323130] text-white'
+                          : tab.id === 'requests' ? 'bg-rose-600 text-white shadow-sm shadow-rose-200 animate-pulse' : 'bg-[#edebe9] text-[#605e5c]'
+                      }`}>
+                        {tab.count}
+                      </span>
+                    )}
+                  </motion.button>
+                );
+              })}
             </div>
             
             <div className="w-[1px] h-6 bg-[#edebe9] mx-1" />
@@ -453,9 +645,15 @@ const DeliveriesPage: React.FC<DeliveriesPageProps> = ({
                                   </div>
                                   <h4 className="text-xs font-black text-[#323130] leading-snug line-clamp-1 group-hover:text-[#0078d4] transition-colors uppercase tracking-tight">{artwork.title}</h4>
                                   <p className="text-[10px] text-[#605e5c] font-bold uppercase opacity-60 tracking-wider">{artwork.artist}</p>
+                                  {activeTab === 'rescheduled' && (
+                                    <div className="mt-3 flex items-center gap-2 rounded-sm border border-[#e1dfdd] bg-[#faf9f8] px-3 py-2 text-[9px] font-black uppercase tracking-widest text-[#605e5c]">
+                                      <Clock size={12} className="text-[#8764b8]" />
+                                      <span>{getRescheduleCountdown(sale)}</span>
+                                    </div>
+                                  )}
                                 </div>
 
-                                <div className="mt-auto pt-5 border-t border-[#f3f2f1] grid grid-cols-2 gap-3">
+                                <div className="mt-auto pt-5 border-t border-[#f3f2f1] grid grid-cols-1 gap-2">
                                      { (sale.deliveryRequest?.status === DeliveryRequestStatus.DISPATCHED || sale.deliveryRequest?.status === DeliveryRequestStatus.APPROVED) ? (
                                        <button 
                                          disabled={sale.isDelivered}
@@ -466,7 +664,7 @@ const DeliveriesPage: React.FC<DeliveriesPageProps> = ({
                                              : 'bg-[#0078d4] text-white shadow-lg shadow-[#0078d4]/20 hover:bg-[#106ebe]'
                                          }`}
                                        >
-                                         {sale.isDelivered ? 'Delivered' : 'Mark as Delivered'}
+                                         {sale.isDelivered ? 'Delivered' : (activeTab === 'rescheduled' ? 'Deliver' : 'Delivery Successful')}
                                        </button>
                                      ) : (
                                        <button 
@@ -476,17 +674,36 @@ const DeliveriesPage: React.FC<DeliveriesPageProps> = ({
                                          {sale.isDelivered ? 'Archived' : 'Approve Delivery'}
                                        </button>
                                      )}
-                                   <button 
-                                     disabled={sale.isDelivered || sale.deliveryRequest?.status === DeliveryRequestStatus.PENDING}
-                                     onClick={(e) => { e.stopPropagation(); setRequestModalSale({ sale, artwork }); }}
-                                     className={`py-2.5 rounded-sm text-[9px] font-black uppercase tracking-widest transition-all ${
-                                       sale.isDelivered ? 'bg-[#f3f2f1] text-[#c8c6c4] cursor-not-allowed' :
-                                       sale.deliveryRequest?.status === DeliveryRequestStatus.PENDING ? 'bg-[#f3f2f1] text-[#a19f9d] cursor-not-allowed' :
-                                       'bg-[#323130] text-white hover:bg-[#000000] shadow-md shadow-black/10'
-                                     }`}
-                                   >
-                                     {sale.deliveryRequest?.status === DeliveryRequestStatus.DECLINED ? 'Retry Payload' : (sale.deliveryRequest ? 'Edit Payload' : 'Schedule')}
-                                   </button>
+                                   {(activeTab === 'active' || activeTab === 'rescheduled') ? (
+                                     <div className="grid grid-cols-2 gap-2">
+                                       <button
+                                         onClick={(e) => { e.stopPropagation(); setDeliveryActionSale({ sale, artwork, mode: 'reschedule' }); }}
+                                         className="py-2.5 rounded-sm text-[9px] font-black uppercase tracking-widest transition-all bg-[#f3f2f1] text-[#323130] hover:bg-[#edebe9] flex items-center justify-center gap-1.5"
+                                       >
+                                         <RefreshCw size={12} />
+                                         Reschedule
+                                       </button>
+                                       <button
+                                         onClick={(e) => { e.stopPropagation(); setDeliveryActionSale({ sale, artwork, mode: 'cancel' }); }}
+                                         className="py-2.5 rounded-sm text-[9px] font-black uppercase tracking-widest transition-all bg-[#fde7e9] text-[#a4262c] hover:bg-[#f8d7da] flex items-center justify-center gap-1.5"
+                                       >
+                                         <Ban size={12} />
+                                         Cancel
+                                       </button>
+                                     </div>
+                                   ) : (
+                                     <button 
+                                       disabled={sale.isDelivered || sale.deliveryRequest?.status === DeliveryRequestStatus.PENDING}
+                                       onClick={(e) => { e.stopPropagation(); setRequestModalSale({ sale, artwork }); }}
+                                       className={`py-2.5 rounded-sm text-[9px] font-black uppercase tracking-widest transition-all ${
+                                         sale.isDelivered ? 'bg-[#f3f2f1] text-[#c8c6c4] cursor-not-allowed' :
+                                         sale.deliveryRequest?.status === DeliveryRequestStatus.PENDING ? 'bg-[#f3f2f1] text-[#a19f9d] cursor-not-allowed' :
+                                         'bg-[#323130] text-white hover:bg-[#000000] shadow-md shadow-black/10'
+                                       }`}
+                                     >
+                                       {sale.deliveryRequest?.status === DeliveryRequestStatus.DECLINED || sale.deliveryRequest?.status === DeliveryRequestStatus.CANCELLED ? 'Retry Payload' : (sale.deliveryRequest ? 'Edit Payload' : 'Schedule')}
+                                     </button>
+                                   )}
                                 </div>
                              </div>
                           </motion.div>
@@ -526,7 +743,15 @@ const DeliveriesPage: React.FC<DeliveriesPageProps> = ({
                                     </div>
                                  </td>
                                  <td className="px-8 py-4">
-                                         <StatusBadge status={artwork.status} sale={sale} artworkPrice={artwork.price} />
+                                    <div className="space-y-2">
+                                      <StatusBadge status={artwork.status} sale={sale} artworkPrice={artwork.price} />
+                                      {activeTab === 'rescheduled' && (
+                                        <div className="inline-flex items-center gap-2 rounded-sm border border-[#e1dfdd] bg-[#faf9f8] px-2.5 py-1 text-[9px] font-black uppercase tracking-widest text-[#605e5c]">
+                                          <Clock size={11} className="text-[#8764b8]" />
+                                          {getRescheduleCountdown(sale)}
+                                        </div>
+                                      )}
+                                    </div>
                                  </td>
                                  <td className="px-8 py-4 text-right">
                                     <div className="flex items-center justify-end gap-3">
@@ -539,15 +764,31 @@ const DeliveriesPage: React.FC<DeliveriesPageProps> = ({
                                           'bg-[#f3f2f1] text-[#323130] hover:bg-[#edebe9]'
                                         }`}
                                       >
-                                        {sale.deliveryRequest?.status === DeliveryRequestStatus.DECLINED ? 'Retry' : (sale.deliveryRequest ? 'Edit' : 'Schedule')}
+                                        {sale.deliveryRequest?.status === DeliveryRequestStatus.DECLINED || sale.deliveryRequest?.status === DeliveryRequestStatus.CANCELLED ? 'Retry' : (sale.deliveryRequest ? 'Edit' : 'Schedule')}
                                       </button>
                                       { (sale.deliveryRequest?.status === DeliveryRequestStatus.DISPATCHED || sale.deliveryRequest?.status === DeliveryRequestStatus.APPROVED) ? (
-                                        <button 
-                                          onClick={(e) => { e.stopPropagation(); setFinalizeModalSale({ sale, artwork }); }}
-                                          className="px-5 py-2 rounded-sm text-[9px] font-black uppercase tracking-widest transition-all bg-[#0078d4] text-white shadow-md shadow-[#0078d4]/20 hover:bg-[#106ebe]"
-                                        >
-                                          Mark as Delivered
-                                        </button>
+                                        <>
+                                          <button
+                                            onClick={(e) => { e.stopPropagation(); setDeliveryActionSale({ sale, artwork, mode: 'cancel' }); }}
+                                            className="px-4 py-2 rounded-sm text-[9px] font-black uppercase tracking-widest transition-all bg-[#fde7e9] text-[#a4262c] hover:bg-[#f8d7da] flex items-center gap-1.5"
+                                          >
+                                            <Ban size={12} />
+                                            Cancel
+                                          </button>
+                                          <button
+                                            onClick={(e) => { e.stopPropagation(); setDeliveryActionSale({ sale, artwork, mode: 'reschedule' }); }}
+                                            className="px-4 py-2 rounded-sm text-[9px] font-black uppercase tracking-widest transition-all bg-[#f3f2f1] text-[#323130] hover:bg-[#edebe9] flex items-center gap-1.5"
+                                          >
+                                            <RefreshCw size={12} />
+                                            Reschedule
+                                          </button>
+                                          <button 
+                                            onClick={(e) => { e.stopPropagation(); setFinalizeModalSale({ sale, artwork }); }}
+                                            className="px-5 py-2 rounded-sm text-[9px] font-black uppercase tracking-widest transition-all bg-[#0078d4] text-white shadow-md shadow-[#0078d4]/20 hover:bg-[#106ebe]"
+                                          >
+                                            {activeTab === 'rescheduled' ? 'Deliver' : 'Delivery Successful'}
+                                          </button>
+                                        </>
                                       ) : (
                                         <button 
                                           disabled={true}
@@ -582,6 +823,190 @@ const DeliveriesPage: React.FC<DeliveriesPageProps> = ({
 
       {/* Logistics Modal */}
       <AnimatePresence>
+        {deliveryActionSale && (
+          <div
+            className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-[#323130]/60 backdrop-blur-sm animate-in fade-in duration-200"
+            onClick={resetDeliveryActionForm}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.98 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="bg-white rounded-md shadow-2xl w-full max-w-lg overflow-hidden flex flex-col border border-[#edebe9]"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="p-6 border-b border-[#edebe9] flex items-center justify-between bg-[#faf9f8]">
+                <div>
+                  <h2 className="text-sm font-black text-[#323130] uppercase tracking-tight">
+                    {deliveryActionSale.mode === 'reschedule' ? 'Reschedule Delivery' : 'Cancel Delivery'}
+                  </h2>
+                  <p className="text-[#605e5c] text-[10px] font-bold uppercase tracking-widest mt-1">
+                    {deliveryActionSale.sale.clientName} / {deliveryActionSale.artwork.code}
+                  </p>
+                </div>
+                <button onClick={resetDeliveryActionForm} className="p-2 hover:bg-[#edebe9] rounded-md transition-colors text-[#605e5c]">
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div className="p-6 space-y-5">
+                <div className="p-4 bg-[#faf9f8] rounded-sm border border-[#edebe9]">
+                  <p className="text-[10px] font-black text-[#a19f9d] uppercase tracking-widest mb-1">
+                    Active Delivery
+                  </p>
+                  <h3 className="font-black text-[#323130] text-sm uppercase truncate">{deliveryActionSale.artwork.title}</h3>
+                  <p className="text-[11px] font-bold text-[#605e5c] mt-2">
+                    Current schedule: {new Date(deliveryActionSale.sale.deliveryRequest?.deliveryDate || '').toLocaleDateString('en-US', { dateStyle: 'medium' })}
+                  </p>
+                </div>
+
+                {deliveryActionSale.mode === 'reschedule' ? (
+                  <>
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-black text-[#605e5c] uppercase tracking-widest ml-1">
+                        New Delivery Date <span className="text-[#d13438]">*</span>
+                      </label>
+                      <input
+                        type="date"
+                        min={new Date().toISOString().split('T')[0]}
+                        value={rescheduleDate}
+                        onChange={(e) => setRescheduleDate(e.target.value)}
+                        className="w-full px-4 py-3 bg-[#faf9f8] border border-[#edebe9] rounded-sm text-sm font-bold text-[#323130] focus:bg-white focus:ring-1 focus:ring-[#0078d4] focus:border-[#0078d4] outline-none transition-all"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-black text-[#605e5c] uppercase tracking-widest ml-1">
+                        Reschedule Notes
+                      </label>
+                      <textarea
+                        value={rescheduleReason}
+                        onChange={(e) => setRescheduleReason(e.target.value)}
+                        className="w-full px-4 py-3 bg-[#faf9f8] border border-[#edebe9] rounded-sm text-sm font-bold text-[#323130] focus:bg-white focus:ring-1 focus:ring-[#0078d4] focus:border-[#0078d4] outline-none transition-all min-h-[90px] resize-none"
+                        placeholder="Client requested a new schedule, unavailable receiving contact, route issue..."
+                      />
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-black text-[#605e5c] uppercase tracking-widest ml-1">
+                        Cancel Reason <span className="text-[#d13438]">*</span>
+                      </label>
+                      <textarea
+                        value={cancelReason}
+                        onChange={(e) => setCancelReason(e.target.value)}
+                        className="w-full px-4 py-3 bg-[#faf9f8] border border-[#edebe9] rounded-sm text-sm font-bold text-[#323130] focus:bg-white focus:ring-1 focus:ring-[#0078d4] focus:border-[#0078d4] outline-none transition-all min-h-[90px] resize-none"
+                        placeholder="Client cancelled, client requested hold, failed receiving confirmation..."
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-black text-[#605e5c] uppercase tracking-widest ml-1">
+                        Artwork Return Destination <span className="text-[#d13438]">*</span>
+                      </label>
+                      <select
+                        value={returnDestination}
+                        onChange={(e) => {
+                          setReturnDestination(e.target.value);
+                          setReturnItdrAttachment('');
+                          setReturnItdrAttachmentName('');
+                        }}
+                        className="w-full px-4 py-3 bg-[#faf9f8] border border-[#edebe9] rounded-sm text-sm font-bold text-[#323130] focus:bg-white focus:ring-1 focus:ring-[#0078d4] focus:border-[#0078d4] outline-none transition-all"
+                      >
+                        {returnDestinationOptions.map(destination => (
+                          <option key={destination} value={destination}>
+                            {destination}{currentReturnBranch && destination === currentReturnBranch ? ' (Current Branch)' : ''}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    {returnRequiresItdr && (
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-black text-[#605e5c] uppercase tracking-widest ml-1">
+                          Return IT/DR Attachment <span className="text-[#d13438]">*</span>
+                        </label>
+                        {returnItdrAttachment ? (
+                          <div className="flex items-center gap-3 rounded-sm border border-[#0078d4] bg-[#f3f9fd] px-4 py-3">
+                            <Paperclip size={16} className="text-[#0078d4] shrink-0" />
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-xs font-black text-[#323130]">
+                                {returnItdrAttachmentName || 'IT/DR attachment selected'}
+                              </p>
+                              <p className="text-[9px] font-bold uppercase tracking-widest text-[#605e5c]">
+                                Ready to attach to this cancellation
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setReturnItdrAttachment('');
+                                setReturnItdrAttachmentName('');
+                              }}
+                              className="rounded-sm p-1.5 text-[#605e5c] hover:bg-white hover:text-[#a4262c] transition-colors"
+                              title="Remove IT/DR attachment"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="relative">
+                            <input
+                              id="return-itdr-attachment"
+                              type="file"
+                              accept="image/*"
+                              className="hidden"
+                              onChange={(e) => {
+                                handleReturnItdrAttachment(e.target.files?.[0]);
+                                e.target.value = '';
+                              }}
+                            />
+                            <label
+                              htmlFor="return-itdr-attachment"
+                              className="flex cursor-pointer items-center justify-center gap-3 rounded-sm border border-dashed border-[#c8c6c4] bg-[#faf9f8] px-4 py-4 text-xs font-black uppercase tracking-widest text-[#605e5c] transition-all hover:border-[#0078d4] hover:bg-white hover:text-[#323130]"
+                            >
+                              <Upload size={16} />
+                              Upload IT/DR for {returnDestination}
+                            </label>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+
+              <div className="p-6 bg-[#faf9f8] border-t border-[#edebe9] flex gap-3">
+                <button
+                  onClick={resetDeliveryActionForm}
+                  className="flex-1 px-4 py-3 bg-white border border-[#edebe9] text-[#323130] rounded-sm text-[10px] font-black uppercase tracking-widest hover:bg-[#edebe9] transition-all"
+                >
+                  Close
+                </button>
+                {deliveryActionSale.mode === 'reschedule' ? (
+                  <button
+                    onClick={handleRescheduleDelivery}
+                    disabled={!rescheduleDate}
+                    className={`flex-1 px-4 py-3 rounded-sm text-[10px] font-black uppercase tracking-widest transition-all ${
+                      rescheduleDate ? 'bg-[#0078d4] text-white hover:bg-[#106ebe] shadow-lg shadow-[#0078d4]/20' : 'bg-[#edebe9] text-[#a19f9d] cursor-not-allowed'
+                    }`}
+                  >
+                    Reschedule Delivery
+                  </button>
+                ) : (
+                  <button
+                    onClick={handleCancelDelivery}
+                    disabled={!cancelReason.trim() || (returnRequiresItdr && !returnItdrAttachment)}
+                    className={`flex-1 px-4 py-3 rounded-sm text-[10px] font-black uppercase tracking-widest transition-all ${
+                      cancelReason.trim() && (!returnRequiresItdr || returnItdrAttachment)
+                        ? 'bg-[#a4262c] text-white hover:bg-[#8f1f25] shadow-lg shadow-[#a4262c]/20'
+                        : 'bg-[#edebe9] text-[#a19f9d] cursor-not-allowed'
+                    }`}
+                  >
+                    Cancel Delivery
+                  </button>
+                )}
+              </div>
+            </motion.div>
+          </div>
+        )}
         {requestModalSale && (
           <DeliveryRequestModal 
             sale={requestModalSale.sale}
@@ -609,7 +1034,7 @@ const DeliveriesPage: React.FC<DeliveriesPageProps> = ({
                    branches={branches}
                    logs={logs.filter(l => String(l.artworkId) === String(detailsSale.artwork.id))}
                    sale={detailsSale.sale}
-                   userRole={currentUser?.role || UserRole.SALES_AGENT}
+                   userRole={currentUser?.role || UserRole.BRANCH_USER}
                    userBranch={currentUser?.branch}
                    userPermissions={userPermissions}
                    events={events}

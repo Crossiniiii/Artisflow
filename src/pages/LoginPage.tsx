@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { UserAccount } from '../types';
+import { UserAccount, Artwork } from '../types';
 import { Shield, LogIn, Lock, Mail, Loader2 } from 'lucide-react';
 import { supabase } from '../supabase';
 import AnimatedBackground from '../components/AnimatedBackground';
@@ -7,13 +7,15 @@ import LoadingArtBackground from '../components/LoadingArtBackground';
 
 interface LoginPageProps {
   accounts: UserAccount[];
+  artworks: Artwork[];
   onLogin: (account: UserAccount) => void;
   isLoading?: boolean;
   loadingMessage?: string;
 }
 
-const LoginPage: React.FC<LoginPageProps> = ({ accounts, onLogin, isLoading, loadingMessage }) => {
+const LoginPage: React.FC<LoginPageProps> = ({ accounts, artworks, onLogin, isLoading, loadingMessage }) => {
   const [selectedId, setSelectedId] = useState<string>('');
+  const [password, setPassword] = useState<string>('');
   const [isAnimating, setIsAnimating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -21,6 +23,10 @@ const LoginPage: React.FC<LoginPageProps> = ({ accounts, onLogin, isLoading, loa
     e.preventDefault();
     const account = accounts.find(a => a.id === selectedId);
     if (account) {
+      if (account.password && password !== account.password) {
+        setError("Invalid password. Please check your credentials.");
+        return;
+      }
       setIsAnimating(true);
       setError(null);
 
@@ -54,9 +60,12 @@ const LoginPage: React.FC<LoginPageProps> = ({ accounts, onLogin, isLoading, loa
     }
   };
 
+  const selectedAccount = accounts.find(a => a.id === selectedId);
+  const hasPasswordSet = !!selectedAccount?.password;
+
   return (
     <div className="min-h-screen flex flex-col items-center justify-center p-6 relative overflow-hidden">
-      {isLoading ? <LoadingArtBackground /> : <AnimatedBackground />}
+      {isLoading ? <LoadingArtBackground /> : <AnimatedBackground artworks={artworks} />}
       <div className={`w-full max-w-md transition-all duration-700 transform ${isAnimating ? 'scale-95 opacity-0 blur-lg' : 'scale-100 opacity-100'} relative z-10`}>
 
         <div className="text-center mb-12">
@@ -64,9 +73,9 @@ const LoginPage: React.FC<LoginPageProps> = ({ accounts, onLogin, isLoading, loa
           <p className="text-[10px] text-neutral-500 font-black uppercase tracking-[0.4em]">Inventory System</p>
         </div>
 
-        <div className="bg-white/60 backdrop-blur-xl border border-white/40 rounded-[2.5rem] p-10 shadow-2xl">
+        <div className="bg-white/82 backdrop-blur-xl border border-neutral-200/80 rounded-md p-10 shadow-[0_24px_70px_rgba(0,0,0,0.14)] ring-1 ring-white/70">
           <div className="mb-8 text-center">
-            <div className="w-16 h-16 bg-neutral-900 rounded-2xl flex items-center justify-center text-white mx-auto mb-4 shadow-lg shadow-neutral-900/20">
+            <div className="w-14 h-14 bg-neutral-900 rounded-sm flex items-center justify-center text-white mx-auto mb-5 shadow-[0_12px_28px_rgba(0,0,0,0.24)]">
               <Shield size={32} />
             </div>
             <h2 className="text-xl font-bold text-neutral-900 tracking-tight">Personnel Authentication</h2>
@@ -95,9 +104,13 @@ const LoginPage: React.FC<LoginPageProps> = ({ accounts, onLogin, isLoading, loa
                   <select
                     required
                     value={selectedId}
-                    onChange={(e) => setSelectedId(e.target.value)}
+                    onChange={(e) => {
+                      setSelectedId(e.target.value);
+                      setPassword('');
+                      setError(null);
+                    }}
                     disabled={isLoading}
-                    className="block w-full pl-11 pr-4 py-4 bg-white/50 border border-neutral-200 rounded-2xl text-sm text-neutral-900 focus:outline-none focus:ring-2 focus:ring-neutral-900/10 focus:border-neutral-300 appearance-none transition-all hover:bg-white/80 disabled:opacity-50 disabled:cursor-wait"
+                    className="block w-full pl-11 pr-4 py-3.5 bg-white/88 border border-neutral-300 rounded-sm text-sm text-neutral-900 focus:outline-none focus:ring-2 focus:ring-[#2563eb]/20 focus:border-[#2563eb] appearance-none transition-all hover:bg-white hover:border-neutral-400 disabled:opacity-50 disabled:cursor-wait"
                   >
                     <option value="" className="bg-white text-neutral-400">
                       Select User Profile
@@ -116,10 +129,22 @@ const LoginPage: React.FC<LoginPageProps> = ({ accounts, onLogin, isLoading, loa
                   </div>
                   <input
                     type="password"
-                    disabled
-                    placeholder="Password (Managed by Directory)"
-                    className="block w-full pl-11 pr-4 py-4 bg-white/50 border border-neutral-200 rounded-2xl text-sm text-neutral-400 cursor-not-allowed"
-                    value="••••••••••••"
+                    required={hasPasswordSet}
+                    placeholder={
+                      !selectedId
+                        ? "Select a profile first"
+                        : hasPasswordSet
+                        ? "Enter your password"
+                        : "Password (No password set for this profile)"
+                    }
+                    disabled={isLoading || !selectedId || !hasPasswordSet}
+                    className={`block w-full pl-11 pr-4 py-3.5 border rounded-sm text-sm transition-all focus:outline-none focus:ring-2 focus:ring-[#2563eb]/20 focus:border-[#2563eb] ${
+                      !selectedId || !hasPasswordSet
+                        ? "bg-white/70 border-neutral-300 text-neutral-400 cursor-not-allowed"
+                        : "bg-white/88 border-neutral-300 text-neutral-900 hover:bg-white hover:border-neutral-400"
+                    }`}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
                   />
                 </div>
               </div>
@@ -127,7 +152,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ accounts, onLogin, isLoading, loa
               <button
                 type="submit"
                 disabled={!selectedId}
-                className="w-full flex items-center justify-center space-x-3 py-4 bg-neutral-900 hover:bg-neutral-800 disabled:opacity-30 disabled:hover:bg-neutral-900 text-white rounded-2xl font-black text-sm uppercase tracking-widest transition-all shadow-xl shadow-neutral-900/20 group transform hover:-translate-y-0.5"
+                className="w-full flex items-center justify-center space-x-3 py-3.5 bg-neutral-900 hover:bg-neutral-800 disabled:opacity-30 disabled:hover:bg-neutral-900 text-white rounded-sm font-black text-sm uppercase tracking-widest transition-all shadow-[0_10px_22px_rgba(0,0,0,0.16)] group"
               >
                 <span>Initialize Session</span>
                 <LogIn size={18} className="group-hover:translate-x-1 transition-transform" />
@@ -140,7 +165,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ accounts, onLogin, isLoading, loa
               <button
                 type="button"
                 onClick={handleGoogleLogin}
-                className="w-full flex items-center justify-center space-x-3 py-3 bg-white text-neutral-900 rounded-2xl font-bold text-xs uppercase tracking-widest transition-all hover:bg-neutral-50 border border-neutral-200 shadow-sm hover:shadow-md transform hover:-translate-y-0.5"
+                className="w-full flex items-center justify-center space-x-3 py-3 bg-white text-neutral-900 rounded-sm font-bold text-xs uppercase tracking-widest transition-all hover:bg-neutral-50 border border-neutral-300 shadow-sm"
               >
                 <span>Sign in with Google</span>
               </button>
@@ -148,7 +173,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ accounts, onLogin, isLoading, loa
           )}
 
           {error && (
-            <p className="mt-4 text-xs text-red-600 text-center font-medium bg-red-50 p-2 rounded-lg border border-red-100">
+            <p className="mt-4 text-xs text-red-600 text-center font-medium bg-red-50 p-2 rounded-sm border border-red-100">
               {error}
             </p>
           )}

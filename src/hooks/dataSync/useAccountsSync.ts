@@ -1,6 +1,6 @@
 import { Dispatch, SetStateAction, useEffect } from 'react';
 import { supabase } from '../../supabase';
-import { UserAccount } from '../../types';
+import { UserAccount, normalizeAccount } from '../../types';
 import { IS_DEMO_MODE } from '../../constants';
 import { mapFromSnakeCase } from '../../utils/supabaseUtils';
 import { LOGIN_PROFILE_COLUMNS, PROFILE_COLUMNS, getGlobalSyncChannel, subscribeGlobalSyncChannel, unsubscribeGlobalSyncChannel } from './shared';
@@ -36,9 +36,9 @@ export const useAccountsSync = ({
             .limit(100);
           
           if (error) {
-            handleSyncError(error, 'User Accounts');
+            handleSyncError(error, 'Branch Accounts');
           } else if (data) {
-            setAccounts(mapFromSnakeCase(data) as UserAccount[]);
+            setAccounts(normalizeAccount(mapFromSnakeCase(data) as UserAccount[]));
           }
         } finally {
           setIsLoadingUsers(false);
@@ -73,7 +73,7 @@ export const useAccountsSync = ({
         if (error) {
           handleSyncError(error, 'Profiles List');
         } else if (data) {
-          setAccounts(mapFromSnakeCase(data) as UserAccount[]);
+          setAccounts(normalizeAccount(mapFromSnakeCase(data) as UserAccount[]));
         }
       } finally {
         setIsLoadingUsers(false);
@@ -84,10 +84,10 @@ export const useAccountsSync = ({
     const globalChannel = getGlobalSyncChannel();
     globalChannel.on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, (payload) => {
         if (payload.eventType === 'INSERT') {
-          const newUser = mapFromSnakeCase([payload.new])[0] as UserAccount;
+          const newUser = normalizeAccount(mapFromSnakeCase([payload.new])[0] as UserAccount);
           setAccounts(prev => prev.some(a => a.id === newUser.id) ? prev : [...prev, newUser]);
         } else if (payload.eventType === 'UPDATE') {
-          const updated = mapFromSnakeCase([payload.new])[0] as UserAccount;
+          const updated = normalizeAccount(mapFromSnakeCase([payload.new])[0] as UserAccount);
           setAccounts(prev => prev.map(a => a.id === updated.id ? updated : a));
         } else if (payload.eventType === 'DELETE') {
           setAccounts(prev => prev.filter(a => a.id !== payload.old.id));

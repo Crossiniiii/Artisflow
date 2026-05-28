@@ -32,7 +32,7 @@ export const useAccountOperations = () => {
         firstName: acc.firstName,
         fullName: acc.fullName || baseName,
         position: acc.position,
-        role: acc.role || UserRole.SALES_AGENT
+        role: acc.role || UserRole.BRANCH_USER
       } as UserAccount;
 
       if (IS_DEMO_MODE) {
@@ -139,7 +139,7 @@ export const useAccountOperations = () => {
         message: 'Profiles removed successfully.',
         progress: { current: ids.length, total: ids.length }
       });
-      pushNotification('Bulk Delete', `Deleted ${ids.length} user accounts.`, 'system');
+      pushNotification('Bulk Delete', `Deleted ${ids.length} branch accounts.`, 'system');
     } catch (error) {
       console.error('Bulk Delete Error:', error);
       pushNotification('Bulk Delete Failed', 'Some records could not be removed.', 'system');

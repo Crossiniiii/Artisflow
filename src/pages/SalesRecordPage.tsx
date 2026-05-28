@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { SaleRecord, Artwork, ArtworkStatus, SaleStatus, UserPermissions } from '../types';
 import { ICONS } from '../constants';
-import { X, Clock } from 'lucide-react';
+import { X, Search, Download, ReceiptText, WalletCards, CheckCircle2, Truck, AlertTriangle } from 'lucide-react';
 import CertificateModal from '../components/CertificateModal';
 import { OptimizedImage } from '../components/OptimizedImage';
 import { createPortal } from 'react-dom';
@@ -61,11 +61,23 @@ const SaleDetailModal = ({
             {/* Financials */}
             <div className="bg-neutral-50 rounded-md p-4 space-y-3">
                 <div className="flex justify-between items-center">
-                    <span className="text-xs font-bold text-neutral-500 uppercase">Sale Price</span>
+                    <span className="text-xs font-bold text-neutral-500 uppercase">Original Price</span>
                     <span className="font-black text-neutral-900">₱{artwork.price.toLocaleString()}</span>
                 </div>
+                {sale.discountPercentage !== undefined && sale.discountPercentage > 0 && (
+                    <>
+                        <div className="flex justify-between items-center text-xs">
+                            <span className="text-emerald-700 font-bold uppercase">Discount</span>
+                            <span className="font-black text-emerald-700">-{sale.discountPercentage}%</span>
+                        </div>
+                        <div className="flex justify-between items-center text-xs">
+                            <span className="text-neutral-500 font-bold uppercase">Discounted Price</span>
+                            <span className="font-black text-neutral-900">₱{(sale.discountedPrice || 0).toLocaleString()}</span>
+                        </div>
+                    </>
+                )}
                 {(() => {
-                    const price = artwork.price || 0;
+                    const price = sale.discountedPrice !== undefined && sale.discountedPrice !== null ? sale.discountedPrice : (artwork.price || 0);
                     const isSaleApproved = sale.status === SaleStatus.APPROVED;
                     const downpayment = sale.downpayment || 0;
                     const installmentsTotal = (sale.installments || []).filter(i => !i.isPending).reduce((sum, inst) => sum + inst.amount, 0);
@@ -276,7 +288,6 @@ const SalesRecordPage: React.FC<SalesRecordPageProps> = ({
   }, [initialSaleId, sales, filteredArtworks]);
   
   // Filters
-  const [showRecentOnly, setShowRecentOnly] = useState(true);
   const [branchFilter, setBranchFilter] = useState<string>('All');
   const [artistFilter, setArtistFilter] = useState<string>('All');
   const [clientFilter, setClientFilter] = useState<string>('All');
@@ -284,15 +295,17 @@ const SalesRecordPage: React.FC<SalesRecordPageProps> = ({
   const [monthFilter, setMonthFilter] = useState<string>('All');
   const [mediumFilter, setMediumFilter] = useState<string>('All');
   const [sizeFilter, setSizeFilter] = useState<string>('');
+  const [searchTerm, setSearchTerm] = useState('');
 
   const getPaymentSummary = (sale: SaleRecord, price: number) => {
     const downpayment = sale.downpayment || 0;
     const installmentsTotal = (sale.installments || [])
       .filter(i => !i.isPending)
       .reduce((sum, inst) => sum + inst.amount, 0);
-    const totalPaid = downpayment + installmentsTotal;
+    const recordedPaid = downpayment + installmentsTotal;
+    const isInstallment = !!sale.isDownpayment || (recordedPaid > 0 && recordedPaid < price);
+    const totalPaid = isInstallment ? recordedPaid : price;
     const balance = Math.max(price - totalPaid, 0);
-    const isInstallment = !!sale.isDownpayment || (totalPaid > 0 && totalPaid < price);
 
     return {
       totalPaid,
@@ -390,6 +403,20 @@ const SalesRecordPage: React.FC<SalesRecordPageProps> = ({
       }
 
       const art = permittedArt || (sale.artworkSnapshot as Artwork);
+      const search = searchTerm.trim().toLowerCase();
+
+      if (search) {
+        const searchable = [
+          art?.title,
+          art?.code,
+          art?.artist,
+          sale.clientName,
+          sale.agentName,
+          art?.currentBranch
+        ].filter(Boolean).join(' ').toLowerCase();
+
+        if (!searchable.includes(search)) return false;
+      }
       
       // Branch Filter
       if (branchFilter !== 'All' && art?.currentBranch !== branchFilter) return false;
@@ -418,12 +445,44 @@ const SalesRecordPage: React.FC<SalesRecordPageProps> = ({
       return true;
     });
 
-    // Sort based on showRecentOnly (True = Newest First, False = Oldest First)
-    if (!showRecentOnly) {
-      return result.reverse();
-    }
     return result;
-  }, [allSales, filteredArtworks, branchFilter, artistFilter, clientFilter, yearFilter, monthFilter, mediumFilter, sizeFilter, showRecentOnly]);
+  }, [allSales, filteredArtworks, branchFilter, artistFilter, clientFilter, yearFilter, monthFilter, mediumFilter, sizeFilter, searchTerm]);
+
+  const ledgerMetrics = useMemo(() => {
+    return filteredSales.reduce((acc, sale) => {
+      const art = filteredArtworks.find(a => a.id === sale.artworkId) || (sale.artworkSnapshot as Artwork);
+      const price = art?.price || 0;
+      const { totalPaid, balance, isFullyPaid, paymentType } = getPaymentSummary(sale, price);
+
+      acc.totalValue += price;
+      acc.totalPaid += totalPaid;
+      acc.outstanding += balance;
+      if (isFullyPaid) acc.fullyPaid += 1;
+      if (paymentType === 'Installment') acc.installments += 1;
+      if (!sale.isDelivered && !sale.isCancelled) acc.awaitingTransit += 1;
+      return acc;
+    }, {
+      totalValue: 0,
+      totalPaid: 0,
+      outstanding: 0,
+      fullyPaid: 0,
+      installments: 0,
+      awaitingTransit: 0
+    });
+  }, [filteredSales, filteredArtworks]);
+
+  const hasActiveFilters = branchFilter !== 'All' || artistFilter !== 'All' || clientFilter !== 'All' || mediumFilter !== 'All' || yearFilter !== 'All' || monthFilter !== 'All' || sizeFilter !== '' || searchTerm !== '';
+
+  const clearFilters = () => {
+    setBranchFilter('All');
+    setArtistFilter('All');
+    setClientFilter('All');
+    setMediumFilter('All');
+    setYearFilter('All');
+    setMonthFilter('All');
+    setSizeFilter('');
+    setSearchTerm('');
+  };
   const toggleSelect = (id: string) => {
     setSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
   };
@@ -480,43 +539,64 @@ const SalesRecordPage: React.FC<SalesRecordPageProps> = ({
   return (
     <div className="space-y-6 pb-10">
       <div className="flex flex-col gap-6">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="flex flex-col xl:flex-row xl:items-end justify-between gap-5">
         <div>
-          <h1 className="text-2xl font-bold text-neutral-900">Sales Ledger</h1>
-          <p className="text-sm text-neutral-500">Historical records of all finalized artwork sales.</p>
+          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-neutral-400 mb-1">Sales History</p>
+          <h1 className="text-3xl font-black text-neutral-950 tracking-tight">Sales Ledger</h1>
+          <p className="text-sm text-neutral-500 mt-1">
+            {filteredSales.length.toLocaleString()} of {allSales.length.toLocaleString()} finalized records shown.
+          </p>
         </div>
         {canExport && (
           <button 
             onClick={exportSales}
-            className="flex items-center space-x-2 bg-white border border-neutral-200 text-neutral-700 px-6 py-3 rounded-md hover:bg-neutral-50 hover:text-neutral-900 hover:border-neutral-400 transition-all shadow-md hover:shadow-lg font-bold group transform hover:-translate-y-0.5"
+            className="inline-flex items-center justify-center gap-2 bg-neutral-950 border border-neutral-950 text-white px-5 py-3 rounded-sm hover:bg-neutral-800 transition-all shadow-sm font-black text-xs uppercase tracking-widest"
           >
-            <svg className="w-4 h-4 group-hover:scale-110 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+            <Download size={15} />
             <span>Export CSV</span>
           </button>
         )}
       </div>
 
-      {/* Filters Bar */}
-      <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-3 w-full animate-in fade-in slide-in-from-top-4 duration-500">
-          {/* Recently Sold Toggle */}
-          <button
-            onClick={() => setShowRecentOnly(!showRecentOnly)}
-            className={`w-full flex items-center justify-center gap-2 px-4 py-3 rounded-md text-sm font-bold transition-all ${
-              showRecentOnly 
-                ? 'bg-neutral-200 text-neutral-900 shadow-sm border border-neutral-300' 
-                : 'bg-white border border-neutral-200 text-neutral-600 hover:bg-neutral-50 hover:shadow-md'
-            }`}
-            title="Toggle Recently Sold"
-          >
-            <Clock size={16} />
-            <span>Recently Sold</span>
-          </button>
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-3">
+        {[
+          { label: 'Gross Sales', value: `₱${ledgerMetrics.totalValue.toLocaleString()}`, icon: ReceiptText, tone: 'text-neutral-950', sub: 'Filtered ledger value' },
+          { label: 'Collected', value: `₱${ledgerMetrics.totalPaid.toLocaleString()}`, icon: WalletCards, tone: 'text-emerald-700', sub: 'Approved payments' },
+          { label: 'Outstanding', value: `₱${ledgerMetrics.outstanding.toLocaleString()}`, icon: AlertTriangle, tone: ledgerMetrics.outstanding > 0 ? 'text-red-700' : 'text-neutral-950', sub: 'Remaining balance' },
+          { label: 'Fully Paid', value: ledgerMetrics.fullyPaid.toLocaleString(), icon: CheckCircle2, tone: 'text-emerald-700', sub: `${ledgerMetrics.installments} installment sale${ledgerMetrics.installments === 1 ? '' : 's'}` },
+          { label: 'Awaiting Transit', value: ledgerMetrics.awaitingTransit.toLocaleString(), icon: Truck, tone: 'text-amber-700', sub: 'Sold, not delivered' }
+        ].map(metric => (
+          <div key={metric.label} className="rounded-sm border border-neutral-200 bg-white px-4 py-3 shadow-sm">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-widest text-neutral-400">{metric.label}</p>
+                <p className={`mt-1 text-xl font-black leading-none ${metric.tone}`}>{metric.value}</p>
+              </div>
+              <metric.icon size={18} className="text-neutral-400" />
+            </div>
+            <p className="mt-2 text-[10px] font-bold uppercase tracking-wider text-neutral-400">{metric.sub}</p>
+          </div>
+        ))}
+      </div>
 
+      {/* Filters Bar */}
+      <div className="rounded-md border border-neutral-200 bg-white p-3 shadow-sm animate-in fade-in slide-in-from-top-4 duration-500">
+        <div className="grid grid-cols-1 lg:grid-cols-[minmax(260px,1.25fr)_repeat(4,minmax(150px,1fr))] xl:grid-cols-[minmax(280px,1.35fr)_repeat(7,minmax(135px,1fr))] gap-3 w-full">
+          <div className="relative">
+            <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-neutral-400" />
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Search artwork, client, code, branch..."
+              className="w-full bg-neutral-50 border border-neutral-200 rounded-sm pl-10 pr-4 py-3 text-sm font-bold text-neutral-700 focus:outline-none focus:ring-2 focus:ring-neutral-500/20 focus:border-neutral-500 transition-all"
+            />
+          </div>
           {/* Branch Filter */}
           <select
             value={branchFilter}
             onChange={(e) => setBranchFilter(e.target.value)}
-            className="w-full bg-white border border-neutral-200 rounded-md px-4 py-3 text-sm font-bold text-neutral-700 focus:outline-none focus:ring-2 focus:ring-neutral-500/20 focus:border-neutral-500 hover:shadow-md transition-all cursor-pointer appearance-none"
+            className="w-full bg-neutral-50 border border-neutral-200 rounded-sm px-4 py-3 text-sm font-bold text-neutral-700 focus:outline-none focus:ring-2 focus:ring-neutral-500/20 focus:border-neutral-500 hover:bg-white transition-all cursor-pointer appearance-none"
             title="Filter by Branch"
           >
             <option value="All">All Branches</option>
@@ -529,7 +609,7 @@ const SalesRecordPage: React.FC<SalesRecordPageProps> = ({
           <select
             value={artistFilter}
             onChange={(e) => setArtistFilter(e.target.value)}
-            className="w-full bg-white border border-neutral-200 rounded-md px-4 py-3 text-sm font-bold text-neutral-700 focus:outline-none focus:ring-2 focus:ring-neutral-500/20 focus:border-neutral-500 hover:shadow-md transition-all cursor-pointer appearance-none"
+            className="w-full bg-neutral-50 border border-neutral-200 rounded-sm px-4 py-3 text-sm font-bold text-neutral-700 focus:outline-none focus:ring-2 focus:ring-neutral-500/20 focus:border-neutral-500 hover:bg-white transition-all cursor-pointer appearance-none"
             title="Filter by Artist"
           >
             <option value="All">All Artists</option>
@@ -542,7 +622,7 @@ const SalesRecordPage: React.FC<SalesRecordPageProps> = ({
           <select
             value={clientFilter}
             onChange={(e) => setClientFilter(e.target.value)}
-            className="w-full bg-white border border-neutral-200 rounded-md px-4 py-3 text-sm font-bold text-neutral-700 focus:outline-none focus:ring-2 focus:ring-neutral-500/20 focus:border-neutral-500 hover:shadow-md transition-all cursor-pointer appearance-none"
+            className="w-full bg-neutral-50 border border-neutral-200 rounded-sm px-4 py-3 text-sm font-bold text-neutral-700 focus:outline-none focus:ring-2 focus:ring-neutral-500/20 focus:border-neutral-500 hover:bg-white transition-all cursor-pointer appearance-none"
             title="Filter by Client"
           >
             <option value="All">All Clients</option>
@@ -555,7 +635,7 @@ const SalesRecordPage: React.FC<SalesRecordPageProps> = ({
           <select
             value={mediumFilter}
             onChange={(e) => setMediumFilter(e.target.value)}
-            className="w-full bg-white border border-neutral-200 rounded-md px-4 py-3 text-sm font-bold text-neutral-700 focus:outline-none focus:ring-2 focus:ring-neutral-500/20 focus:border-neutral-500 hover:shadow-md transition-all cursor-pointer appearance-none"
+            className="w-full bg-neutral-50 border border-neutral-200 rounded-sm px-4 py-3 text-sm font-bold text-neutral-700 focus:outline-none focus:ring-2 focus:ring-neutral-500/20 focus:border-neutral-500 hover:bg-white transition-all cursor-pointer appearance-none"
             title="Filter by Medium"
           >
             <option value="All">All Mediums</option>
@@ -568,7 +648,7 @@ const SalesRecordPage: React.FC<SalesRecordPageProps> = ({
           <select
             value={yearFilter}
             onChange={(e) => setYearFilter(e.target.value)}
-            className="w-full bg-white border border-neutral-200 rounded-md px-4 py-3 text-sm font-bold text-neutral-700 focus:outline-none focus:ring-2 focus:ring-neutral-500/20 focus:border-neutral-500 hover:shadow-md transition-all cursor-pointer appearance-none"
+            className="w-full bg-neutral-50 border border-neutral-200 rounded-sm px-4 py-3 text-sm font-bold text-neutral-700 focus:outline-none focus:ring-2 focus:ring-neutral-500/20 focus:border-neutral-500 hover:bg-white transition-all cursor-pointer appearance-none"
             title="Filter by Year"
           >
             <option value="All">All Years</option>
@@ -581,7 +661,7 @@ const SalesRecordPage: React.FC<SalesRecordPageProps> = ({
           <select
             value={monthFilter}
             onChange={(e) => setMonthFilter(e.target.value)}
-            className="w-full bg-white border border-neutral-200 rounded-md px-4 py-3 text-sm font-bold text-neutral-700 focus:outline-none focus:ring-2 focus:ring-neutral-500/20 focus:border-neutral-500 hover:shadow-md transition-all cursor-pointer appearance-none"
+            className="w-full bg-neutral-50 border border-neutral-200 rounded-sm px-4 py-3 text-sm font-bold text-neutral-700 focus:outline-none focus:ring-2 focus:ring-neutral-500/20 focus:border-neutral-500 hover:bg-white transition-all cursor-pointer appearance-none"
             title="Filter by Month"
           >
             <option value="All">All Months</option>
@@ -597,34 +677,27 @@ const SalesRecordPage: React.FC<SalesRecordPageProps> = ({
               value={sizeFilter}
               onChange={(e) => setSizeFilter(e.target.value)}
               placeholder="Size (e.g. 24x36)"
-              className="w-full bg-white border border-neutral-200 rounded-md px-4 py-3 text-sm font-bold text-neutral-700 focus:outline-none focus:ring-2 focus:ring-neutral-500/20 focus:border-neutral-500 hover:shadow-md transition-all pr-10"
+              className="w-full bg-neutral-50 border border-neutral-200 rounded-sm px-4 py-3 text-sm font-bold text-neutral-700 focus:outline-none focus:ring-2 focus:ring-neutral-500/20 focus:border-neutral-500 hover:bg-white transition-all pr-10"
             />
-            {(branchFilter !== 'All' || artistFilter !== 'All' || clientFilter !== 'All' || mediumFilter !== 'All' || yearFilter !== 'All' || monthFilter !== 'All' || sizeFilter !== '') && (
+            {hasActiveFilters && (
               <button
-                  onClick={() => {
-                      setBranchFilter('All');
-                      setArtistFilter('All');
-                      setClientFilter('All');
-                      setMediumFilter('All');
-                      setYearFilter('All');
-                      setMonthFilter('All');
-                      setSizeFilter('');
-                  }}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 text-neutral-500 hover:bg-neutral-100 rounded-lg transition-colors"
+                  onClick={clearFilters}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 text-neutral-500 hover:bg-neutral-100 rounded-sm transition-colors"
                   title="Clear All Filters"
               >
                   <X size={16} />
               </button>
             )}
           </div>
+        </div>
       </div>
     </div>
 
       <div className="bg-white rounded-md border border-neutral-200 shadow-sm overflow-hidden">
-        <div className="hidden md:block overflow-x-auto">
-        <table className="w-full text-left border-collapse min-w-[1120px]">
+        <div className="hidden md:block overflow-x-auto max-h-[calc(100vh-310px)]">
+        <table className="w-full text-left border-collapse min-w-[1180px]">
           <thead>
-            <tr className="bg-neutral-50 border-b border-neutral-100">
+            <tr className="bg-neutral-50/95 backdrop-blur border-b border-neutral-100 sticky top-0 z-10">
               <th className="px-6 py-4">
                 {canDelete && <input type="checkbox" checked={selectedIds.length === filteredSales.length && filteredSales.length > 0} onChange={selectAll} />}
               </th>
@@ -654,13 +727,13 @@ const SalesRecordPage: React.FC<SalesRecordPageProps> = ({
               return (
                 <tr 
                   key={sale.id} 
-                  className="hover:bg-neutral-50 transition-colors group cursor-pointer"
+                  className="hover:bg-neutral-50/80 transition-colors group cursor-pointer even:bg-neutral-50/25"
                   onClick={(e) => {
                     if ((e.target as HTMLElement).closest('input') || (e.target as HTMLElement).closest('button')) return;
                     if (displayArt) setSelectedSaleDetailPair({art: displayArt, sale});
                   }}
                 >
-                  <td className="px-6 py-4">
+                  <td className="px-6 py-3">
                     {canDelete && (
                       <input 
                         type="checkbox" 
@@ -669,9 +742,9 @@ const SalesRecordPage: React.FC<SalesRecordPageProps> = ({
                       />
                     )}
                   </td>
-                  <td className="px-6 py-4">
+                  <td className="px-6 py-3">
                     <div 
-                      className={`flex items-center space-x-3 ${displayArt && onViewArtwork ? 'cursor-pointer hover:opacity-80 transition-opacity' : ''}`}
+                      className={`flex items-center space-x-3 min-w-[280px] ${displayArt && onViewArtwork ? 'cursor-pointer hover:opacity-80 transition-opacity' : ''}`}
                       onClick={(e) => {
                         e.stopPropagation();
                         if (displayArt && onViewArtwork) {
@@ -681,40 +754,42 @@ const SalesRecordPage: React.FC<SalesRecordPageProps> = ({
                     >
                       <OptimizedImage
                         src={displayArt?.imageUrl || undefined}
-                        className="w-10 h-10 rounded-sm object-cover"
+                        className="w-12 h-12 rounded-sm object-cover border border-neutral-200 bg-neutral-50"
                         alt="Thumb"
                       />
-                      <div>
+                      <div className="min-w-0">
                         <p className="text-sm font-bold text-neutral-900 line-clamp-1">{displayArt?.title || 'Unknown Artwork'}</p>
-                        <p className="text-[10px] font-bold text-neutral-400 uppercase tracking-tighter">{displayArt?.code || 'N/A'}</p>
+                        <p className="text-[10px] font-black text-neutral-400 uppercase tracking-wider mt-0.5">{displayArt?.code || 'N/A'}</p>
                       </div>
                     </div>
                   </td>
-                  <td className="px-6 py-4">
-                    <p className="text-sm font-medium text-neutral-700">{sale.clientName}</p>
+                  <td className="px-6 py-3">
+                    <p className="text-sm font-bold text-neutral-800 max-w-[180px] truncate" title={sale.clientName}>{sale.clientName}</p>
                   </td>
-                  <td className="px-6 py-4">
-                    <p className="text-sm font-medium text-neutral-600">{displayArt?.currentBranch || '-'}</p>
+                  <td className="px-6 py-3">
+                    <p className="text-sm font-medium text-neutral-600 max-w-[210px] truncate" title={displayArt?.currentBranch || '-'}>{displayArt?.currentBranch || '-'}</p>
                   </td>
-                  <td className="px-6 py-4">
+                  <td className="px-6 py-3">
                     <div className="flex items-center space-x-1.5">
-                      <div className="w-5 h-5 rounded-sm bg-neutral-200 flex items-center justify-center text-[8px] font-bold">{sale.agentName[0]}</div>
-                      <p className="text-xs text-neutral-600 font-medium">{sale.agentName}</p>
+                      <div className="w-6 h-6 rounded-sm bg-neutral-200 flex items-center justify-center text-[9px] font-black text-neutral-600">{sale.agentName[0]}</div>
+                      <p className="text-xs text-neutral-600 font-bold max-w-[130px] truncate" title={sale.agentName}>{sale.agentName}</p>
                     </div>
                   </td>
-                  <td className="px-6 py-4">
-                    <p className="text-sm font-medium text-neutral-600 tabular-nums">{new Date(sale.saleDate).toLocaleDateString()}</p>
+                  <td className="px-6 py-3">
+                    <p className="text-sm font-bold text-neutral-700 tabular-nums">{new Date(sale.saleDate).toLocaleDateString()}</p>
                   </td>
-                  <td className="px-6 py-4 text-right">
-                    <p className="text-sm font-black text-neutral-900">₱{(displayArt?.price || 0).toLocaleString()}</p>
+                  <td className="px-6 py-3 text-right">
+                    {sale.discountPercentage !== undefined && sale.discountPercentage > 0 ? (
+                      <div className="flex flex-col items-end leading-tight">
+                        <span className="line-through text-neutral-400 font-normal text-[10px]">₱{(displayArt?.price || 0).toLocaleString()}</span>
+                        <span className="text-sm font-black text-neutral-900">₱{(sale.discountedPrice || 0).toLocaleString()} <span className="text-[9px] font-bold text-emerald-800 bg-emerald-50 px-1 py-0.5 rounded ml-1">-{sale.discountPercentage}%</span></span>
+                      </div>
+                    ) : (
+                      <p className="text-sm font-black text-neutral-900">₱{(displayArt?.price || 0).toLocaleString()}</p>
+                    )}
                     {(() => {
-                      const price = displayArt?.price || 0;
-                      const downpayment = sale.downpayment || 0;
-                      const installmentsTotal = (sale.installments || []).filter(i => !i.isPending).reduce((sum, inst) => sum + inst.amount, 0);
-                      const totalPaid = downpayment + installmentsTotal;
-                      const balance = price - totalPaid;
-                      const isFullyPaid = balance <= 0 && totalPaid > 0;
-                      
+                      const actualPrice = sale.discountedPrice !== undefined && sale.discountedPrice !== null ? sale.discountedPrice : (displayArt?.price || 0);
+                      const { totalPaid, balance, isFullyPaid } = getPaymentSummary(sale, actualPrice);
                       const showBalance = sale.isDownpayment || sale.status === SaleStatus.APPROVED;
                       
                       if (totalPaid === 0 && !showBalance) return null;
@@ -733,7 +808,7 @@ const SalesRecordPage: React.FC<SalesRecordPageProps> = ({
                       );
                     })()}
                   </td>
-                  <td className="px-6 py-4">
+                  <td className="px-6 py-3">
                     {(() => {
                       const { paymentType } = getPaymentSummary(sale, displayArt?.price || 0);
                       const isInstallment = paymentType === 'Installment';
@@ -750,7 +825,7 @@ const SalesRecordPage: React.FC<SalesRecordPageProps> = ({
                       );
                     })()}
                   </td>
-                  <td className="px-6 py-4 text-center">
+                  <td className="px-6 py-3 text-center">
                     <button 
                       onClick={() => displayArt && setSelectedSalePair({art: displayArt, sale})}
                       className="p-2 text-neutral-400 hover:text-neutral-900 hover:bg-neutral-100 rounded-sm hover:shadow-md transition-all"
@@ -760,7 +835,7 @@ const SalesRecordPage: React.FC<SalesRecordPageProps> = ({
                       <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
                     </button>
                   </td>
-                  <td className="px-6 py-4">
+                  <td className="px-6 py-3">
                     {sale.isCancelled ? (
                       <span className="inline-flex items-center space-x-1.5 px-2.5 py-1 bg-neutral-100 text-neutral-500 rounded-md text-[10px] font-bold uppercase">
                         <span className="w-1.5 h-1.5 bg-neutral-400 rounded-sm"></span>
@@ -944,9 +1019,19 @@ const SalesRecordPage: React.FC<SalesRecordPageProps> = ({
           </div>
         </div>
         
-        {sales.length === 0 && (
+        {filteredSales.length === 0 && (
           <div className="py-20 text-center">
-            <p className="text-neutral-400 font-medium italic">No sales recorded yet.</p>
+            <p className="text-neutral-500 font-black uppercase tracking-widest text-sm">
+              {allSales.length === 0 ? 'No sales recorded yet.' : 'No sales match the current filters.'}
+            </p>
+            {hasActiveFilters && (
+              <button
+                onClick={clearFilters}
+                className="mt-4 px-4 py-2 rounded-sm bg-neutral-900 text-white text-[10px] font-black uppercase tracking-widest hover:bg-neutral-800 transition-colors"
+              >
+                Clear Filters
+              </button>
+            )}
           </div>
         )}
       </div>

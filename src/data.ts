@@ -103,7 +103,7 @@ export const INITIAL_SALES: SaleRecord[] = [
 export const INITIAL_LOGS: ActivityLog[] = [
   { id: 'l1', artworkId: '1', action: 'Created', user: 'Inventory Admin', timestamp: '2024-01-10T09:00:00Z' },
   { id: 'l4', artworkId: '4', action: 'Created', user: 'Inventory Admin', timestamp: '2024-02-10T16:45:00Z' },
-  { id: 'l5', artworkId: '4', action: 'Delivered', user: 'Sales Agent James', timestamp: '2024-01-25T14:00:00Z' }
+  { id: 'l5', artworkId: '4', action: 'Delivered', user: 'Branch User James', timestamp: '2024-01-25T14:00:00Z' }
 ];
 
 export const INITIAL_ACCOUNTS: UserAccount[] = [
@@ -117,9 +117,9 @@ export const INITIAL_ACCOUNTS: UserAccount[] = [
   },
   {
     id: '33333333-3333-3333-3333-333333333333',
-    name: 'Demo Sales Agent',
+    name: 'Demo Branch User',
     email: 'sales@galeriejoaquin.com',
-    role: 'Sales Agent' as any,
+    role: 'Branch User' as any,
     status: 'Active',
     lastLogin: ''
   },

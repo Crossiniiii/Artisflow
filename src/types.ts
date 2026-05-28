@@ -1,10 +1,24 @@
 
 export enum UserRole {
   INVENTORY_PERSONNEL = 'Inventory Personnel',
-  SALES_AGENT = 'Sales Agent',
+  BRANCH_USER = 'Branch User',
   ADMIN = 'Admin',
   EXCLUSIVE = 'Exclusive'
 }
+
+export const normalizeAccount = <T extends any>(data: T): T => {
+  if (!data) return data;
+  if (Array.isArray(data)) {
+    return data.map(item => normalizeAccount(item)) as T;
+  }
+  if (typeof data === 'object') {
+    const acc = data as any;
+    if (acc.role === 'Sales Agent') {
+      acc.role = UserRole.BRANCH_USER;
+    }
+  }
+  return data;
+};
 
 export enum ArtworkStatus {
   AVAILABLE = 'Available',
@@ -90,6 +104,7 @@ export interface UserAccount {
   // Authentication should use Supabase Auth (Google sign-in or email/password auth).
   permissions?: UserPermissions;
   branch?: Branch;
+  password?: string;
 }
 
 export interface Artwork {
@@ -152,7 +167,8 @@ export enum DeliveryRequestStatus {
   PENDING = 'Pending',
   APPROVED = 'Approved',
   DISPATCHED = 'Dispatched',
-  DECLINED = 'Declined'
+  DECLINED = 'Declined',
+  CANCELLED = 'Cancelled'
 }
 
 export interface DeliveryRequest {
@@ -174,6 +190,15 @@ export interface DeliveryRequest {
   requestedAt: string;
   requestedBy: string;
   declineReason?: string;
+  cancelledAt?: string;
+  cancelledBy?: string;
+  cancellationReason?: string;
+  returnDestination?: string;
+  returnItdrNumber?: string;
+  returnItdrAttachment?: string;
+  rescheduledAt?: string;
+  rescheduledBy?: string;
+  rescheduleReason?: string;
   approvedAt?: string;
   approvedBy?: string;
   dispatchedAt?: string;
@@ -217,6 +242,8 @@ export interface SaleRecord {
     requestedAttachments?: string[];
   };
   installments?: InstallmentRecord[];
+  discountPercentage?: number;
+  discountedPrice?: number;
   artworkSnapshot?: {
     title: string;
     artist: string;
@@ -227,6 +254,8 @@ export interface SaleRecord {
     medium?: string;
     dimensions?: string;
     year?: string;
+    discountPercentage?: number;
+    discountedPrice?: number;
   };
 }
 
@@ -294,6 +323,8 @@ export interface ImportRecord {
   importedBy: string;
   timestamp: string;
   recordCount: number;
+  successCount?: number;
+  failCount?: number;
   status: 'Success' | 'Partial' | 'Failed';
   details?: string;
   importedIds?: string[]; // IDs of all artworks in this import

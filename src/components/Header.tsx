@@ -37,6 +37,45 @@ const Header: React.FC<HeaderProps> = ({ userRole, activeTab, notifications, unr
   const userMenuRef = useRef<HTMLDivElement>(null);
   const displayMenuRef = useRef<HTMLDivElement>(null);
 
+  // Premium Toast States
+  const [activeToast, setActiveToast] = useState<AppNotification | null>(null);
+  const [isExiting, setIsExiting] = useState(false);
+  const prevNotificationsRef = useRef<AppNotification[]>(notifications);
+
+  useEffect(() => {
+    // Only fire toast for newly added notifications
+    if (notifications.length > prevNotificationsRef.current.length) {
+      const newNotif = notifications[0];
+      if (newNotif && !newNotif.isRead) {
+        setActiveToast(newNotif);
+        setIsExiting(false);
+
+        const exitTimer = setTimeout(() => {
+          setIsExiting(true);
+        }, 4700);
+
+        const unmountTimer = setTimeout(() => {
+          setActiveToast(null);
+          setIsExiting(false);
+        }, 5000);
+
+        return () => {
+          clearTimeout(exitTimer);
+          clearTimeout(unmountTimer);
+        };
+      }
+    }
+    prevNotificationsRef.current = notifications;
+  }, [notifications]);
+
+  const dismissToast = () => {
+    setIsExiting(true);
+    setTimeout(() => {
+      setActiveToast(null);
+      setIsExiting(false);
+    }, 300);
+  };
+
   useEffect(() => {
     const checkChatVisibility = () => {
       if (typeof window === 'undefined') return;
@@ -299,6 +338,49 @@ const Header: React.FC<HeaderProps> = ({ userRole, activeTab, notifications, unr
           onViewArtwork={onViewArtwork}
           permissions={permissions}
         />
+      )}
+
+      {activeToast && (
+        <div
+          onClick={() => {
+            setSelectedNotification(activeToast);
+            dismissToast();
+          }}
+          className={`fixed top-20 right-8 z-[9999] max-w-sm w-full bg-white border border-neutral-200 shadow-2xl rounded-2xl p-4 flex items-start space-x-3 cursor-pointer select-none hover:shadow-neutral-200/50 hover:border-neutral-300 transform hover:-translate-y-0.5 transition-all duration-300 ${
+            isExiting ? 'toast-exit' : 'toast-enter'
+          }`}
+        >
+          <div className={`mt-0.5 p-2 rounded-xl ${
+            activeToast.type === 'inventory' ? 'bg-neutral-100 text-neutral-800' :
+            activeToast.type === 'sales' ? 'bg-neutral-100 text-neutral-800' : 
+            'bg-neutral-50 text-neutral-600'
+          }`}>
+            <Bell size={16} className="animate-bounce" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">New Notification</span>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  dismissToast();
+                }}
+                className="text-neutral-400 hover:text-neutral-600 p-1 rounded-full hover:bg-neutral-100 transition-colors"
+                aria-label="Dismiss toast"
+              >
+                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <p className="text-xs font-bold text-neutral-900 mt-1 leading-tight">{activeToast.title}</p>
+            <p className="text-[11px] text-neutral-500 mt-1 line-clamp-2 leading-relaxed">{activeToast.message}</p>
+            <div className="flex items-center space-x-1 mt-2 text-[9px] font-bold text-neutral-400 uppercase tracking-widest">
+              <Clock size={10} />
+              <span>Just Now</span>
+            </div>
+          </div>
+        </div>
       )}
     </header>
   );

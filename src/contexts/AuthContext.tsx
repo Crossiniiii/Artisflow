@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { UserAccount, UserRole } from '../types';
+import { UserAccount, UserRole, normalizeAccount } from '../types';
 import { supabase } from '../supabase';
 import { mapFromSnakeCase, mapToSnakeCase } from '../utils/supabaseUtils';
 import { IS_DEMO_MODE } from '../constants';
@@ -62,7 +62,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const isAdmin = currentUser?.role === UserRole.ADMIN;
   const isInventory = currentUser?.role === UserRole.INVENTORY_PERSONNEL;
-  const isSales = currentUser?.role === UserRole.SALES_AGENT;
+  const isSales = currentUser?.role === UserRole.BRANCH_USER;
   const isExclusive = currentUser?.role === UserRole.EXCLUSIVE;
 
   const handleLogin = async (account: UserAccount) => {
@@ -112,7 +112,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
 
     setJustLoggedIn(true);
-    setCurrentUser(finalAccount);
+    setCurrentUser(normalizeAccount(finalAccount));
 
     if (!IS_DEMO_MODE) {
       void supabase

@@ -38,6 +38,7 @@ export const getArtworkClassification = (dimensions: string | undefined): string
 export const buildNewArtwork = (art: Partial<Artwork>, defaultBranch: Branch): Artwork => {
   const dimensions = art.dimensions || 'N/A';
   return {
+    ...art,
     id: generateUUID(),
     code: art.code || generateUniqueArtworkCode(),
     title: art.title || 'Untitled',

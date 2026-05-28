@@ -1,6 +1,27 @@
 import { Artwork, ArtworkStatus, SaleRecord, SaleStatus, DeliveryRequestStatus } from '../types';
 import { generateUUID } from '../utils/idUtils';
 
+export const sanitizeArtworkSnapshot = (art: any): any => {
+  if (!art) return undefined;
+  const clean = { ...art };
+  if (clean.imageUrl && clean.imageUrl.startsWith('data:image')) {
+    clean.imageUrl = '[Base64 Image]';
+  }
+  if (clean.itdrImageUrl && (clean.itdrImageUrl.startsWith('data:image') || Array.isArray(clean.itdrImageUrl))) {
+    clean.itdrImageUrl = Array.isArray(clean.itdrImageUrl) ? [] : '[Base64 Image]';
+  }
+  if (clean.rsaImageUrl && (clean.rsaImageUrl.startsWith('data:image') || Array.isArray(clean.rsaImageUrl))) {
+    clean.rsaImageUrl = Array.isArray(clean.rsaImageUrl) ? [] : '[Base64 Image]';
+  }
+  if (clean.orCrImageUrl && (clean.orCrImageUrl.startsWith('data:image') || Array.isArray(clean.orCrImageUrl))) {
+    clean.orCrImageUrl = Array.isArray(clean.orCrImageUrl) ? [] : '[Base64 Image]';
+  }
+  delete clean.itdrImageUrl;
+  delete clean.rsaImageUrl;
+  delete clean.orCrImageUrl;
+  return clean;
+};
+
 export const buildBulkSale = (
   artworks: Artwork[],
   ids: string[],
@@ -100,7 +121,7 @@ export const buildBulkSale = (
         title: art.title,
         artist: art.artist,
         code: art.code,
-        imageUrl: art.imageUrl,
+        imageUrl: art.imageUrl && art.imageUrl.startsWith('data:image') ? '[Base64 Image]' : art.imageUrl,
         price: art.price,
         currentBranch: art.currentBranch,
         medium: art.medium,
@@ -140,7 +161,9 @@ export const applySingleSale = (
   orCrUrls?: string[],
   downpayment?: number,
   agentId?: string,
-  isDownpayment?: boolean
+  isDownpayment?: boolean,
+  discountPercentage?: number,
+  discountedPrice?: number
 ): { updatedArtworks: Artwork[]; newSale: SaleRecord | null } => {
   const now = new Date().toISOString();
   const art = artworks.find(a => String(a.id) === String(artworkId));
@@ -166,19 +189,23 @@ export const applySingleSale = (
     itdrUrl: itdrUrls,
     rsaUrl: rsaUrls,
     orCrUrl: orCrUrls,
-    downpayment: isDownpayment ? downpayment : art.price,
+    downpayment: isDownpayment ? downpayment : (discountedPrice !== undefined ? discountedPrice : art.price),
     isDownpayment: !!isDownpayment,
     downpaymentRecordedAt: now,
+    discountPercentage,
+    discountedPrice,
     artworkSnapshot: {
       title: art.title,
       artist: art.artist,
       code: art.code,
-      imageUrl: art.imageUrl,
+      imageUrl: art.imageUrl && art.imageUrl.startsWith('data:image') ? '[Base64 Image]' : art.imageUrl,
       price: art.price,
       currentBranch: art.currentBranch,
       medium: art.medium,
       dimensions: art.dimensions,
-      year: art.year
+      year: art.year,
+      discountPercentage,
+      discountedPrice
     }
   };
 

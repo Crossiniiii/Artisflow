@@ -150,7 +150,7 @@ const ProfileModal: React.FC<ProfileModalProps> = ({ user, logs, artworks, permi
               icon={<Shield size={18}/>} 
               color="text-neutral-900" 
             />
-            {user.role === UserRole.SALES_AGENT || user.role === UserRole.ADMIN ? (
+            {user.role === UserRole.BRANCH_USER || user.role === UserRole.ADMIN ? (
               <StatCard 
                 label="Sales Closed" 
                 value={salesCount} 

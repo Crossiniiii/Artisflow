@@ -186,7 +186,7 @@ const App: React.FC = () => {
 
 
   // Computed
-  const userRole = currentUser?.role || UserRole.SALES_AGENT;
+  const userRole = currentUser?.role || UserRole.BRANCH_USER;
 
   // Filter out any malformed accounts that might show up as "Unknown User"
   const validAccounts = useMemo(() => {
@@ -209,7 +209,7 @@ const App: React.FC = () => {
   }, [conversations, currentUser]);
 
   const currentPermissions = useMemo(() => {
-    if (!currentUser) return getDefaultPermissions(UserRole.SALES_AGENT);
+    if (!currentUser) return getDefaultPermissions(UserRole.BRANCH_USER);
     // Merge stored permissions with defaults to ensure new permission keys are present
     const defaults = getDefaultPermissions(currentUser.role);
     const stored = currentUser.permissions || {};
@@ -420,6 +420,7 @@ const App: React.FC = () => {
     return (
       <LoginPage
         accounts={validAccounts}
+        artworks={artworks}
         onLogin={handleLogin}
         isLoading={isLoadingUsers}
       />

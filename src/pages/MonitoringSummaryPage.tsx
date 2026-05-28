@@ -555,14 +555,15 @@ const MonitoringSummaryPage: React.FC<MonitoringSummaryPageProps> = ({
       const { jsPDF } = await import('jspdf');
 
       const canvas = await html2canvas(element, {
-        scale: 1.5,
+        scale: 2,
         useCORS: true,
         backgroundColor: '#ffffff',
         windowWidth: 1200,
         logging: false
       });
 
-      const imgData = canvas.toDataURL('image/jpeg', 0.85);
+      // Use canvas directly to avoid "Invalid string length" errors
+      const imgData = canvas;
       const pdf = new jsPDF({
         orientation: 'portrait',
         unit: 'pt',
@@ -577,7 +578,7 @@ const MonitoringSummaryPage: React.FC<MonitoringSummaryPageProps> = ({
       let heightLeft = imgHeight;
       let position = 0;
 
-      pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight);
+      pdf.addImage(canvas, 'PNG', 0, position, imgWidth, imgHeight, undefined, 'NONE');
       heightLeft -= pdfHeight;
 
       while (heightLeft > 0) {
@@ -608,7 +609,7 @@ const MonitoringSummaryPage: React.FC<MonitoringSummaryPageProps> = ({
 
       const html2canvas = (await import('html2canvas')).default;
       const canvas = await html2canvas(element, {
-        scale: 1.25,
+        scale: 2,
         useCORS: true,
         backgroundColor: '#ffffff',
         windowWidth: 1200

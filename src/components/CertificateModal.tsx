@@ -2,6 +2,7 @@
 import React, { useState } from 'react';
 import { Artwork, SaleRecord } from '../types';
 import { Download, Printer, ArrowLeft, X } from 'lucide-react';
+import { formatDimensions } from '../utils/unitUtils';
 
 interface CertificateModalProps {
   artwork: Artwork;
@@ -26,13 +27,14 @@ const CertificateModal: React.FC<CertificateModalProps> = ({ artwork, sale, onCl
       const jsPDF = (await import('jspdf')).default;
 
       const canvas = await html2canvas(element, {
-        scale: 2,
+        scale: 3,
         backgroundColor: '#fdfbf7',
         logging: false,
         useCORS: true,
         allowTaint: true
       });
-      const imgData = canvas.toDataURL('image/png');
+      // Removed toDataURL to avoid "Invalid string length" errors
+      const imgData = canvas;
 
       const pdf = new jsPDF({
         orientation: 'portrait',
@@ -40,7 +42,7 @@ const CertificateModal: React.FC<CertificateModalProps> = ({ artwork, sale, onCl
         format: [canvas.width, canvas.height]
       });
 
-      pdf.addImage(imgData, 'PNG', 0, 0, canvas.width, canvas.height);
+      pdf.addImage(canvas, 'PNG', 0, 0, canvas.width, canvas.height);
       pdf.save(`Certificate-Authenticity-${artwork.code}.pdf`);
     } catch (err) {
       console.error("PDF Generation failed", err);
@@ -134,7 +136,7 @@ const CertificateModal: React.FC<CertificateModalProps> = ({ artwork, sale, onCl
             {[
               { label: 'Title:', value: artwork.title.toUpperCase(), isSerif: true },
               { label: 'Artist:', value: artwork.artist, isSerif: true },
-              { label: 'Size:', value: artwork.dimensions },
+              { label: 'Size:', value: formatDimensions(artwork.dimensions, artwork.artist) },
               { label: 'Medium:', value: artwork.medium },
               { label: 'Code:', value: artwork.code },
               { label: 'Remarks:', value: '' },

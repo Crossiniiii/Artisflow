@@ -23,6 +23,7 @@ export const mapToSnakeCase = (obj: any): any => {
         return obj.map(v => mapToSnakeCase(v));
     } else if (obj !== null && typeof obj === 'object' && !(obj instanceof Date)) {
         return Object.keys(obj).reduce((acc, key) => {
+            if (obj[key] === undefined) return acc;
             const snakeKey = toSnakeCase(key);
             acc[snakeKey] = mapToSnakeCase(obj[key]);
             return acc;

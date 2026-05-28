@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { SaleRecord, Artwork, SaleStatus, UserPermissions } from '../types';
-import { CheckCircle, XCircle, FileImage, FileText, ShieldCheck, Shield, Clock, LayoutGrid, Rows3, Eye, ExternalLink, Calendar, User, Mail, Phone, Tag, Info, AlertCircle, MessageSquare, ChevronRight, Trash2 } from 'lucide-react';
+import { CheckCircle, XCircle, FileImage, FileText, ShieldCheck, Shield, Clock, LayoutGrid, Rows3, Eye, ExternalLink, Calendar, User, Mail, Phone, Tag, Info, AlertCircle, MessageSquare, ChevronRight, Trash2, Search, Filter } from 'lucide-react';
 import { OptimizedImage } from '../components/OptimizedImage';
 import { motion, AnimatePresence } from 'framer-motion';
 import { createPortal } from 'react-dom';
@@ -32,6 +32,11 @@ const SalesApprovalPage: React.FC<SalesApprovalPageProps> = ({
   const [selectedBranch, setSelectedBranch] = useState<string>('All');
   const [selectedHistoryIds, setSelectedHistoryIds] = useState<string[]>([]);
   const [requestedFiles, setRequestedFiles] = useState<Set<string>>(new Set());
+  const [searchQuery, setSearchQuery] = useState('');
+  const [paymentTypeFilter, setPaymentTypeFilter] = useState<'all' | 'full' | 'down'>('all');
+  const [pendingBranchFilter, setPendingBranchFilter] = useState<string>('All');
+  const [historySearchQuery, setHistorySearchQuery] = useState('');
+  const [historyStatusFilter, setHistoryStatusFilter] = useState<'all' | 'approved' | 'declined'>('all');
 
   const pendingSales = useMemo(() => {
     const pending = sales.filter(s => s.status === SaleStatus.FOR_SALE_APPROVAL && !s.isCancelled);
@@ -50,6 +55,46 @@ const SalesApprovalPage: React.FC<SalesApprovalPageProps> = ({
     return [...Array.from(byArtwork.values()), ...malformed]
       .sort((a, b) => new Date(b.saleDate).getTime() - new Date(a.saleDate).getTime());
   }, [sales]);
+
+  const pendingBranches = useMemo(() => {
+    const set = new Set<string>();
+    pendingSales.forEach(sale => {
+      const liveArt = artworks.find(a => a.id === sale.artworkId);
+      const branch = liveArt?.currentBranch || sale.artworkSnapshot?.currentBranch || 'Main';
+      if (branch) set.add(branch);
+    });
+    return ['All', ...Array.from(set)].sort();
+  }, [pendingSales, artworks]);
+
+  const filteredPendingSales = useMemo(() => {
+    return pendingSales.filter(sale => {
+      const liveArt = artworks.find(a => a.id === sale.artworkId);
+      const art = {
+        ...(liveArt || {}),
+        ...(sale.artworkSnapshot || {}),
+        title: sale.artworkSnapshot?.title || liveArt?.title || 'Untitled Artwork',
+        artist: sale.artworkSnapshot?.artist || liveArt?.artist || 'Unknown Artist',
+      };
+      
+      const searchLower = searchQuery.toLowerCase().trim();
+      const matchesSearch = !searchLower || 
+        sale.clientName.toLowerCase().includes(searchLower) ||
+        sale.agentName.toLowerCase().includes(searchLower) ||
+        art.title.toLowerCase().includes(searchLower) ||
+        art.artist.toLowerCase().includes(searchLower) ||
+        sale.id.toLowerCase().includes(searchLower);
+
+      const isFull = !sale.isDownpayment || sale.downpayment === (art?.price || 0);
+      const matchesPaymentType = paymentTypeFilter === 'all' ||
+        (paymentTypeFilter === 'full' && isFull) ||
+        (paymentTypeFilter === 'down' && !isFull);
+
+      const branch = liveArt?.currentBranch || sale.artworkSnapshot?.currentBranch || 'Main';
+      const matchesBranch = pendingBranchFilter === 'All' || branch === pendingBranchFilter;
+
+      return matchesSearch && matchesPaymentType && matchesBranch;
+    });
+  }, [pendingSales, searchQuery, paymentTypeFilter, pendingBranchFilter, artworks]);
 
   const [contactConfirmed, setContactConfirmed] = useState<Record<string, boolean>>({});
   const { isProcessing, processMessage, processProgress, wrapAction } = useActionProcessing({ itemTitle: 'Sales Approval', itemCode: 'SAL' });
@@ -253,27 +298,27 @@ const SalesApprovalPage: React.FC<SalesApprovalPageProps> = ({
         className="group relative flex flex-col cursor-pointer overflow-hidden rounded-xl border border-slate-200 bg-white shadow-[0_2px_8px_rgba(15,23,42,0.04)] transition-all duration-300 hover:border-blue-400 hover:shadow-[0_20px_40px_rgba(15,23,42,0.12)]"
       >
         {/* Card Header with Badges */}
-        <div className="absolute top-4 right-4 z-10 flex flex-col items-end gap-1.5">
+        <div className="absolute top-3 right-3 z-10 flex flex-col items-end gap-1">
           {userPermissions?.canManageAccounts && (
             <button
               onClick={(e) => handleDeleteSale(e, sale.id)}
               className="mb-1 p-1.5 rounded-full bg-white/90 text-slate-400 hover:text-red-600 hover:bg-white shadow-sm border border-slate-200 transition-colors"
               title="Delete Record"
             >
-              <Trash2 size={12} />
+              <Trash2 size={11} />
             </button>
           )}
           {(!sale.isDownpayment || sale.downpayment === (art?.price || 0)) ? (
-            <span className="inline-flex items-center rounded-full bg-emerald-100/80 px-3 py-1 text-[9px] font-bold uppercase tracking-wider text-emerald-800 backdrop-blur-sm border border-emerald-200/50">
+            <span className="inline-flex items-center rounded-full bg-emerald-100/80 px-2.5 py-0.5 text-[8.5px] font-bold uppercase tracking-wider text-emerald-800 backdrop-blur-sm border border-emerald-200/50">
               Full Payment
             </span>
           ) : (
-            <span className="inline-flex items-center rounded-full bg-amber-100/80 px-3 py-1 text-[9px] font-bold uppercase tracking-wider text-amber-800 backdrop-blur-sm border border-amber-200/50">
+            <span className="inline-flex items-center rounded-full bg-amber-100/80 px-2.5 py-0.5 text-[8.5px] font-bold uppercase tracking-wider text-amber-800 backdrop-blur-sm border border-amber-200/50">
               Downpayment
             </span>
           )}
           {sale.requestedAttachments && sale.requestedAttachments.length > 0 && (
-            <span className="inline-flex items-center rounded-full bg-blue-600 px-3 py-1 text-[9px] font-bold uppercase tracking-wider text-white shadow-lg shadow-blue-200 animate-pulse">
+            <span className="inline-flex items-center rounded-full bg-blue-600 px-2.5 py-0.5 text-[8.5px] font-bold uppercase tracking-wider text-white shadow-lg shadow-blue-200 animate-pulse">
               Re-upload
             </span>
           )}
@@ -289,94 +334,112 @@ const SalesApprovalPage: React.FC<SalesApprovalPageProps> = ({
             />
           ) : (
             <div className="flex h-full w-full items-center justify-center text-slate-300 bg-[linear-gradient(45deg,#f8fafc_25%,#f1f5f9_25%,#f1f5f9_50%,#f8fafc_50%,#f8fafc_75%,#f1f5f9_75%,#f1f5f9_100%)] bg-[length:40px_40px]">
-              <FileImage size={48} strokeWidth={1} />
+              <FileImage size={40} strokeWidth={1} />
             </div>
           )}
-          <div className="absolute inset-0 bg-gradient-to-t from-slate-900/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end p-6">
+          <div className="absolute inset-0 bg-gradient-to-t from-slate-900/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end p-4">
             <div className="text-white">
-              <p className="text-[10px] font-bold uppercase tracking-[0.2em] opacity-80 mb-1">Total Valuation</p>
-              <p className="text-xl font-black">{formatCurrency(art.price)}</p>
+              <p className="text-[9px] font-bold uppercase tracking-[0.2em] opacity-80 mb-0.5">Total Valuation</p>
+              <p className="text-lg font-black">
+                {sale.discountPercentage !== undefined && sale.discountPercentage > 0 ? (
+                  <span className="flex flex-col items-start leading-none">
+                    <span className="line-through text-white/50 text-[10px] font-normal mb-0.5">₱{art.price.toLocaleString()}</span>
+                    <span>₱{sale.discountedPrice?.toLocaleString()} <span className="text-[10px] font-black text-emerald-300">(-{sale.discountPercentage}%)</span></span>
+                  </span>
+                ) : (
+                  formatCurrency(art.price)
+                )}
+              </p>
             </div>
           </div>
         </div>
 
         {/* Content Section */}
-        <div className="flex-1 p-6 flex flex-col">
-          <div className="mb-5">
-            <h4 className={`text-lg font-bold tracking-tight leading-snug line-clamp-1 ${isCorrupted ? 'text-red-600' : 'text-slate-900'}`}>{art.title}</h4>
-            <p className="text-sm font-medium text-slate-500">{art.artist}</p>
+        <div className="flex-1 p-4 md:p-5 flex flex-col">
+          <div className="mb-4">
+            <h4 className={`text-base font-bold tracking-tight leading-snug line-clamp-1 ${isCorrupted ? 'text-red-600' : 'text-slate-900'}`}>{art.title}</h4>
+            <p className="text-xs font-medium text-slate-500">{art.artist}</p>
             
-            <div className={`mt-4 rounded-lg p-3 border ${isCorrupted ? 'bg-red-50 border-red-100' : 'bg-orange-50 border-orange-100/50'}`}>
-              <p className={`text-[10px] font-black uppercase tracking-widest flex items-center gap-1.5 ${isCorrupted ? 'text-red-700' : 'text-orange-700'}`}>
-                <AlertCircle size={12} />
+            <div className={`mt-3 rounded-lg p-2.5 border ${isCorrupted ? 'bg-red-50 border-red-100' : 'bg-orange-50 border-orange-100/50'}`}>
+              <p className={`text-[9.5px] font-black uppercase tracking-widest flex items-center gap-1.5 ${isCorrupted ? 'text-red-700' : 'text-orange-700'}`}>
+                <AlertCircle size={11} />
                 {isCorrupted ? 'CORRUPTED DATA DETECTED' : 'PENDING VERIFICATION'}
               </p>
-              <p className={`text-[9px] font-bold mt-1 leading-tight uppercase tracking-tight ${isCorrupted ? 'text-red-600' : 'text-orange-600'}`}>
+              <p className={`text-[8.5px] font-bold mt-1 leading-tight uppercase tracking-tight ${isCorrupted ? 'text-red-600' : 'text-orange-600'}`}>
                 {isCorrupted 
                   ? 'Artwork ID is invalid or artwork has been deleted. Please delete this record.' 
-                  : (sale.isDownpayment && sale.downpayment < (art?.price || 0)) 
+                  : (sale.isDownpayment && sale.downpayment !== undefined && sale.downpayment < (art?.price || 0)) 
                     ? 'Initial downpayment awaiting verification'
                     : 'Full payment awaiting verification'}
               </p>
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-x-4 gap-y-4 mb-6 border-t border-slate-100 pt-5">
+          <div className="grid grid-cols-2 gap-x-3 gap-y-3 mb-4 border-t border-slate-100 pt-4">
             <div>
-              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1.5">Client</p>
-              <div className="flex items-center gap-2">
-                <div className="w-5 h-5 rounded-full bg-slate-100 flex items-center justify-center text-slate-500">
-                   <User size={10} />
+              <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 mb-1">Client</p>
+              <div className="flex items-center gap-1.5">
+                <div className="w-4.5 h-4.5 rounded-full bg-slate-100 flex items-center justify-center text-slate-500">
+                   <User size={9} />
                 </div>
-                <span className="text-xs font-bold text-slate-700 line-clamp-1">{sale.clientName}</span>
+                <span className="text-[11px] font-bold text-slate-700 line-clamp-1">{sale.clientName}</span>
               </div>
             </div>
             <div>
-              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1.5">Agent</p>
-              <div className="flex items-center gap-2">
-                <div className="w-5 h-5 rounded-full bg-blue-50 flex items-center justify-center text-blue-600">
-                   <Shield size={10} />
+              <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 mb-1">Agent</p>
+              <div className="flex items-center gap-1.5">
+                <div className="w-4.5 h-4.5 rounded-full bg-blue-50 flex items-center justify-center text-blue-600">
+                   <Shield size={9} />
                 </div>
-                <span className="text-xs font-bold text-slate-700 line-clamp-1">{sale.agentName}</span>
+                <span className="text-[11px] font-bold text-slate-700 line-clamp-1">{sale.agentName}</span>
               </div>
             </div>
             <div>
-              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1.5">Requested On</p>
-              <div className="flex items-center gap-2">
-                <Calendar size={12} className="text-slate-400" />
-                <span className="text-xs font-medium text-slate-600">{new Date(sale.saleDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+              <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 mb-1">Requested On</p>
+              <div className="flex items-center gap-1.5">
+                <Calendar size={11} className="text-slate-400" />
+                <span className="text-[11px] font-medium text-slate-600">{new Date(sale.saleDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</span>
               </div>
             </div>
             <div>
-              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1.5">
-                {(!sale.isDownpayment || sale.downpayment === (art?.price || 0)) ? 'Final Price' : 'Downpayment'}
+              <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 mb-1">
+                {(!sale.isDownpayment || sale.downpayment === (art?.price || 0) || (sale.discountedPrice !== undefined && sale.downpayment === sale.discountedPrice)) ? 'Final Price' : 'Downpayment'}
               </p>
-              <span className="text-xs font-black text-emerald-600">{formatCurrency(sale.downpayment || 0)}</span>
+              <span className="text-[11px] font-black text-emerald-600">
+                {sale.discountPercentage !== undefined && sale.discountPercentage > 0 ? (
+                  <span className="flex flex-col text-right sm:text-left leading-tight">
+                    <span className="text-slate-400 font-normal line-through text-[9px] mb-0.5">₱{art.price.toLocaleString()}</span>
+                    <span>{formatCurrency(sale.downpayment || 0)} <span className="text-[9px] font-bold text-emerald-700">(-{sale.discountPercentage}%)</span></span>
+                  </span>
+                ) : (
+                  formatCurrency(sale.downpayment || 0)
+                )}
+              </span>
             </div>
           </div>
 
           {/* Interaction Area */}
-          <div className="mt-auto space-y-4">
-            <div className="relative group/check flex items-start gap-3 rounded-xl border border-blue-100 bg-blue-50/40 p-4 transition-all hover:bg-blue-50">
+          <div className="mt-auto space-y-3.5">
+            <div className="relative group/check flex items-start gap-2.5 rounded-xl border border-blue-100 bg-blue-50/40 p-3 transition-all hover:bg-blue-50">
               <div className="relative flex items-center mt-0.5">
                 <input
                   type="checkbox"
                   id={`confirm-${sale.id}`}
                   checked={!!contactConfirmed[sale.id]}
                   onChange={() => handleToggleConfirm(sale.id)}
-                  className="peer h-5 w-5 cursor-pointer appearance-none rounded border-2 border-blue-200 transition-all checked:bg-blue-600 checked:border-blue-600"
+                  className="peer h-4 w-4 cursor-pointer appearance-none rounded border-2 border-blue-200 transition-all checked:bg-blue-600 checked:border-blue-600"
                 />
-                <CheckCircle size={12} className="absolute left-1 top-1 text-white opacity-0 peer-checked:opacity-100 transition-opacity pointer-events-none" />
+                <CheckCircle size={10} className="absolute left-0.5 top-0.5 text-white opacity-0 peer-checked:opacity-100 transition-opacity pointer-events-none" />
               </div>
-              <label htmlFor={`confirm-${sale.id}`} className="cursor-pointer text-xs font-medium text-slate-700 leading-relaxed">
+              <label htmlFor={`confirm-${sale.id}`} className="cursor-pointer text-[10.5px] font-medium text-slate-700 leading-normal">
                 I verify that the buyer has been contacted and all details are accurate.
               </label>
             </div>
 
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
               <button
                 onClick={(e) => handleDeclineClick(e, sale.id)}
-                className="h-11 px-4 rounded-lg border border-slate-200 bg-white text-xs font-bold uppercase tracking-widest text-slate-600 transition-all hover:border-red-200 hover:text-red-600 hover:bg-red-50 active:scale-95"
+                className="h-10 px-3 rounded-lg border border-slate-200 bg-white text-[10.5px] font-bold uppercase tracking-wider text-slate-600 transition-all hover:border-red-200 hover:text-red-600 hover:bg-red-50 active:scale-95"
               >
                 Decline
               </button>
@@ -390,13 +453,13 @@ const SalesApprovalPage: React.FC<SalesApprovalPageProps> = ({
                   }, 'Finalizing Sale Approval...', { silent: true });
                 }}
                 disabled={!contactConfirmed[sale.id] || isProcessing}
-                className={`flex h-11 flex-1 items-center justify-center gap-2 rounded-lg text-xs font-bold uppercase tracking-widest transition-all ${
+                className={`flex h-10 flex-1 items-center justify-center gap-1.5 rounded-lg text-[10.5px] font-bold uppercase tracking-wider transition-all ${
                   contactConfirmed[sale.id]
                     ? 'bg-blue-600 text-white shadow-lg shadow-blue-200 hover:bg-blue-700 active:scale-[0.98]'
                     : 'cursor-not-allowed bg-slate-100 text-slate-400'
                 }`}
               >
-                <ShieldCheck size={16} />
+                <ShieldCheck size={14} />
                 Approve Sale
               </button>
             </div>
@@ -438,7 +501,7 @@ const SalesApprovalPage: React.FC<SalesApprovalPageProps> = ({
             </div>
             <div className="min-w-0">
               <div className="flex items-center gap-2 mb-1.5">
-                {(!sale.isDownpayment || sale.downpayment === (art?.price || 0)) ? (
+                {(!sale.isDownpayment || sale.downpayment === (art?.price || 0) || (sale.discountedPrice !== undefined && sale.downpayment === sale.discountedPrice)) ? (
                   <span className="px-2 py-0.5 bg-emerald-50 text-emerald-700 text-[8px] font-black uppercase tracking-wider rounded border border-emerald-100">Full</span>
                 ) : (
                   <span className="px-2 py-0.5 bg-amber-50 text-amber-700 text-[8px] font-black uppercase tracking-wider rounded border border-amber-100">Down</span>
@@ -446,7 +509,17 @@ const SalesApprovalPage: React.FC<SalesApprovalPageProps> = ({
                 <span className="text-[10px] font-bold text-slate-400">#{sale.id.slice(0, 6)}</span>
               </div>
               <h4 className="font-bold text-slate-900 tracking-tight truncate leading-none mb-1">{art.title}</h4>
-              <p className="text-xs font-medium text-slate-500">{art.artist}</p>
+              <div className="flex items-center gap-2 mt-0.5">
+                <p className="text-xs font-medium text-slate-500">{art.artist}</p>
+                <div className="w-1 h-1 rounded-full bg-slate-300"></div>
+                {sale.discountPercentage !== undefined && sale.discountPercentage > 0 ? (
+                  <span className="text-[9px] font-bold text-emerald-700 uppercase tracking-tight bg-emerald-50 border border-emerald-100 px-1.5 py-0.5 rounded">
+                    ₱{sale.discountedPrice?.toLocaleString()} (-{sale.discountPercentage}%)
+                  </span>
+                ) : (
+                  <span className="text-[9px] font-bold text-slate-500 uppercase tracking-tight">₱{art.price.toLocaleString()}</span>
+                )}
+              </div>
             </div>
           </div>
 
@@ -466,7 +539,12 @@ const SalesApprovalPage: React.FC<SalesApprovalPageProps> = ({
              </div>
              <div className="space-y-1 text-right sm:text-left">
                 <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Collection</p>
-                <p className="text-xs font-black text-emerald-600">{formatCurrency(sale.downpayment || 0)}</p>
+                <div className="text-xs font-black text-emerald-600">
+                  {formatCurrency(sale.downpayment || 0)}
+                  {sale.discountPercentage !== undefined && sale.discountPercentage > 0 && (
+                    <span className="text-[8.5px] font-black text-emerald-800 ml-1">(-{sale.discountPercentage}%)</span>
+                  )}
+                </div>
              </div>
              <div className="hidden xl:flex flex-col justify-center border-l border-slate-100 pl-4">
                 <p className="text-[9px] font-black text-orange-600 uppercase tracking-tight leading-none mb-1">Awaiting Approval</p>
@@ -572,10 +650,32 @@ const SalesApprovalPage: React.FC<SalesApprovalPageProps> = ({
       .sort((a, b) => new Date(b.saleDate).getTime() - new Date(a.saleDate).getTime());
   }, [sales, artworks]);
 
-  const branches = ['All', ...Array.from(new Set(approvalHistory.map(h => h.branch)))].filter(b => b !== 'Main').sort();
-  const filteredHistory = selectedBranch === 'All' 
-    ? approvalHistory 
-    : approvalHistory.filter(h => h.branch === selectedBranch);
+  const branches = useMemo(() => {
+    const set = new Set<string>();
+    approvalHistory.forEach(h => {
+      if (h.branch) set.add(h.branch);
+    });
+    return ['All', ...Array.from(set)].sort();
+  }, [approvalHistory]);
+
+  const filteredHistory = useMemo(() => {
+    return approvalHistory.filter(h => {
+      const matchesBranch = selectedBranch === 'All' || h.branch === selectedBranch;
+      const matchesStatus = historyStatusFilter === 'all' || 
+        (historyStatusFilter === 'approved' && h.status === SaleStatus.APPROVED) ||
+        (historyStatusFilter === 'declined' && h.status === SaleStatus.DECLINED);
+      
+      const searchLower = historySearchQuery.toLowerCase().trim();
+      const matchesSearch = !searchLower ||
+        h.clientName.toLowerCase().includes(searchLower) ||
+        (h.agentName || '').toLowerCase().includes(searchLower) ||
+        (h.artwork?.title || '').toLowerCase().includes(searchLower) ||
+        (h.artwork?.artist || '').toLowerCase().includes(searchLower) ||
+        (h.branch || '').toLowerCase().includes(searchLower);
+      
+      return matchesBranch && matchesStatus && matchesSearch;
+    });
+  }, [approvalHistory, selectedBranch, historyStatusFilter, historySearchQuery]);
 
   const handleToggleSelectAllHistory = () => {
     if (selectedHistoryIds.length === filteredHistory.length && filteredHistory.length > 0) {
@@ -701,30 +801,92 @@ const SalesApprovalPage: React.FC<SalesApprovalPageProps> = ({
               </div>
             ) : (
               <div className="flex flex-col gap-6">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-4">
-                    <button 
-                      onClick={() => setViewMode('grid')}
-                      className={`p-2 rounded-sm border transition-all ${viewMode === 'grid' ? 'bg-neutral-900 text-white border-neutral-900 shadow-md' : 'bg-white text-neutral-400 border-neutral-200'}`}
-                    >
-                      <LayoutGrid size={16} />
-                    </button>
-                    <button 
-                      onClick={() => setViewMode('list')}
-                      className={`p-2 rounded-sm border transition-all ${viewMode === 'list' ? 'bg-neutral-900 text-white border-neutral-900 shadow-md' : 'bg-white text-neutral-400 border-neutral-200'}`}
-                    >
-                      <Rows3 size={16} />
-                    </button>
+                {/* Search and Filters Toolbar */}
+                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-slate-100/50 p-4 rounded-xl border border-slate-200/60 backdrop-blur-sm shadow-sm">
+                  <div className="relative flex-1 max-w-md w-full">
+                    <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+                    <input
+                      type="text"
+                      placeholder="Search by client, agent, or artwork..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 placeholder-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all shadow-sm"
+                    />
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-6 w-full lg:w-auto">
+                    {/* Payment Type filter */}
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1.5">
+                        <Filter size={11} />
+                        Payment
+                      </span>
+                      <select
+                        value={paymentTypeFilter}
+                        onChange={(e) => setPaymentTypeFilter(e.target.value as any)}
+                        className="px-3 py-2 bg-white border border-slate-200 rounded-lg text-[11px] font-bold text-slate-700 focus:border-blue-500 outline-none transition-all shadow-sm cursor-pointer"
+                      >
+                        <option value="all">All</option>
+                        <option value="full">Full Payment</option>
+                        <option value="down">Downpayment</option>
+                      </select>
+                    </div>
+
+                    {/* Branch filter */}
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1.5">
+                        <Filter size={11} />
+                        Branch
+                      </span>
+                      <select
+                        value={pendingBranchFilter}
+                        onChange={(e) => setPendingBranchFilter(e.target.value)}
+                        className="px-3 py-2 bg-white border border-slate-200 rounded-lg text-[11px] font-bold text-slate-700 focus:border-blue-500 outline-none transition-all shadow-sm cursor-pointer"
+                      >
+                        <option value="All">All</option>
+                        {pendingBranches.filter(b => b !== 'All').map(branch => (
+                          <option key={branch} value={branch}>{branch}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* View Mode controls */}
+                    <div className="flex gap-1 p-1 bg-slate-200/60 rounded-lg border border-slate-200/40 ml-auto lg:ml-0">
+                      <button 
+                        onClick={() => setViewMode('grid')}
+                        className={`p-2 rounded-md transition-all ${viewMode === 'grid' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                        title="Grid View"
+                      >
+                        <LayoutGrid size={14} />
+                      </button>
+                      <button 
+                        onClick={() => setViewMode('list')}
+                        className={`p-2 rounded-md transition-all ${viewMode === 'list' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                        title="List View"
+                      >
+                        <Rows3 size={14} />
+                      </button>
+                    </div>
                   </div>
                 </div>
 
-                <div className={viewMode === 'grid' ? "grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4" : "space-y-4"}>
-                  {pendingSales.map(sale => (
-                    <div key={sale.id} className="animate-in fade-in slide-in-from-bottom-2 duration-500">
-                      {viewMode === 'grid' ? renderSaleCard(sale) : renderSaleRow(sale)}
+                {filteredPendingSales.length === 0 ? (
+                  <div className="py-20 bg-slate-50/40 rounded-xl border border-dashed border-slate-200/80 flex flex-col items-center justify-center text-slate-400 gap-3">
+                    <Search size={32} className="text-slate-300" />
+                    <div className="text-center">
+                      <p className="text-xs font-bold uppercase tracking-wider text-slate-600">No matching declarations</p>
+                      <p className="text-[10px] text-slate-400 mt-1">Try adjusting your filters or search query.</p>
                     </div>
-                  ))}
-                </div>
+                  </div>
+                ) : (
+                  <div className={viewMode === 'grid' ? "grid grid-cols-1 gap-5 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5" : "space-y-4"}>
+                    {filteredPendingSales.map(sale => (
+                      <div key={sale.id} className="animate-in fade-in slide-in-from-bottom-2 duration-500">
+                        {viewMode === 'grid' ? renderSaleCard(sale) : renderSaleRow(sale)}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
           </motion.div>
@@ -737,90 +899,148 @@ const SalesApprovalPage: React.FC<SalesApprovalPageProps> = ({
             transition={{ duration: 0.2 }}
             className="space-y-8"
           >
-            <div className="flex flex-col gap-8">
-              {/* Branch Selector */}
-              <div className="flex flex-wrap gap-2 p-1 bg-neutral-100 rounded-sm w-fit border border-neutral-200">
-                {branches.map(branch => (
-                  <button
-                    key={branch}
-                    onClick={() => setSelectedBranch(branch)}
-                    className={`px-6 py-2 text-[10px] font-black uppercase tracking-widest rounded-sm transition-all ${selectedBranch === branch ? 'bg-white text-neutral-900 shadow-sm border border-neutral-200/50' : 'text-neutral-400 hover:text-neutral-600'}`}
-                  >
-                    {branch}
-                  </button>
-                ))}
+            <div className="flex flex-col gap-6">
+              {/* History Search & Filters Toolbar */}
+              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-slate-100/50 p-4 rounded-xl border border-slate-200/60 backdrop-blur-sm shadow-sm">
+                <div className="relative flex-1 max-w-md w-full">
+                  <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+                  <input
+                    type="text"
+                    placeholder="Search history by client, agent, or artwork..."
+                    value={historySearchQuery}
+                    onChange={(e) => setHistorySearchQuery(e.target.value)}
+                    className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 placeholder-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all shadow-sm"
+                  />
+                </div>
+
+                <div className="flex flex-wrap items-center gap-6 w-full lg:w-auto">
+                  {/* Status filter */}
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1.5">
+                      <Filter size={11} />
+                      Status
+                    </span>
+                    <select
+                      value={historyStatusFilter}
+                      onChange={(e) => setHistoryStatusFilter(e.target.value as any)}
+                      className="px-3 py-2 bg-white border border-slate-200 rounded-lg text-[11px] font-bold text-slate-700 focus:border-blue-500 outline-none transition-all shadow-sm cursor-pointer"
+                    >
+                      <option value="all">All</option>
+                      <option value="approved">Approved</option>
+                      <option value="declined">Declined</option>
+                    </select>
+                  </div>
+
+                  {/* Branch filter (dropdown) */}
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1.5">
+                      <Filter size={11} />
+                      Branch
+                    </span>
+                    <select
+                      value={selectedBranch}
+                      onChange={(e) => setSelectedBranch(e.target.value)}
+                      className="px-3 py-2 bg-white border border-slate-200 rounded-lg text-[11px] font-bold text-slate-700 focus:border-blue-500 outline-none transition-all shadow-sm cursor-pointer"
+                    >
+                      {branches.map(branch => (
+                        <option key={branch} value={branch}>{branch}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
               </div>
 
-              <div className="bg-white rounded-sm border border-neutral-200 shadow-sm overflow-hidden">
+              <div className="bg-white rounded-xl border border-slate-200 shadow-[0_4px_20px_rgba(15,23,42,0.02)] overflow-hidden">
                 <table className="w-full text-left border-collapse">
                   <thead>
-                    <tr className="bg-neutral-50 border-b border-neutral-200">
+                    <tr className="bg-slate-50/75 border-b border-slate-200">
                       <th className="px-6 py-4 w-10">
                         <input
                           type="checkbox"
                           checked={selectedHistoryIds.length === filteredHistory.length && filteredHistory.length > 0}
                           onChange={handleToggleSelectAllHistory}
-                          className="h-4 w-4 rounded border-neutral-300 text-neutral-900 focus:ring-neutral-900"
+                          className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
                         />
                       </th>
-                      <th className="px-6 py-4 text-[10px] font-black text-neutral-400 uppercase tracking-widest">Artwork</th>
-                      <th className="px-6 py-4 text-[10px] font-black text-neutral-400 uppercase tracking-widest">Client</th>
-                      <th className="px-6 py-4 text-[10px] font-black text-neutral-400 uppercase tracking-widest">Agent</th>
-                      <th className="px-6 py-4 text-[10px] font-black text-neutral-400 uppercase tracking-widest">Branch</th>
-                      <th className="px-6 py-4 text-[10px] font-black text-neutral-400 uppercase tracking-widest">Status</th>
-                      <th className="px-6 py-4 text-[10px] font-black text-neutral-400 uppercase tracking-widest">Total Value</th>
-                      <th className="px-6 py-4 text-[10px] font-black text-neutral-400 uppercase tracking-widest text-right">Approval Date</th>
+                      <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Artwork</th>
+                      <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Client</th>
+                      <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Agent</th>
+                      <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Branch</th>
+                      <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Status</th>
+                      <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Total Value</th>
+                      <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Approval Date</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-neutral-100">
+                  <tbody className="divide-y divide-slate-100">
                     {filteredHistory.length === 0 ? (
                       <tr>
-                        <td colSpan={7} className="px-6 py-24 text-center text-[10px] font-bold text-neutral-300 uppercase tracking-widest italic">
-                          No historical sale records found
+                        <td colSpan={8} className="px-6 py-20 text-center">
+                          <div className="flex flex-col items-center justify-center text-slate-400 gap-3 py-10">
+                            <Search size={32} className="text-slate-300" />
+                            <div className="text-center">
+                              <p className="text-xs font-bold uppercase tracking-wider text-slate-600">No matching history records</p>
+                              <p className="text-[10px] text-slate-400 mt-1">Try adjusting your filters or search query.</p>
+                            </div>
+                          </div>
                         </td>
                       </tr>
                     ) : (
                       filteredHistory.map((h) => (
-                        <tr key={h.id} className={`hover:bg-neutral-50/30 transition-all group ${selectedHistoryIds.includes(h.id) ? 'bg-indigo-50/30' : ''}`}>
+                        <tr key={h.id} className="hover:bg-slate-50/40 transition-all group duration-200">
                           <td className="px-6 py-4">
                             <input
                               type="checkbox"
                               checked={selectedHistoryIds.includes(h.id)}
                               onChange={() => handleToggleSelectHistory(h.id)}
                               onClick={(e) => e.stopPropagation()}
-                              className="h-4 w-4 rounded border-neutral-300 text-neutral-900 focus:ring-neutral-900"
+                              className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
                             />
                           </td>
                           <td className="px-6 py-4">
                             <div className="flex items-center gap-4">
-                              <div className="w-10 h-10 rounded-sm bg-neutral-50 overflow-hidden border border-neutral-100 shadow-sm">
-                                {h.artwork?.imageUrl && <img src={h.artwork.imageUrl} className="w-full h-full object-cover grayscale group-hover:grayscale-0 transition-all" alt="" />}
+                              <div className="w-10 h-10 rounded-lg bg-slate-50 overflow-hidden border border-slate-100 shadow-sm shrink-0">
+                                {h.artwork?.imageUrl ? (
+                                  <img src={h.artwork.imageUrl} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" alt="" />
+                                ) : (
+                                  <div className="flex h-full w-full items-center justify-center text-slate-200">
+                                    <Tag size={16} />
+                                  </div>
+                                )}
                               </div>
                               <div>
-                                <span className="text-[11px] font-black text-neutral-900 uppercase tracking-tight block">{h.artwork?.title}</span>
-                                <span className="text-[9px] font-bold text-neutral-400 uppercase tracking-widest">{h.artwork?.artist}</span>
+                                <span className="text-[11px] font-black text-slate-800 uppercase tracking-tight block group-hover:text-blue-600 transition-colors">{h.artwork?.title || 'Untitled Artwork'}</span>
+                                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-0.5 block">{h.artwork?.artist || 'Unknown Artist'}</span>
                               </div>
                             </div>
                           </td>
                           <td className="px-6 py-4">
-                            <span className="text-[11px] font-bold text-neutral-600">{h.clientName}</span>
+                            <span className="text-[11px] font-bold text-slate-600">{h.clientName}</span>
                           </td>
                           <td className="px-6 py-4">
-                            <span className="text-[11px] font-bold text-neutral-600">{h.agentName}</span>
+                            <span className="text-[11px] font-bold text-slate-600">{h.agentName}</span>
                           </td>
                           <td className="px-6 py-4">
-                            <span className="px-2 py-0.5 rounded-sm bg-neutral-50 text-neutral-500 text-[9px] font-black uppercase tracking-widest border border-neutral-200">
-                              {h.branch}
+                            <span className="px-2 py-0.5 rounded-md bg-slate-50 text-slate-500 text-[9px] font-bold uppercase tracking-widest border border-slate-200">
+                              {h.branch || 'Main'}
                             </span>
                           </td>
                           <td className="px-6 py-4">
-                            <span className={`px-2 py-0.5 rounded-sm text-[8px] font-black uppercase tracking-widest border ${h.status === SaleStatus.APPROVED ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-rose-50 text-rose-700 border-rose-100'}`}>
+                            <span className={`px-2.5 py-1 rounded-md text-[8.5px] font-black uppercase tracking-widest border ${h.status === SaleStatus.APPROVED ? 'bg-emerald-50 text-emerald-700 border-emerald-100/80' : 'bg-rose-50 text-rose-700 border-rose-100/80'}`}>
                               {h.status}
                             </span>
                           </td>
-                          <td className="px-6 py-4 text-[11px] font-black text-neutral-900">₱{(h.artwork?.price || 0).toLocaleString()}</td>
+                          <td className="px-6 py-4 text-[11px] font-black text-slate-900">
+                            {h.discountPercentage !== undefined && h.discountPercentage > 0 ? (
+                              <div className="flex flex-col gap-0.5 leading-tight">
+                                <span className="line-through text-slate-400 font-normal text-[10px]">₱{(h.artworkSnapshot?.price || h.artwork?.price || 0).toLocaleString()}</span>
+                                <span className="text-emerald-600">₱{(h.discountedPrice || 0).toLocaleString()} <span className="text-[9px] font-bold text-emerald-800 bg-emerald-50 px-1 py-0.5 rounded ml-1">-{h.discountPercentage}%</span></span>
+                              </div>
+                            ) : (
+                              <span>₱{(h.artworkSnapshot?.price || h.artwork?.price || 0).toLocaleString()}</span>
+                            )}
+                          </td>
                           <td className="px-6 py-4 text-right">
-                            <div className="inline-flex items-center gap-2 text-neutral-400">
+                            <div className="inline-flex items-center gap-2 text-slate-400">
                               <Calendar size={12} />
                               <span className="text-[10px] font-bold">{new Date(h.saleDate).toLocaleDateString()}</span>
                             </div>
@@ -1067,9 +1287,21 @@ const SalesApprovalPage: React.FC<SalesApprovalPageProps> = ({
                            <span className="text-xs font-black text-slate-800">{new Date(selectedSale.saleDate).toLocaleDateString()}</span>
                         </div>
                          <div className="flex items-center justify-between px-5 py-3.5">
-                           <div className="flex items-center gap-2.5 text-slate-400"><Tag size={12} /><span className="text-[10px] font-bold uppercase tracking-widest">Downpayment</span></div>
+                           <div className="flex items-center gap-2.5 text-slate-400"><Tag size={12} /><span className="text-[10px] font-bold uppercase tracking-widest">{selectedSale.isDownpayment ? 'Downpayment' : 'Full Payment'}</span></div>
                            <span className="text-xs font-black text-emerald-600">{formatCurrency(selectedSale.downpayment || 0)}</span>
                         </div>
+                        {selectedSale.discountPercentage !== undefined && selectedSale.discountPercentage > 0 && (
+                          <>
+                            <div className="flex items-center justify-between px-5 py-3.5 bg-emerald-50/40">
+                              <div className="flex items-center gap-2.5 text-emerald-800"><Tag size={12} /><span className="text-[10px] font-bold uppercase tracking-widest">Applied Discount</span></div>
+                              <span className="text-xs font-black text-emerald-800">-{selectedSale.discountPercentage}%</span>
+                            </div>
+                            <div className="flex items-center justify-between px-5 py-3.5">
+                              <div className="flex items-center gap-2.5 text-slate-400"><Tag size={12} /><span className="text-[10px] font-bold uppercase tracking-widest">Discounted Price</span></div>
+                              <span className="text-xs font-black text-emerald-600">{formatCurrency(selectedSale.discountedPrice || 0)}</span>
+                            </div>
+                          </>
+                        )}
                          <div className="flex items-center justify-between px-6 py-4 bg-[#FAF9F8]">
                            <div className="flex items-center gap-3 text-[#605E5C]"><User size={14} /><span className="text-xs font-semibold">Handling Agent</span></div>
                            <span className="text-sm font-bold text-[#323130]">{selectedSale.agentName}</span>
@@ -1171,9 +1403,9 @@ const SalesApprovalPage: React.FC<SalesApprovalPageProps> = ({
                         setSelectedSale(null);
                         setApprovalRemarks('');
                       }, 'Processing Sale Approval...', { silent: true })}
-                      disabled={!isSaleReadyForApproval(selectedSale) || isProcessing || !approvalRemarks.trim()}
+                      disabled={!isSaleReadyForApproval(selectedSale) || isProcessing}
                       className={`h-10 px-8 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 shadow-lg ${
-                        isSaleReadyForApproval(selectedSale) && approvalRemarks.trim()
+                        isSaleReadyForApproval(selectedSale)
                           ? 'bg-blue-600 text-white hover:bg-blue-700 shadow-blue-200' 
                           : 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed shadow-none'
                       }`}

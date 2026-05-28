@@ -19,6 +19,7 @@ import { InventoryStats } from '../components/inventory/InventoryStats';
 import { InventoryFilters } from '../components/inventory/InventoryFilters';
 import { InventoryCard } from '../components/inventory/InventoryCard';
 import { InventoryImportModal } from '../components/inventory/InventoryImportModal';
+import { isCmArtist, formatDimensions } from '../utils/unitUtils';
 import { getArtworkClassification } from '../services/inventoryService';
 
 interface InventoryProps {
@@ -402,9 +403,8 @@ const Inventory: React.FC<InventoryProps> = ({
     
     const cardsHTML = items.map(art => `
       <div style="display: flex; flex-direction: column; width: 280px; break-inside: avoid; margin-bottom: 20px;">
-        <!-- Artwork Hero: Standardized Aspect Ratio for Uniformity -->
         <div style="width: 280px; height: 320px; background: #f0f0f0; border: 1px solid #eeeeee; display: flex; align-items: center; justify-content: center; box-sizing: border-box; overflow: hidden; margin-bottom: 16px; border-radius: 2px;">
-          <img src="${art.imageUrl}" style="width: 100%; height: 100%; object-fit: cover;" crossorigin="anonymous" />
+          <img src="${art.imageUrl}" style="max-width: 100%; max-height: 100%; object-fit: contain; display: block;" crossorigin="anonymous" />
         </div>
 
         <!-- Content Architecture -->
@@ -428,7 +428,7 @@ const Inventory: React.FC<InventoryProps> = ({
               </div>
               <div style="display: flex; justify-content: space-between; align-items: baseline; font-size: 10px; border-bottom: 1px solid #f5f5f5; padding-bottom: 4px;">
                 <span style="color: #999; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em;">Dimensions</span>
-                <span style="font-weight: 700; color: #1a1a1a;">${art.dimensions || art.size || 'N/A'}</span>
+                <span style="font-weight: 700; color: #1a1a1a;">${formatDimensions(art.dimensions || art.size || 'N/A', art.artist)}</span>
               </div>
               <div style="display: flex; justify-content: space-between; align-items: baseline; font-size: 10px; border-bottom: 1px solid #f5f5f5; padding-bottom: 4px;">
                 <span style="color: #999; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em;">Year</span>
@@ -441,7 +441,7 @@ const Inventory: React.FC<InventoryProps> = ({
             </div>
           </div>
 
-          <div style="margin-top: auto; display: flex; justify-content: space-between; align-items: center; border-top: 1px solid #eee; padding-top: 12px;">
+          <div style="margin-top: 12px; display: flex; justify-content: space-between; align-items: center; border-top: 1px solid #eee; padding-top: 12px;">
             <div style="display: flex; align-items: center; gap: 6px;">
               <div style="width: 8px; height: 8px; border-radius: 50%; background: ${art.status === 'Sold' ? '#ff4d4f' : '#52c41a'};"></div>
               <span style="font-size: 10px; font-weight: 900; text-transform: uppercase; color: #000; letter-spacing: 0.05em;">${art.status || 'Available'}</span>
@@ -455,14 +455,14 @@ const Inventory: React.FC<InventoryProps> = ({
     return `
       <div id="report-root" style="width: 1100px; padding: 80px 90px 120px 90px; background: white; font-family: sans-serif; color: #000; box-sizing: border-box; min-height: 1400px;">
         <!-- Report Header: Gallery Identity -->
-        <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 24px;">
-          <div>
+        <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 24px; gap: 40px;">
+          <div style="flex: 1; min-width: 0;">
             <h1 style="font-size: 64px; font-weight: 900; margin: 0; letter-spacing: -0.05em; line-height: 0.9;">${artistName}</h1>
-            <div style="display: flex; align-items: center; gap: 14px; color: #666; font-size: 16px; font-weight: 700; margin-top: 15px;">
+            <div style="display: flex; align-items: center; gap: 24px; color: #666; font-size: 16px; font-weight: 700; margin-top: 15px;">
               <span>${dateStr}</span>
-              <span style="width: 4px; height: 4px; border-radius: 50%; background: #ccc;"></span>
+              <span style="width: 4px; height: 4px; border-radius: 50%; background: #ccc; margin: 0 4px;"></span>
               <span>${items.length} Artworks</span>
-              <span style="width: 4px; height: 4px; border-radius: 50%; background: #ccc;"></span>
+              <span style="width: 4px; height: 4px; border-radius: 50%; background: #ccc; margin: 0 4px;"></span>
               <span style="color: #000;">Valuation: ₱${totalValue.toLocaleString()}</span>
             </div>
           </div>
@@ -527,9 +527,12 @@ const Inventory: React.FC<InventoryProps> = ({
 
       // 3. Shrink-wrap the iframe height to the content
       const reportRoot = reportDoc.getElementById('report-root');
-      if (reportRoot) {
-        iframe.style.height = `${reportRoot.offsetHeight}px`;
+      if (!reportRoot) {
+        document.body.removeChild(iframe);
+        throw new Error('Failed to find report root element');
       }
+
+      iframe.style.height = `${reportRoot.offsetHeight}px`;
 
       // 4. Render specifically the report-root element
       const canvas = await html2canvas(reportRoot, {
@@ -544,7 +547,8 @@ const Inventory: React.FC<InventoryProps> = ({
       document.body.removeChild(iframe);
 
       setProcessProgress(70);
-      const imgData = canvas.toDataURL('image/jpeg', 0.98);
+      // Removed toDataURL to avoid "Invalid string length" errors with large canvases
+      // jsPDF can accept the canvas element directly
       const pdfWidth = 612; // 8.5 inches in points (Long Bond Paper width)
       const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
       
@@ -558,7 +562,7 @@ const Inventory: React.FC<InventoryProps> = ({
         format: [pdfWidth, finalPdfHeight]
       });
 
-      pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight);
+      pdf.addImage(canvas, 'PNG', 0, 0, pdfWidth, pdfHeight, undefined, 'NONE');
       
       setProcessProgress(90);
       pdf.save(`ArtisFlow_Inventory_${new Date().toISOString().split('T')[0]}.pdf`);
@@ -695,24 +699,45 @@ const Inventory: React.FC<InventoryProps> = ({
 
       worksheet.eachRow((row, rowNumber) => {
         if (headerRowIndex !== -1) return;
-        if (rowNumber > 100) return;
-        let hasHeaderKeywords = false;
+        if (rowNumber > 100) return; // Only look at first 100 rows for header
+        
+        let keywordCount = 0;
+        const keywords = ['title', 'artist', 'code', 'price', 'particulars', 'srp', 'value', 'gp', 'description', 'particular', 'artwork', 'subject', 'amount'];
+        
         row.eachCell((cell) => {
-          const val = String(cell.value).toLowerCase().trim();
-          if (['title', 'artist', 'code', 'price', 'particulars', 'srp', 'value', 'gp'].some(k => val.includes(k))) hasHeaderKeywords = true;
+          const val = String(cell.value || '').toLowerCase().trim();
+          if (keywords.some(k => val.includes(k))) keywordCount++;
         });
 
-        if (hasHeaderKeywords) {
+        // If at least 2 keywords are found, or 1 strong keyword like 'particulars' or 'code'
+        let hasStrongKeyword = false;
+        row.eachCell((cell) => {
+          const s = String(cell.value || '').toLowerCase();
+          if (s.includes('particulars') || s.includes('code') || s.includes('sku') || s.includes('artist')) {
+            hasStrongKeyword = true;
+          }
+        });
+
+        if (keywordCount >= 2 || (keywordCount >= 1 && hasStrongKeyword)) {
           headerRowIndex = rowNumber;
-          row.eachCell((cell, colNumber) => { headerMap[colNumber] = String(cell.value).toLowerCase().trim(); });
-          if (!headerMap[1]) headerMap[1] = 'description';
+          row.eachCell({ includeEmpty: true }, (cell, colNumber) => { 
+            headerMap[colNumber] = String(cell.value || '').toLowerCase().trim(); 
+          });
+          // Fallback for column 1 if it's empty but usually contains the description/title
+          // Only apply if there isn't already an explicit title/particulars column in the sheet
+          const hasExplicitTitle = Object.values(headerMap).some(val => 
+            ['title', 'particulars', 'description', 'subject', 'artwork', 'particular'].some(k => val.includes(k))
+          );
+          if (!headerMap[1] && row.getCell(1).value === null && !hasExplicitTitle) {
+            headerMap[1] = 'description';
+          }
         }
       });
 
       if (headerRowIndex !== -1) {
         worksheet.eachRow((row, rowNumber) => {
           if (rowNumber <= headerRowIndex) return;
-          const entry: any = { sheetName };
+          const entry: any = { sheetName, rowNumber };
           const lowerSheet = sheetName.toLowerCase();
           if (lowerSheet.includes('available')) entry.status = ArtworkStatus.AVAILABLE;
           else if (lowerSheet.includes('sold')) entry.status = ArtworkStatus.SOLD;
@@ -730,21 +755,30 @@ const Inventory: React.FC<InventoryProps> = ({
             const value = val;
             const lowerKey = header;
 
-            const isPrice = ['price', 'amount', 'value', 'srp', 'cost', 'total', 'php', 'list', 'gross', 'net', 'gp'].some(k => lowerKey.includes(k));
-            const isTitle = ['title', 'particulars', 'description', 'subject', 'artwork'].some(k => lowerKey.includes(k));
-            const isArtist = ['artist', 'name', 'painter', 'author'].some(k => lowerKey.includes(k));
-            const isMedium = ['medium', 'material', 'type', 'substrate'].some(k => lowerKey.includes(k));
-            const isDimensions = /(dimensions|size|dims|measure)/.test(lowerKey) && (!/frame/.test(lowerKey) || /w\s*[\/\\]\s*o/.test(lowerKey) || /without/.test(lowerKey));
+            const isPrice = ['price', 'amount', 'value', 'srp', 'cost', 'total', 'php', 'list', 'gross', 'net', 'gp', 'val'].some(k => lowerKey.includes(k));
+            const isTitle = ['title', 'particulars', 'description', 'subject', 'artwork', 'particular'].some(k => lowerKey.includes(k));
+            const isArtist = ['artist', 'name', 'painter', 'author', 'sculptor'].some(k => lowerKey.includes(k));
+            const isMedium = ['medium', 'material', 'type', 'substrate', 'media'].some(k => lowerKey.includes(k));
+            const isDimensions = /(dimensions|size|dims|measure|measurement)/.test(lowerKey) && (!/frame/.test(lowerKey) || /w\s*[\/\\]\s*o/.test(lowerKey) || /without/.test(lowerKey));
             const isSizeFrame = /frame/.test(lowerKey) && !/w\s*[\/\\]\s*o/.test(lowerKey) && !/without/.test(lowerKey);
-            const isBranch = ['branch', 'location', 'gallery', 'site'].some(k => lowerKey.includes(k));
-            // Only match "id" if the column header is significantly like an ID field, to avoid false positives with "paid"
-            const isCode = ['code', 'sku', 'item', 'ref'].some(k => lowerKey.includes(k)) || lowerKey === 'id';
+            const isBranch = ['branch', 'location', 'gallery', 'site', 'venue'].some(k => lowerKey.includes(k));
+            const isCode = ['code', 'sku', 'item', 'ref', 'reference', 'item #', 'itemno'].some(k => lowerKey.includes(k)) || lowerKey === 'id';
 
             if (isPrice) {
               const cleaned = String(value || '').replace(/[^\d.-]/g, '');
               const num = typeof value === 'number' ? value : parseFloat(cleaned);
               if (!isNaN(num) && num !== null) entry.price = num;
-            } else if (isTitle && !entry.title) entry.title = String(value || '').trim();
+            } else if (isTitle && !entry.title) {
+              const strVal = String(value || '').trim();
+              if (strVal && strVal !== 'null' && strVal !== 'undefined') {
+                // If Column 1 fallback is active and value is a pure sequence number, skip it
+                if (lowerKey === 'description' && colNumber === 1 && /^\d+$/.test(strVal)) {
+                  // Skip sequence number
+                } else {
+                  entry.title = strVal;
+                }
+              }
+            }
             else if (isArtist && !entry.artist) entry.artist = String(value || '').trim();
             else if (isMedium && !entry.medium) entry.medium = String(value || '').trim();
             else if (isDimensions && !entry.dimensions) entry.dimensions = String(value || '').trim();
@@ -754,29 +788,27 @@ const Inventory: React.FC<InventoryProps> = ({
             else if (lowerKey.includes('year') || lowerKey.includes('date')) entry.year = value instanceof Date ? value.toISOString().split('T')[0] : String(value || '').trim();
             else if (lowerKey.includes('status')) entry.status = String(value || '').trim();
             else if (lowerKey.includes('remarks')) entry.remarks = String(value || '').trim();
+            else {
+              // Store unmapped data for debugging failed items
+              if (!entry.unmapped) entry.unmapped = {};
+              entry.unmapped[lowerKey] = value;
+            }
           });
 
           let finalDim = entry.dimensions || '';
           let finalFrame = entry.sizeFrame || '';
+          const artistName = entry.artist || '';
 
-          // Clean hyphens and format inches
+          // Clean hyphens and format unit
           if (finalDim && finalDim !== 'null' && finalDim !== 'undefined' && !finalDim.includes('---')) {
-            if (!finalDim.toLowerCase().includes('inch') && !finalDim.toLowerCase().includes('"')) {
-                finalDim += ' Inches';
-            }
-            entry.dimensions = finalDim;
+            entry.dimensions = formatDimensions(finalDim, artistName);
           } else {
-            finalDim = '';
             entry.dimensions = '';
           }
 
           if (finalFrame && finalFrame !== 'null' && finalFrame !== 'undefined' && !finalFrame.includes('---')) {
-            if (!finalFrame.toLowerCase().includes('inch') && !finalFrame.toLowerCase().includes('"')) {
-                finalFrame += ' Inches';
-            }
-            entry.sizeFrame = finalFrame;
+            entry.sizeFrame = formatDimensions(finalFrame, artistName);
           } else {
-            finalFrame = '';
             entry.sizeFrame = '';
           }
 
@@ -1144,11 +1176,8 @@ const Inventory: React.FC<InventoryProps> = ({
                     onChange={(e) => {
                       const val = e.target.value;
                       setArtworkArtist(val);
-                      const targetArtists = ['Ramon Orlina', 'Marge Organo'];
-                      if (targetArtists.some(a => a.toLowerCase() === val.trim().toLowerCase())) {
-                        if (artworkDimensions && !artworkDimensions.toLowerCase().includes('in')) {
-                          setArtworkDimensions(prev => prev.trim() + ' in');
-                        }
+                      if (isCmArtist(val)) {
+                        setArtworkDimensions(prev => formatDimensions(prev, val));
                       }
                     }}
                     required 
@@ -1220,12 +1249,7 @@ const Inventory: React.FC<InventoryProps> = ({
                   }}
                   onBlur={(e) => {
                     const val = e.target.value;
-                    const targetArtists = ['Ramon Orlina', 'Marge Organo'];
-                    if (targetArtists.some(a => a.toLowerCase() === artworkArtist.trim().toLowerCase())) {
-                      if (val && !val.toLowerCase().includes('in')) {
-                        setArtworkDimensions(val.trim() + ' in');
-                      }
-                    }
+                    setArtworkDimensions(formatDimensions(val, artworkArtist));
                   }}
                   className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm" 
                   placeholder="e.g. 24 x 36 in" 

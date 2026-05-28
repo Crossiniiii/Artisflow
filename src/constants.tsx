@@ -45,7 +45,7 @@ export const APP_TABS = [
   { id: 'deliveries', label: 'Delivery Approval' },
   { id: 'artwork-transfer', label: 'Artwork T/R' },
   { id: 'audit-logs', label: 'System Audit Logs' },
-  { id: 'accounts', label: 'User Accounts' },
+  { id: 'accounts', label: 'Branch Accounts' },
   { id: 'chat', label: 'Inbox & Messaging' },
   { id: 'approvals', label: 'Finance Approval' },
   { id: 'requests', label: 'My Requests' }
@@ -59,7 +59,7 @@ export const getDefaultAccessibleTabs = (role: UserRole): string[] => {
       return ['finance', 'dashboard', 'analytics', 'import-history', 'snapshots', 'operations', 'sales-history', 'deliveries', 'approvals', 'artwork-transfer', 'audit-logs', 'accounts', 'chat'];
     case UserRole.INVENTORY_PERSONNEL:
       return ['finance', 'dashboard', 'analytics', 'import-history', 'snapshots', 'operations', 'sales-history', 'deliveries', 'artwork-transfer', 'accounts', 'chat'];
-    case UserRole.SALES_AGENT:
+    case UserRole.BRANCH_USER:
       return ['dashboard', 'sales-history', 'deliveries', 'artwork-transfer', 'requests', 'accounts', 'chat'];
     case UserRole.EXCLUSIVE:
       return ['dashboard'];
@@ -116,7 +116,7 @@ export const getDefaultPermissions = (role: UserRole): UserPermissions => {
         canAccessAuditLogs: false,
         accessibleTabs: getDefaultAccessibleTabs(UserRole.INVENTORY_PERSONNEL),
       };
-    case UserRole.SALES_AGENT:
+    case UserRole.BRANCH_USER:
       return {
         canAddArtwork: false,
         canEditArtwork: false,
@@ -137,7 +137,7 @@ export const getDefaultPermissions = (role: UserRole): UserPermissions => {
         canApproveFinance: false,
         canApproveLogistics: false,
         canAccessAuditLogs: false,
-        accessibleTabs: getDefaultAccessibleTabs(UserRole.SALES_AGENT),
+        accessibleTabs: getDefaultAccessibleTabs(UserRole.BRANCH_USER),
       };
     case UserRole.EXCLUSIVE:
       return {
@@ -183,7 +183,7 @@ export const getDefaultPermissions = (role: UserRole): UserPermissions => {
         canApproveFinance: false,
         canApproveLogistics: false,
         canAccessAuditLogs: false,
-        accessibleTabs: getDefaultAccessibleTabs(UserRole.SALES_AGENT),
+        accessibleTabs: getDefaultAccessibleTabs(UserRole.BRANCH_USER),
       };
   }
 };

@@ -56,7 +56,7 @@ export const uploadBase64ToStorage = async (
 
     if (uploadError) {
       console.error('Storage Upload Error:', uploadError);
-      return base64Str; // Fallback to base64 if upload fails
+      return undefined; // Do not fallback to raw Base64 payload
     }
 
     // Get Public URL
@@ -68,7 +68,7 @@ export const uploadBase64ToStorage = async (
 
   } catch (error) {
     console.error('Failed to convert and upload base64 image:', error);
-    return base64Str; // Safe fallback
+    return undefined; // Do not fallback to raw Base64 payload
   }
 };
 

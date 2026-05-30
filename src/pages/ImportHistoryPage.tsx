@@ -180,6 +180,9 @@ const ImportHistoryPage: React.FC<ImportHistoryPageProps> = ({ logs, preventDupl
   };
 
   const getNewImportCount = (log: ImportRecord) => {
+    if (log.importedIds && log.importedIds.length > 0) {
+      return log.importedIds.length;
+    }
     const importedCount = log.importedIds?.length || 0;
     const updatedCount = log.updatedIds?.length || 0;
     if (importedCount > 0 || updatedCount > 0) return Math.max(importedCount - updatedCount, 0);

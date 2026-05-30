@@ -67,63 +67,52 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const handleLogin = async (account: UserAccount) => {
     const timestamp = new Date().toISOString();
-    let finalAccount = { ...account, lastLogin: timestamp };
+    const finalAccount = { ...account, lastLogin: timestamp };
 
-    if (!IS_DEMO_MODE) {
-      try {
-        // Ensure a valid Supabase session before allowing access in live mode.
-        let { data: { session } } = await supabase.auth.getSession();
-        
-        if (!session) {
-          const { data, error } = await supabase.auth.signInAnonymously();
-          if (error) {
-            if (error.code === 'anonymous_provider_disabled' || error.status === 422) {
-              throw new Error('Supabase Anonymous Auth is disabled. Enable it in Supabase Dashboard > Authentication > Providers > Anonymous.');
-            }
-            throw new Error(error.message || 'Unable to establish secure session.');
-          }
-          if (!data.session) throw new Error('Unable to establish secure session.');
-          session = data.session;
-        }
-
-        if (!session?.user?.id) {
-          throw new Error('No authenticated user in session.');
-        }
-
-        const { data: profileData, error: profileError } = await supabase
-          .from('profiles')
-          .select(PROFILE_COLUMNS)
-          .eq('id', account.id)
-          .maybeSingle();
-
-        if (profileError) {
-          console.warn('Profile hydration on login failed:', profileError.message);
-        } else if (profileData) {
-          finalAccount = {
-            ...finalAccount,
-            ...(mapFromSnakeCase([profileData])[0] as UserAccount)
-          };
-        }
-
-      } catch (error: any) {
-        console.error('Supabase auth/sync process error:', error);
-        throw new Error(error?.message || 'Login failed. Please try again.');
-      }
-    }
-
+    // Update state immediately to make login transition instantaneous
     setJustLoggedIn(true);
     setCurrentUser(normalizeAccount(finalAccount));
 
     if (!IS_DEMO_MODE) {
-      void supabase
-        .from('profiles')
-        .update(mapToSnakeCase({ lastLogin: timestamp, status: 'Active' }))
-        .eq('id', account.id)
-        .then(({ error }) => {
-          if (error) {
-            console.error('Profile last login sync failed:', error.message);
+      // Run Supabase Auth and database synchronization asynchronously in the background
+      void (async () => {
+        try {
+          let { data: { session } } = await supabase.auth.getSession();
+          
+          if (!session) {
+            const { data, error } = await supabase.auth.signInAnonymously();
+            if (error) {
+              console.error('Background anonymous sign-in failed:', error.message);
+              return;
+            }
+            session = data.session;
           }
-        });
+
+          // Hydrate the profile columns if needed
+          const { data: profileData } = await supabase
+            .from('profiles')
+            .select(PROFILE_COLUMNS)
+            .eq('id', account.id)
+            .maybeSingle();
+
+          if (profileData) {
+            const hydratedAccount = {
+              ...finalAccount,
+              ...(mapFromSnakeCase([profileData])[0] as UserAccount)
+            };
+            setCurrentUser(normalizeAccount(hydratedAccount));
+          }
+
+          // Update last login timestamp in DB
+          await supabase
+            .from('profiles')
+            .update(mapToSnakeCase({ lastLogin: timestamp, status: 'Active' }))
+            .eq('id', account.id);
+
+        } catch (error) {
+          console.error('Supabase auth background sync process error:', error);
+        }
+      })();
     }
   };
 

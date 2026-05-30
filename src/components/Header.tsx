@@ -46,7 +46,8 @@ const Header: React.FC<HeaderProps> = ({ userRole, activeTab, notifications, unr
     // Only fire toast for newly added notifications
     if (notifications.length > prevNotificationsRef.current.length) {
       const newNotif = notifications[0];
-      if (newNotif && !newNotif.isRead) {
+      const isActuallyNew = new Date().getTime() - new Date(newNotif.timestamp).getTime() < 15000;
+      if (newNotif && !newNotif.isRead && isActuallyNew) {
         setActiveToast(newNotif);
         setIsExiting(false);
 

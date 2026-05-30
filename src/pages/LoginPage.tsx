@@ -14,20 +14,18 @@ interface LoginPageProps {
 }
 
 const LoginPage: React.FC<LoginPageProps> = ({ accounts, artworks, onLogin, isLoading, loadingMessage }) => {
-  const [email, setEmail] = useState<string>('');
+  const [selectedId, setSelectedId] = useState<string>('');
   const [password, setPassword] = useState<string>('');
   const [isAnimating, setIsAnimating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const account = accounts.find(a => String(a.email || '').trim().toLowerCase() === email.trim().toLowerCase());
-    if (!account) {
-      setError("Invalid email or password. Please check your credentials.");
-      return;
-    }
+    const account = accounts.find(a => a.id === selectedId);
+    if (!account) return;
+    
     if (account.password && password !== account.password) {
-      setError("Invalid email or password. Please check your credentials.");
+      setError("Invalid password. Please check your credentials.");
       return;
     }
     setIsAnimating(true);
@@ -78,7 +76,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ accounts, artworks, onLogin, isLo
               <Shield size={32} />
             </div>
             <h2 className="text-xl font-bold text-neutral-900 tracking-tight">Personnel Authentication</h2>
-            <p className="text-xs text-neutral-500 mt-2 font-medium">Please sign in with your staff credentials to continue</p>
+            <p className="text-xs text-neutral-500 mt-2 font-medium">Please select your staff profile to continue</p>
           </div>
 
           {isLoading ? (
@@ -100,18 +98,26 @@ const LoginPage: React.FC<LoginPageProps> = ({ accounts, artworks, onLogin, isLo
                   <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-neutral-400">
                     <Mail size={18} />
                   </div>
-                  <input
-                    type="email"
+                  <select
                     required
-                    placeholder="Enter your email address"
-                    value={email}
+                    value={selectedId}
                     onChange={(e) => {
-                      setEmail(e.target.value);
+                      setSelectedId(e.target.value);
+                      setPassword('');
                       setError(null);
                     }}
                     disabled={isLoading}
-                    className="block w-full pl-11 pr-4 py-3.5 bg-white/88 border border-neutral-300 rounded-sm text-sm text-neutral-900 focus:outline-none focus:ring-2 focus:ring-[#2563eb]/20 focus:border-[#2563eb] transition-all hover:bg-white hover:border-neutral-400 disabled:opacity-50 disabled:cursor-wait font-medium"
-                  />
+                    className="block w-full pl-11 pr-4 py-3.5 bg-white/88 border border-neutral-300 rounded-sm text-sm text-neutral-900 focus:outline-none focus:ring-2 focus:ring-[#2563eb]/20 focus:border-[#2563eb] appearance-none transition-all hover:bg-white hover:border-neutral-400 disabled:opacity-50 disabled:cursor-wait"
+                  >
+                    <option value="" className="bg-white text-neutral-400">
+                      Select User Profile
+                    </option>
+                    {accounts.map(acc => (
+                      <option key={acc.id} value={acc.id} className="bg-white text-neutral-900">
+                        {acc.name} — {acc.role}
+                      </option>
+                    ))}
+                  </select>
                 </div>
 
                 <div className="relative">
@@ -121,9 +127,13 @@ const LoginPage: React.FC<LoginPageProps> = ({ accounts, artworks, onLogin, isLo
                   <input
                     type="password"
                     required
-                    placeholder="Enter your password"
-                    disabled={isLoading}
-                    className="block w-full pl-11 pr-4 py-3.5 bg-white/88 border border-neutral-300 rounded-sm text-sm text-neutral-900 hover:bg-white hover:border-neutral-400 transition-all focus:outline-none focus:ring-2 focus:ring-[#2563eb]/20 focus:border-[#2563eb] disabled:opacity-50 disabled:cursor-wait"
+                    placeholder={!selectedId ? "Select a profile first" : "Enter your password"}
+                    disabled={isLoading || !selectedId}
+                    className={`block w-full pl-11 pr-4 py-3.5 border rounded-sm text-sm transition-all focus:outline-none focus:ring-2 focus:ring-[#2563eb]/20 focus:border-[#2563eb] ${
+                      !selectedId
+                        ? "bg-white/70 border-neutral-300 text-neutral-400 cursor-not-allowed"
+                        : "bg-white/88 border-neutral-300 text-neutral-900 hover:bg-white hover:border-neutral-400"
+                    }`}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                   />
@@ -132,7 +142,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ accounts, artworks, onLogin, isLo
 
               <button
                 type="submit"
-                disabled={!email || !password}
+                disabled={!selectedId}
                 className="w-full flex items-center justify-center space-x-3 py-3.5 bg-neutral-900 hover:bg-neutral-800 disabled:opacity-30 disabled:hover:bg-neutral-900 text-white rounded-sm font-black text-sm uppercase tracking-widest transition-all shadow-[0_10px_22px_rgba(0,0,0,0.16)] group"
               >
                 <span>Initialize Session</span>

@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { Eye, EyeOff } from 'lucide-react';
 import { UserAccount, UserRole, UserPermissions } from '../types';
 import { ICONS, getDefaultPermissions, APP_TABS, getDefaultAccessibleTabs } from '../constants';
 
@@ -172,6 +173,7 @@ const AccountManagement: React.FC<AccountManagementProps> = ({
   const [activeTab, setActiveTab] = useState<'staff' | 'exclusive'>('staff');
   const [showHiddenTabsPanel, setShowHiddenTabsPanel] = useState(false);
   const [hiddenTabs, setHiddenTabs] = useState<string[]>([]);
+  const [showPassword, setShowPassword] = useState(false);
   const hiddenStorageKey = 'sidebar-hidden-tabs';
 
   const [formData, setFormData] = useState<{
@@ -628,13 +630,22 @@ const AccountManagement: React.FC<AccountManagementProps> = ({
                   </div>
                   <div className="space-y-1">
                     <label className="text-[10px] font-bold text-neutral-500 uppercase">Password</label>
-                    <input
-                      type="password"
-                      className="w-full px-4 py-3 bg-neutral-50 border border-neutral-200 rounded-sm text-sm"
-                      value={formData.password || ''}
-                      onChange={e => setFormData({ ...formData, password: e.target.value })}
-                      placeholder="Enter account password..."
-                    />
+                    <div className="relative">
+                      <input
+                        type={showPassword ? "text" : "password"}
+                        className="w-full px-4 py-3 pr-12 bg-neutral-50 border border-neutral-200 rounded-sm text-sm"
+                        value={formData.password || ''}
+                        onChange={e => setFormData({ ...formData, password: e.target.value })}
+                        placeholder="Enter account password..."
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-600 transition-colors"
+                      >
+                        {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                      </button>
+                    </div>
                   </div>
                   {activeTab === 'staff' && (
                     <>
@@ -772,13 +783,22 @@ const AccountManagement: React.FC<AccountManagementProps> = ({
                   </div>
                   <div className="space-y-1">
                     <label className="text-[10px] font-bold text-neutral-500 uppercase">Password</label>
-                    <input
-                      type="password"
-                      className="w-full px-4 py-3 bg-neutral-50 border border-neutral-200 rounded-sm text-sm"
-                      value={formData.password || ''}
-                      onChange={e => setFormData({ ...formData, password: e.target.value })}
-                      placeholder="Enter account password..."
-                    />
+                    <div className="relative">
+                      <input
+                        type={showPassword ? "text" : "password"}
+                        className="w-full px-4 py-3 pr-12 bg-neutral-50 border border-neutral-200 rounded-sm text-sm"
+                        value={formData.password || ''}
+                        onChange={e => setFormData({ ...formData, password: e.target.value })}
+                        placeholder="Enter account password..."
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-600 transition-colors"
+                      >
+                        {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                      </button>
+                    </div>
                   </div>
                   {activeTab === 'staff' && (
                     <>

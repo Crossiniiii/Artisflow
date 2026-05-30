@@ -223,14 +223,19 @@ export const useDataSync = ({ activeTab, currentUser, selectedArtworkId }: UseDa
     hasRepairedRef.current = true;
 
     const artworksToRepair: { id: string; eventId: string; eventTitle: string; eventType: string }[] = [];
+    const artworksMap = new Map<string, Artwork>();
+    for (const a of artworks) {
+      artworksMap.set(a.id, a);
+    }
+    const repairedIdsSet = new Set<string>();
 
     for (const event of events) {
       if (!event.artworkIds || event.artworkIds.length === 0) continue;
       for (const artId of event.artworkIds) {
         // Skip if we already tagged this art for repair in this pass
-        if (artworksToRepair.some(r => r.id === artId)) continue;
+        if (repairedIdsSet.has(artId)) continue;
 
-        const art = artworks.find(a => a.id === artId);
+        const art = artworksMap.get(artId);
         if (!art) continue;
 
         const isPersonReserved = art.status === ArtworkStatus.RESERVED && (art.remarks || '').includes('Type: Person');
@@ -248,6 +253,7 @@ export const useDataSync = ({ activeTab, currentUser, selectedArtworkId }: UseDa
             eventTitle: event.title,
             eventType: event.type || 'Exhibition'
           });
+          repairedIdsSet.add(artId);
         }
       }
     }
@@ -256,9 +262,15 @@ export const useDataSync = ({ activeTab, currentUser, selectedArtworkId }: UseDa
 
     console.log(`[DataSync] Auto-repairing ${artworksToRepair.length} artworks with inconsistent event status`);
 
+    // Create a fast map for repairs
+    const repairsMap = new Map<string, { id: string; eventId: string; eventTitle: string; eventType: string }>();
+    for (const r of artworksToRepair) {
+      repairsMap.set(r.id, r);
+    }
+
     // Fix local state
     setArtworks(prev => prev.map(a => {
-      const repair = artworksToRepair.find(r => r.id === a.id);
+      const repair = repairsMap.get(a.id);
       if (!repair) return a;
       return {
         ...a,
@@ -269,7 +281,7 @@ export const useDataSync = ({ activeTab, currentUser, selectedArtworkId }: UseDa
       };
     }));
     setAllArtworksIncludingDeleted(prev => prev.map(a => {
-      const repair = artworksToRepair.find(r => r.id === a.id);
+      const repair = repairsMap.get(a.id);
       if (!repair) return a;
       return {
         ...a,

@@ -327,6 +327,13 @@ const AccountManagement: React.FC<AccountManagementProps> = ({
     }
   };
 
+  const handleDeleteSingle = (id: string, name: string) => {
+    if (!onBulkDelete) return;
+    if (window.confirm(`Are you sure you want to delete the account for "${name}"? This action cannot be undone.`)) {
+      onBulkDelete([id]);
+    }
+  };
+
 
   return (
     <div className="space-y-6">
@@ -550,6 +557,14 @@ const AccountManagement: React.FC<AccountManagementProps> = ({
                     >
                       {acc.status === 'Active' ? 'Deactivate' : 'Activate'}
                     </button>
+                    {onBulkDelete && (
+                      <button
+                        onClick={() => handleDeleteSingle(acc.id, acc.name || acc.fullName || acc.firstName || acc.email || 'this user')}
+                        className="px-3 py-1.5 text-[10px] font-black uppercase tracking-widest rounded-sm border border-red-200 bg-white text-red-600 hover:bg-red-600 hover:text-white hover:border-red-600 transition-all shadow-sm hover:shadow-md transform hover:-translate-y-0.5"
+                      >
+                        Delete
+                      </button>
+                    )}
                   </div>
                 </td>
               </tr>

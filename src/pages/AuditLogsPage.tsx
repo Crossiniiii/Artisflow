@@ -381,31 +381,31 @@ const AuditLogsPage: React.FC<AuditLogsPageProps> = ({ logs, artworks, onViewArt
       <div className="bg-white rounded-md border border-neutral-200 shadow-sm overflow-hidden overflow-x-auto custom-scrollbar">
         <div className="">
           <table className="w-full text-left border-collapse min-w-[1000px]">
-            <thead>
+             <thead>
               <tr className="bg-neutral-50 border-b border-neutral-100">
-                <th className="px-6 py-4 w-12">
+                <th className="px-4 py-2.5 w-12">
                   <button onClick={handleSelectAll} className="text-neutral-400 hover:text-neutral-600 transition-colors">
                     {selectedLogIds.size > 0 && selectedLogIds.size === filteredLogs.length ? <CheckSquare size={16} /> : <Square size={16} />}
                   </button>
                 </th>
-                <th className="px-6 py-4 text-[10px] font-black text-neutral-400 uppercase tracking-widest">Timestamp</th>
-                <th className="px-6 py-4 text-[10px] font-black text-neutral-400 uppercase tracking-widest">Authorized User</th>
-                <th className="px-6 py-4 text-[10px] font-black text-neutral-400 uppercase tracking-widest">Action Executed</th>
-                <th className="px-6 py-4 text-[10px] font-black text-neutral-400 uppercase tracking-widest">Artwork Reference</th>
-                <th className="px-6 py-4 text-[10px] font-black text-neutral-400 uppercase tracking-widest">Details</th>
+                <th className="px-4 py-2.5 text-[10px] font-black text-neutral-400 uppercase tracking-widest">Timestamp</th>
+                <th className="px-4 py-2.5 text-[10px] font-black text-neutral-400 uppercase tracking-widest">Authorized User</th>
+                <th className="px-4 py-2.5 text-[10px] font-black text-neutral-400 uppercase tracking-widest">Action Executed</th>
+                <th className="px-4 py-2.5 text-[10px] font-black text-neutral-400 uppercase tracking-widest">Artwork Reference</th>
+                <th className="px-4 py-2.5 text-[10px] font-black text-neutral-400 uppercase tracking-widest">Details</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-neutral-100">
               {groupedLogs.map((group) => {
                 if (group.type === 'group' && group.logs.length > 1) {
                   return (
-                    <tr key={group.id} className="hover:bg-neutral-50 transition-colors group cursor-pointer bg-neutral-50/50" onClick={() => setSelectedGroup(group)}>
-                      <td className="px-6 py-4" onClick={(e) => e.stopPropagation()}>
+                     <tr key={group.id} className="hover:bg-neutral-50 transition-colors group cursor-pointer bg-neutral-50/50" onClick={() => setSelectedGroup(group)}>
+                      <td className="px-4 py-1.5" onClick={(e) => e.stopPropagation()}>
                         <button onClick={(e) => handleSelectGroup(group, e)} className="text-neutral-400 hover:text-neutral-600 transition-colors">
                           {group.logs.every(l => selectedLogIds.has(l.id)) ? <CheckSquare size={16} /> : <Square size={16} />}
                         </button>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
+                      <td className="px-4 py-1.5 whitespace-nowrap">
                         <div className="flex items-center space-x-2 text-neutral-500">
                           <Clock size={14} className="opacity-50" />
                           <span className="text-xs font-medium">
@@ -415,7 +415,7 @@ const AuditLogsPage: React.FC<AuditLogsPageProps> = ({ logs, artworks, onViewArt
                           </span>
                         </div>
                       </td>
-                      <td className="px-6 py-4">
+                      <td className="px-4 py-1.5">
                         <div className="flex items-center space-x-2">
                           <div className="w-6 h-6 rounded-sm bg-neutral-100 border border-neutral-200 flex items-center justify-center text-[10px] font-black text-neutral-600">
                             {(group.user || '?').charAt(0).toUpperCase()}
@@ -423,24 +423,24 @@ const AuditLogsPage: React.FC<AuditLogsPageProps> = ({ logs, artworks, onViewArt
                           <span className="text-sm font-bold text-neutral-700">{group.user || 'Unknown User'}</span>
                         </div>
                       </td>
-                      <td className="px-6 py-4">
+                      <td className="px-4 py-1.5">
                         <span className={`px-2.5 py-1 rounded-sm text-[10px] font-black uppercase tracking-tighter border flex items-center gap-1 w-fit ${group.action.includes('Import') ? 'bg-indigo-50 text-indigo-700 border-indigo-200' : 'bg-neutral-100 text-neutral-700 border-neutral-200'
                           }`}>
                           <Layers size={10} />
                           {group.action} Group
                         </span>
                       </td>
-                      <td className="px-6 py-4">
+                      <td className="px-4 py-1.5">
                         <span className="text-xs font-bold text-neutral-600 flex items-center gap-1">
                           {group.logs.length} items processed
                         </span>
                       </td>
-                      <td className="px-6 py-4">
+                      <td className="px-4 py-1.5">
                         <div className="flex items-center justify-between group-hover:text-indigo-600 transition-colors">
-                          <p className="text-xs text-neutral-500 font-medium truncate max-w-xs">
+                          <p className="text-xs text-neutral-500 font-medium break-words max-w-lg xl:max-w-2xl">
                             Batch: {group.batchName}
                           </p>
-                          <ChevronDown size={14} className="opacity-0 group-hover:opacity-100 transition-opacity" />
+                          <ChevronDown size={14} className="opacity-0 group-hover:opacity-100 transition-opacity shrink-0 ml-2" />
                         </div>
                       </td>
                     </tr>
@@ -460,13 +460,13 @@ const AuditLogsPage: React.FC<AuditLogsPageProps> = ({ logs, artworks, onViewArt
                 const isSystemLog = log.artworkId === 'SYS';
 
                 return (
-                  <tr key={log.id} className="hover:bg-neutral-50 transition-colors group">
-                    <td className="px-6 py-4">
+                   <tr key={log.id} className="hover:bg-neutral-50 transition-colors group">
+                    <td className="px-4 py-1.5">
                       <button onClick={() => handleSelectLog(log.id)} className="text-neutral-400 hover:text-neutral-600 transition-colors">
                         {selectedLogIds.has(log.id) ? <CheckSquare size={16} /> : <Square size={16} />}
                       </button>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
+                    <td className="px-4 py-1.5 whitespace-nowrap">
                       <div className="flex items-center space-x-2 text-neutral-500">
                         <Clock size={14} className="opacity-50" />
                         <span className="text-xs font-medium">
@@ -476,7 +476,7 @@ const AuditLogsPage: React.FC<AuditLogsPageProps> = ({ logs, artworks, onViewArt
                         </span>
                       </div>
                     </td>
-                    <td className="px-6 py-4">
+                    <td className="px-4 py-1.5">
                       <div
                         className="flex items-center space-x-2 cursor-pointer hover:bg-neutral-100 p-1.5 -ml-1.5 rounded-sm transition-colors group/user"
                         onClick={() => setSearchTerm(log.user || '')}
@@ -488,7 +488,7 @@ const AuditLogsPage: React.FC<AuditLogsPageProps> = ({ logs, artworks, onViewArt
                         <span className="text-sm font-bold text-neutral-700 group-hover/user:text-neutral-900 transition-colors">{log.user || 'Unknown User'}</span>
                       </div>
                     </td>
-                    <td className="px-6 py-4">
+                    <td className="px-4 py-1.5">
                       <span
                         className={`px-2.5 py-1 rounded-sm text-[10px] font-black uppercase tracking-tighter border cursor-pointer hover:shadow-sm transition-all hover:scale-105 active:scale-95 inline-block ${log.action.includes('Sale') ? 'bg-red-600 text-white border-red-600 hover:bg-red-700' :
                             log.action.includes('Transferred') ? 'bg-white text-neutral-700 border-neutral-300 hover:bg-neutral-50' :
@@ -502,7 +502,7 @@ const AuditLogsPage: React.FC<AuditLogsPageProps> = ({ logs, artworks, onViewArt
                         {log.action}
                       </span>
                     </td>
-                    <td className="px-6 py-4">
+                    <td className="px-4 py-1.5">
                       {displayArt ? (
                         <div
                           className="flex items-center space-x-2 cursor-pointer hover:bg-neutral-100 p-1.5 -ml-1.5 rounded-sm transition-colors group/art"
@@ -524,8 +524,8 @@ const AuditLogsPage: React.FC<AuditLogsPageProps> = ({ logs, artworks, onViewArt
                         <span className="text-xs text-neutral-400 italic">Reference Deleted</span>
                       )}
                     </td>
-                    <td className="px-6 py-4">
-                      <p className="text-xs text-neutral-500 leading-relaxed max-w-xs truncate" title={log.details}>
+                    <td className="px-4 py-1.5">
+                      <p className="text-xs text-neutral-600 leading-relaxed break-words max-w-lg xl:max-w-2xl" title={log.details}>
                         {log.details || '—'}
                       </p>
                     </td>

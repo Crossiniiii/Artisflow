@@ -555,6 +555,8 @@ const App: React.FC = () => {
                 onCancelReservation={handleCancelReservation}
                 onSale={handleSale}
                 onCancelSale={handleCancelSale}
+                onApproveRequest={handleApproveDeliveryRequest}
+                onDeclineRequest={handleDeclineDeliveryRequest}
               />
             </Suspense>
           );

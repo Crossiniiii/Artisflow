@@ -139,7 +139,7 @@ export const ArtworkDetailPanel: React.FC<ArtworkDetailPanelProps> = ({
 }) => {
   return (
     <div className="lg:col-span-2 bg-white rounded-md shadow-sm border border-neutral-200 flex flex-col md:flex-row overflow-hidden items-stretch">
-      <div className="w-full md:w-[60%] bg-neutral-100 flex items-center justify-center relative min-h-[500px] border-r border-neutral-100">
+      <div className="w-full md:w-[50%] bg-neutral-100 flex items-center justify-center relative min-h-[500px] border-r border-neutral-100">
         <OptimizedImage
           src={artwork.imageUrl || undefined}
           className="w-full h-full object-contain"
@@ -198,7 +198,7 @@ export const ArtworkDetailPanel: React.FC<ArtworkDetailPanelProps> = ({
           <div><p className="text-xs font-bold text-neutral-400 uppercase tracking-wider mb-1">Medium</p><p className="text-neutral-700 font-medium break-words">{artwork.medium}</p></div>
           <div><p className="text-xs font-bold text-neutral-400 uppercase tracking-wider mb-1">Size</p><p className="text-neutral-700 font-medium break-words">{artwork.dimensions || 'N/A'}</p></div>
           <div><p className="text-xs font-bold text-neutral-400 uppercase tracking-wider mb-1">Size with Frame</p><p className="text-neutral-700 font-medium break-words">{artwork.sizeFrame || 'N/A'}</p></div>
-          <div><p className="text-xs font-bold text-neutral-400 uppercase tracking-wider mb-1">Location</p><p className="text-neutral-700 font-medium">{displayBranch}</p></div>
+          <div><p className="text-xs font-bold text-neutral-400 uppercase tracking-wider mb-1">Location</p><p className="text-neutral-700 font-medium break-words">{displayBranch}</p></div>
 
           {/* Financial Section */}
           <div className="col-span-2 pt-6 mt-2 border-t border-neutral-100 space-y-6">
@@ -508,7 +508,7 @@ export const ArtworkDetailPanel: React.FC<ArtworkDetailPanelProps> = ({
                 .map(key => (
                   <div key={key}>
                     <p className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest mb-1">{key}</p>
-                    <p className="text-neutral-700 font-medium">{String((artwork as any)[key])}</p>
+                    <p className="text-neutral-700 font-medium break-words">{String((artwork as any)[key])}</p>
                   </div>
                 ))}
             </div>

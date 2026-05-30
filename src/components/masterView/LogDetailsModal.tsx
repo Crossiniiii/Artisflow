@@ -44,7 +44,7 @@ export const LogDetailsModal: React.FC<LogDetailsModalProps> = ({ log, onClose }
 
           <div className="bg-neutral-50 p-4 rounded-sm border border-neutral-100">
             <p className="text-[10px] font-black text-neutral-400 uppercase tracking-widest mb-2">Details</p>
-            <p className="text-sm text-neutral-700 leading-relaxed whitespace-pre-wrap">{log.details || 'No additional details provided.'}</p>
+            <p className="text-sm text-neutral-700 leading-relaxed whitespace-pre-wrap break-words">{log.details || 'No additional details provided.'}</p>
           </div>
 
           <div className="flex justify-end pt-4">

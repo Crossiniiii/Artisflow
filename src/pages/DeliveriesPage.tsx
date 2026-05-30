@@ -36,6 +36,8 @@ interface DeliveriesPageProps {
   onCancelReservation?: (id: string) => Promise<boolean | void> | boolean | void;
   onSale: (id: string, clientName: string, clientEmail: string, clientContact: string, delivered: boolean, eventInfo?: { id: string, name: string }, attachment?: string, itdr?: string[], rsa?: string[], orcr?: string[], downpayment?: number, isDownpayment?: boolean, remarks?: string) => void;
   onCancelSale: (id: string) => void;
+  onApproveRequest?: (saleId: string, remarks: string) => void;
+  onDeclineRequest?: (saleId: string, reason: string) => void;
   currentUser?: any;
 }
 
@@ -62,6 +64,8 @@ const DeliveriesPage: React.FC<DeliveriesPageProps> = ({
   onCancelReservation,
   onSale,
   onCancelSale,
+  onApproveRequest,
+  onDeclineRequest,
   currentUser
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
@@ -588,6 +592,8 @@ const DeliveriesPage: React.FC<DeliveriesPageProps> = ({
                  currentUser={currentUser}
                  hideHeader={true}
                  userPermissions={userPermissions}
+                 onApproveRequest={onApproveRequest}
+                 onDeclineRequest={onDeclineRequest}
                />
              </div>
            ) : (

@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 import { Search, Download, Upload, Plus } from 'lucide-react';
-import { Branch, ArtworkStatus, UserPermissions, ExhibitionEvent } from '../../types';
+import { Branch, ArtworkStatus, UserPermissions, ExhibitionEvent, ImportRecord } from '../../types';
 import { ExportDropdown } from '../ExportDropdown';
 
 interface InventoryFiltersProps {
@@ -20,14 +20,14 @@ interface InventoryFiltersProps {
   setStatusFilter: (val: string) => void;
   sizeFilter: string;
   setSizeFilter: (val: string) => void;
-  sheetFilter: string;
-  setSheetFilter: (val: string) => void;
+  selectedImportLogId: string | null;
+  setSelectedImportLogId: (val: string | null) => void;
+  importLogs: ImportRecord[];
   paymentTypeFilter: string;
   setPaymentTypeFilter: (val: string) => void;
   branches: string[];
   availableArtists: string[];
   availableMediums: string[];
-  availableSheets: string[];
   monthNames: string[];
   permissions: UserPermissions | null;
   selectedIds: string[];
@@ -65,14 +65,14 @@ export const InventoryFilters: React.FC<InventoryFiltersProps> = ({
   setStatusFilter,
   sizeFilter,
   setSizeFilter,
-  sheetFilter,
-  setSheetFilter,
+  selectedImportLogId,
+  setSelectedImportLogId,
+  importLogs,
   paymentTypeFilter,
   setPaymentTypeFilter,
   branches,
   availableArtists,
   availableMediums,
-  availableSheets,
   monthNames,
   permissions,
   selectedIds,
@@ -292,29 +292,43 @@ export const InventoryFilters: React.FC<InventoryFiltersProps> = ({
         </div>
       </div>
 
-      {availableSheets.length > 0 && (
-        <div className="flex items-center gap-1 overflow-x-auto border-b border-slate-200 px-1 pb-2">
-          <button
-            onClick={() => setSheetFilter('All')}
-            className={`h-8 px-3 text-[11px] font-bold uppercase tracking-[0.05em] whitespace-nowrap rounded-sm border transition-colors ${sheetFilter === 'All'
-                ? 'bg-blue-600 text-white border-blue-600'
-                : 'bg-white text-slate-600 hover:text-blue-700 hover:bg-blue-50 border-slate-200'
-              }`}
-          >
-            All Pages
-          </button>
-          {availableSheets.map(s => (
+      {importLogs && importLogs.length > 0 && (
+        <div className="flex flex-col gap-2 border-b border-slate-200 px-1 pb-3">
+          <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider select-none">
+            <span className="bg-slate-100 px-2 py-0.5 rounded-sm">Quick Preview</span>
+            <span>Recent Imports</span>
+          </div>
+          <div className="flex items-center gap-1.5 overflow-x-auto py-0.5 custom-scrollbar">
             <button
-              key={s}
-              onClick={() => setSheetFilter(s)}
-              className={`h-8 px-3 text-[11px] font-bold uppercase tracking-[0.05em] whitespace-nowrap rounded-sm border transition-colors ${sheetFilter === s
-                  ? 'bg-blue-600 text-white border-blue-600'
-                  : 'bg-white text-slate-600 hover:text-blue-700 hover:bg-blue-50 border-slate-200'
+              onClick={() => setSelectedImportLogId(null)}
+              className={`h-8 px-4 text-[11px] font-black uppercase tracking-[0.06em] whitespace-nowrap rounded-sm border transition-all flex items-center gap-1.5 ${!selectedImportLogId
+                  ? 'bg-neutral-900 text-white border-neutral-900 shadow-sm'
+                  : 'bg-white text-slate-600 hover:text-neutral-900 hover:bg-slate-50 border-slate-200'
                 }`}
             >
-              {s}
+              All Artworks
             </button>
-          ))}
+            {importLogs.filter(log => log.status !== 'Failed').slice(0, 5).map(log => {
+              const count = (log.importedIds?.length || 0) + (log.updatedIds?.length || 0);
+              const isSelected = selectedImportLogId === log.id;
+              return (
+                <button
+                  key={log.id}
+                  onClick={() => setSelectedImportLogId(log.id)}
+                  className={`h-8 px-4 text-[11px] font-black uppercase tracking-[0.06em] whitespace-nowrap rounded-sm border transition-all flex items-center gap-1.5 shadow-sm hover:shadow-md ${isSelected
+                      ? 'bg-blue-600 text-white border-blue-600'
+                      : 'bg-white text-slate-600 hover:text-blue-600 hover:bg-blue-50/40 border-slate-200'
+                    }`}
+                >
+                  <span className={`w-1.5 h-1.5 rounded-full ${isSelected ? 'bg-white' : 'bg-blue-500 animate-pulse'}`} />
+                  <span>{log.filename}</span>
+                  <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-sm ${isSelected ? 'bg-blue-500 text-blue-100' : 'bg-slate-100 text-slate-500'}`}>
+                    {count} items
+                  </span>
+                </button>
+              );
+            })}
+          </div>
         </div>
       )}
     </div>

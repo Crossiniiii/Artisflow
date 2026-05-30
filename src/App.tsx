@@ -679,6 +679,7 @@ const App: React.FC = () => {
                 onReturnFromFramer={handleReturnFromFramer}
                 onDeleteFramerRecord={handleDeleteFramerRecord}
                 preventDuplicates={preventDuplicateImports}
+                importLogs={importLogs}
                 importedFilenames={(importLogs || []).map(l => l.filename)}
                 initialTab={operationsView}
                 onNavigate={(tab) => setOperationsView(tab)}

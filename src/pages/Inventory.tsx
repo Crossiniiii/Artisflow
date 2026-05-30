@@ -2,7 +2,7 @@
 import React, { useState, useMemo, useRef } from 'react';
 import { utils, writeFile } from 'xlsx';
 import ExcelJS from 'exceljs';
-import { Artwork, ArtworkStatus, Branch, ExhibitionEvent, SaleRecord, isInTransitStatus, UserPermissions, ReturnType } from '../types';
+import { Artwork, ArtworkStatus, Branch, ExhibitionEvent, SaleRecord, isInTransitStatus, UserPermissions, ReturnType, ImportRecord } from '../types';
 import { ICONS } from '../constants';
 import { Upload, AlertCircle, CheckCircle2, X, Download, XCircle, Edit, Trash2, ShoppingBag, Clock, ArrowRightLeft, Image as ImageIcon, RotateCcw, ChevronRight, ArrowLeft, Sparkles, Plus, ClipboardCheck, Eye, Wrench, ChevronDown, Info, AlertTriangle } from 'lucide-react';
 import { PhoneInput } from '../components/PhoneInput';
@@ -48,6 +48,7 @@ interface InventoryProps {
   onBulkReserve?: (ids: string[], details: string, expiryDate?: string, eventId?: string, eventName?: string) => void;
   events?: ExhibitionEvent[];
   preventDuplicates?: boolean;
+  importLogs?: ImportRecord[];
   importedFilenames?: string[];
   sales?: SaleRecord[];
   onBulkSendToFramer?: (ids: string[], damageDetails: string, attachmentUrl?: string | string[]) => void;
@@ -77,6 +78,7 @@ const Inventory: React.FC<InventoryProps> = ({
   onAddToAuction,
   events = [],
   preventDuplicates = false,
+  importLogs = [],
   importedFilenames = [],
   sales = [],
   onBulkSendToFramer,
@@ -87,7 +89,7 @@ const Inventory: React.FC<InventoryProps> = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>(initialStatusFilter || 'All');
   const [branchFilter, setBranchFilter] = useState<string>('All');
-  const [sheetFilter, setSheetFilter] = useState<string>('All');
+  const [selectedImportLogId, setSelectedImportLogId] = useState<string | null>(null);
   const [artistFilter, setArtistFilter] = useState<string>('All');
   const [mediumFilter, setMediumFilter] = useState<string>('All');
   const [sizeFilter, setSizeFilter] = useState<string>('');
@@ -260,16 +262,7 @@ const Inventory: React.FC<InventoryProps> = ({
     return { y: new Date().getFullYear(), m: new Date().getMonth() + 1 };
   };
 
-  // Set default sheet filter to the first available sheet (preferably 'AVAILABLE')
-  const [hasSetInitialSheet, setHasSetInitialSheet] = useState(false);
 
-  React.useEffect(() => {
-    if (!hasSetInitialSheet && availableSheets.length > 0) {
-      const preferred = availableSheets.find(s => s.toUpperCase().includes('AVAILABLE')) || availableSheets[0];
-      setSheetFilter(preferred);
-      setHasSetInitialSheet(true);
-    }
-  }, [availableSheets, hasSetInitialSheet]);
 
   const baseFilteredArtworks = useMemo(() => {
     return artworks.filter(art => {
@@ -308,13 +301,20 @@ const Inventory: React.FC<InventoryProps> = ({
     });
   }, [artworks, searchTerm, branchFilter, dateMonthFilter, dateYearFilter, artistFilter, mediumFilter, sizeFilter, exhibitFilter, clientFilter, typeFilter]);
 
+  const importLogArtworksSet = useMemo(() => {
+    if (!selectedImportLogId || !importLogs) return null;
+    const log = importLogs.find(l => l.id === selectedImportLogId);
+    if (!log) return null;
+    return new Set([...(log.importedIds || []), ...(log.updatedIds || [])]);
+  }, [selectedImportLogId, importLogs]);
+
   const filteredArtworks = useMemo(() => {
     return baseFilteredArtworks.filter(art => {
       const matchesStatus =
         statusFilter === 'All' ||
         art.status === statusFilter ||
         (statusFilter === 'In Transit' && isInTransitStatus(art.status));
-      const matchesSheet = sheetFilter === 'All' || art.sheetName === sheetFilter;
+      const matchesImport = !importLogArtworksSet ? true : importLogArtworksSet.has(art.id);
 
       let matchesPaymentType = true;
       if (statusFilter === ArtworkStatus.SOLD && paymentTypeFilter !== 'All') {
@@ -331,9 +331,9 @@ const Inventory: React.FC<InventoryProps> = ({
         }
       }
 
-      return matchesStatus && matchesSheet && matchesPaymentType;
+      return matchesStatus && matchesImport && matchesPaymentType;
     });
-  }, [baseFilteredArtworks, statusFilter, sheetFilter, paymentTypeFilter, sales]);
+  }, [baseFilteredArtworks, statusFilter, importLogArtworksSet, paymentTypeFilter, sales]);
 
   const inventoryInsights = useMemo(() => {
     const totalItems = filteredArtworks.length; // Current View
@@ -1041,14 +1041,14 @@ const Inventory: React.FC<InventoryProps> = ({
         setStatusFilter={setStatusFilter}
         sizeFilter={sizeFilter}
         setSizeFilter={setSizeFilter}
-        sheetFilter={sheetFilter}
-        setSheetFilter={setSheetFilter}
+        selectedImportLogId={selectedImportLogId}
+        setSelectedImportLogId={setSelectedImportLogId}
+        importLogs={importLogs}
         paymentTypeFilter={paymentTypeFilter}
         setPaymentTypeFilter={setPaymentTypeFilter}
         branches={branches}
         availableArtists={availableArtists}
         availableMediums={availableMediums}
-        availableSheets={availableSheets}
         monthNames={monthNames}
         permissions={permissions || null}
         selectedIds={selectedIds}

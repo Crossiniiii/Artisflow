@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { ExhibitionEvent, Artwork, SaleRecord, UserPermissions, ReturnRecord, FramerRecord, TransferRecord, UserAccount, ReturnType, ArtworkStatus } from '../types';
+import { ExhibitionEvent, Artwork, SaleRecord, UserPermissions, ReturnRecord, FramerRecord, TransferRecord, UserAccount, ReturnType, ArtworkStatus, ImportRecord } from '../types';
 import EventManagement from './EventManagement';
 import AuctionManagement from './AuctionManagement';
 import BranchManagement from './BranchManagement';
@@ -55,6 +55,7 @@ interface GalleryManagementPageProps {
   onBulkReturnArtwork?: (ids: string[], reason: string, returnType: ReturnType, referenceNumber?: string, proofImage?: string | string[], remarks?: string) => void;
   onDeleteFramerRecord?: (id: string) => void;
   preventDuplicates?: boolean;
+  importLogs?: ImportRecord[];
   importedFilenames?: string[];
   initialTab?: 'inventory' | 'events' | 'branches' | 'returned' | 'framer' | 'auctions' | 'reservations' | 'monitoring' | 'sales';
   onNavigate?: (tab: 'inventory' | 'events' | 'branches' | 'returned' | 'framer' | 'auctions' | 'reservations' | 'monitoring' | 'sales') => void;
@@ -323,6 +324,7 @@ const GalleryManagementPage: React.FC<GalleryManagementPageProps> = (props) => {
             onAddToAuction={props.onAddToAuction}
             events={props.events}
             preventDuplicates={props.preventDuplicates}
+            importLogs={props.importLogs}
             importedFilenames={props.importedFilenames}
             sales={props.sales}
             permissions={props.userPermissions}

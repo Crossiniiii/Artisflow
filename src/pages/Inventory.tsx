@@ -1888,6 +1888,30 @@ const Inventory: React.FC<InventoryProps> = ({
         </Modal>
       )}
 
+      {errorModal && (
+        <Modal onClose={() => setErrorModal(null)} title={errorModal.title}>
+          <div className="space-y-4 text-center py-4 flex flex-col items-center">
+            <div className="w-16 h-16 bg-red-50 text-red-600 rounded-full flex items-center justify-center mb-2">
+              <AlertCircle size={32} />
+            </div>
+            <p className="text-sm font-medium text-slate-600 whitespace-pre-wrap">
+              {errorModal.message}
+            </p>
+            <div className="pt-4">
+              <button
+                onClick={() => {
+                  if (errorModal.onConfirm) errorModal.onConfirm();
+                  setErrorModal(null);
+                }}
+                className="px-6 py-2.5 bg-neutral-900 hover:bg-neutral-800 text-white rounded-md text-sm font-bold shadow-sm transition-all"
+              >
+                Dismiss
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
       {createPortal(<LoadingOverlay isVisible={isProcessing} title={processMessage} progress={{ current: processProgress, total: 100 }} />, document.body)}
     </div>
   );

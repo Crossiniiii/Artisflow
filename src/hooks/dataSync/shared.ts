@@ -68,8 +68,7 @@ export const normalizeBranchLogo = async (logoUrl?: string | null): Promise<stri
     return repairBase64Image(logoUrl) || undefined;
   }
 
-  const isValid = await validateImageUrl(logoUrl);
-  return isValid ? logoUrl : undefined;
+  return logoUrl;
 };
 
 const getCacheKey = (userId: string, key: string) => `${SYNC_CACHE_PREFIX}:${userId}:${key}`;

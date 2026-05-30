@@ -46,7 +46,7 @@ export const useArtworkCrud = () => {
       if (!IS_DEMO_MODE) {
         // Upload any base64 image to Storage before saving
         if (newArt.imageUrl?.startsWith('data:image/')) {
-          newArt.imageUrl = (await uploadBase64ToStorage(newArt.imageUrl, 'images', 'artworks')) || null;
+          newArt.imageUrl = (await uploadBase64ToStorage(newArt.imageUrl, 'images', 'artworks')) || '';
         }
 
         const { error } = await supabase.from('artworks').insert(mapToSnakeCase(newArt));
@@ -78,7 +78,7 @@ export const useArtworkCrud = () => {
 
       // Upload any new base64 image to Storage before saving
       if (updates.imageUrl?.startsWith('data:image/')) {
-        updates.imageUrl = (await uploadBase64ToStorage(updates.imageUrl, 'images', 'artworks')) || null;
+        updates.imageUrl = (await uploadBase64ToStorage(updates.imageUrl, 'images', 'artworks')) || undefined;
       }
 
       // Check for re-submission of requested attachments
@@ -444,10 +444,10 @@ export const useArtworkCrud = () => {
               if (art.imageUrl?.startsWith('data:image/')) {
                 try {
                   const uploadedUrl = await uploadBase64ToStorage(art.imageUrl, 'images', 'artworks');
-                  art.imageUrl = uploadedUrl || null;
+                  art.imageUrl = uploadedUrl || '';
                 } catch (e) {
                   console.error('Storage Upload failed for item:', art.title, e);
-                  art.imageUrl = null;
+                  art.imageUrl = '';
                 }
               }
             }));
